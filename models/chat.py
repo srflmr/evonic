@@ -6,6 +6,7 @@ from contextlib import contextmanager
 from typing import Any, Dict, List, Optional, Generator
 
 AGENTS_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'agents')
+SUB_AGENTS_TMP_DIR = "/tmp/evonic-sub-agents"
 
 
 def _migrate_session_id(cursor, old_id: str, new_id: str) -> None:
@@ -22,7 +23,14 @@ class AgentChatDB:
 
     def __init__(self, agent_id: str):
         self.agent_id = agent_id
-        agent_dir = os.path.join(AGENTS_DIR, agent_id)
+        # Sub-agents store their chat DB in a temp directory (they are ephemeral)
+        # so they don't pollute the persistent agents/ directory.
+        from backend.subagent_manager import subagent_manager
+        if subagent_manager.is_subagent(agent_id):
+            agent_dir = os.path.join(SUB_AGENTS_TMP_DIR, agent_id)
+        else:
+            agent_dir = os.path.join(AGENTS_DIR, agent_id)
+        os.makedirs(agent_dir, exist_ok=True)
         self.db_path = os.path.join(agent_dir, 'chat.db')
         self._init_tables()
 
@@ -845,10 +853,14 @@ class AgentChatManager:
 
     def __init__(self):
         self._dbs: Dict[str, AgentChatDB] = {}
+        self._lock = threading.Lock()
 
     def get(self, agent_id: str) -> AgentChatDB:
         if agent_id not in self._dbs:
-            self._dbs[agent_id] = AgentChatDB(agent_id)
+            with self._lock:
+                # Double-check: another thread may have created it while we waited
+                if agent_id not in self._dbs:
+                    self._dbs[agent_id] = AgentChatDB(agent_id)
         return self._dbs[agent_id]
 
 
