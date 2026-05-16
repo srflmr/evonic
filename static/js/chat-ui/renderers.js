@@ -530,7 +530,7 @@ export function buildMessageBubble(role, content, opts = {}, cfg = {}) {
         const rendered = typeof marked !== 'undefined'
             ? sanitize(marked.parse(content || '')).replace(/<table/g, '<div class="table-wrapper"><table').replace(/<\/table>/g, '</table></div>')
             : escape(content);
-        $bubble = $('<div class="chat-prose rounded-2xl px-4 py-2.5 text-sm break-words">').addClass(assistantBubbleClass);
+        $bubble = $('<div class="chat-prose rounded-2xl px-4 py-2.5 border-gray-300 text-sm break-words">').addClass(assistantBubbleClass);
         $bubble.attr('role', 'article');
         $bubble.html(rendered);
     }

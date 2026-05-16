@@ -574,7 +574,7 @@ function buildMessageBubble(role, content, opts = {}, cfg = {}) {
         const rendered = typeof marked !== 'undefined'
             ? sanitize(marked.parse(content || '')).replace(/<table/g, '<div class="table-wrapper"><table').replace(/<\/table>/g, '</table></div>')
             : escape(content);
-        $bubble = $('<div class="chat-prose rounded-2xl px-4 py-2.5 text-sm break-words">').addClass(assistantBubbleClass);
+        $bubble = $('<div class="chat-prose rounded-2xl px-4 py-2.5 border-gray-300 text-sm break-words">').addClass(assistantBubbleClass);
         $bubble.attr('role', 'article');
         $bubble.html(rendered);
     }
@@ -1018,14 +1018,11 @@ class Turn {
             $inner.find('.tool-trace-chevron').toggleClass('rotated');
         });
 
-        // Insert: bubble then panel, after the anchor user message
-        if (this.$anchor && this.$anchor.length && this.$anchor[0].parentNode === this._$container[0]) {
-            this.$anchor.after(this.$panel);
-            this.$anchor.after(this.$bubble);
-        } else {
-            this._$container.append(this.$bubble);
-            this.$bubble.after(this.$panel);
-        }
+        // Always append at the end of the container. Inserting after $anchor would
+        // place the bubble in the middle of the conversation when there are already
+        // agent messages rendered after the user message (e.g. turn_split, replay).
+        this._$container.append(this.$bubble);
+        this.$bubble.after(this.$panel);
     }
 
     _startTimer() {
@@ -1534,18 +1531,28 @@ class ChatUI {
 
     
     appendMessage(role, content, opts = {}) {
-        if (role !== 'error' && (!content || !content.trim())) return $();
+        if (role !== 'error' && (!content || !content.trim())) {
+            this._log.warn('appendMessage SKIPPED empty/whitespace content', role);
+            return $();
+        }
 
         // Remove empty-state placeholder
         this.$container.find('[data-empty-state]').remove();
 
         // For assistant with timeline metadata, render a finalized thinking bubble first
         if (role === 'assistant' && opts.metadata && opts.metadata.timeline && opts.metadata.timeline.length > 0) {
+            this._log.info('appendMessage rendering finalized bubble for assistant, timeline_len=', opts.metadata.timeline.length);
             this._renderFinalizedBubble(opts.metadata.timeline, opts.metadata.thinking_duration);
         }
 
         const $wrapper = this._renderers.buildMessageBubble(role, content, opts, this._cfg);
+        if (!$wrapper || !$wrapper.length) {
+            this._log.warn('appendMessage buildMessageBubble returned empty', role);
+            return $();
+        }
         this.$container.append($wrapper);
+        const totalKids = this.$container.children().length;
+        this._log.info('appendMessage appended', role, 'totalChildren=', totalKids, 'contentPreview=', String(content||'').slice(0,60));
         this._smartScroll();
         return $wrapper;
     }
