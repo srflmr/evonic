@@ -1,0 +1,169 @@
+[
+  {
+    "type": "function",
+    "function": {
+      "name": "pinchtab_health",
+      "description": "Check if the PinchTab browser automation server is reachable and healthy. Call this first before using any other pinchtab tools to verify the connection. Returns server information including version, uptime, and active instances.",
+      "parameters": {
+        "type": "object",
+        "properties": {},
+        "required": []
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "pinchtab_list_instances",
+      "description": "List all browser instances managed by PinchTab. Each instance represents a Chrome browser process. Returns instance IDs, profiles, and status — use this to discover which instances are available before opening tabs.",
+      "parameters": {
+        "type": "object",
+        "properties": {},
+        "required": []
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "pinchtab_new_tab",
+      "description": "Open a new browser tab in a PinchTab instance. Optionally navigate to a URL immediately. Returns the new tab's ID which you'll need for all subsequent tab operations (navigate, snapshot, click, etc.).",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "instance_id": {
+            "type": "string",
+            "description": "ID of the browser instance to create the tab in. Use pinchtab_list_instances to find available instances."
+          },
+          "url": {
+            "type": "string",
+            "description": "Optional URL to navigate the new tab to immediately after creation."
+          }
+        },
+        "required": ["instance_id"]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "pinchtab_navigate",
+      "description": "Navigate a browser tab to a URL. The tab must already exist (created via pinchtab_new_tab). URLs are safety-checked — file://, chrome://, javascript:, and internal/localhost addresses are blocked.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "tab_id": {
+            "type": "string",
+            "description": "ID of the tab to navigate."
+          },
+          "url": {
+            "type": "string",
+            "description": "The URL to navigate to. Must be a valid http:// or https:// URL."
+          }
+        },
+        "required": ["tab_id", "url"]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "pinchtab_snapshot",
+      "description": "Get the accessibility tree snapshot of a browser tab. This is the recommended way to inspect page content — the accessibility tree is a structured representation of all elements with their roles, labels, and states. It is 5-13x more token-efficient than screenshots, making it ideal for LLM-based analysis. Use this to read page content, find elements to interact with, or understand page structure.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "tab_id": {
+            "type": "string",
+            "description": "ID of the tab to snapshot."
+          }
+        },
+        "required": ["tab_id"]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "pinchtab_get_text",
+      "description": "Extract plain text content from a browser tab. Returns all visible text on the page as a single string. Use this when you need raw text content without the structure of the accessibility tree. For structured element inspection, prefer pinchtab_snapshot.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "tab_id": {
+            "type": "string",
+            "description": "ID of the tab to extract text from."
+          }
+        },
+        "required": ["tab_id"]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "pinchtab_click",
+      "description": "Click on an element in a browser tab. The element can be identified by CSS selector or by its accessibility node ID (obtained from pinchtab_snapshot). Use this to interact with buttons, links, checkboxes, and other clickable elements.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "tab_id": {
+            "type": "string",
+            "description": "ID of the tab to click in."
+          },
+          "selector": {
+            "type": "string",
+            "description": "CSS selector (e.g. '#submit-btn', '.nav-link') or accessibility node ID identifying the element to click. Get node IDs from pinchtab_snapshot results."
+          }
+        },
+        "required": ["tab_id", "selector"]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "pinchtab_type",
+      "description": "Type text into an input element in a browser tab. Use this to fill form fields, search boxes, and text areas. The target element is identified by CSS selector or accessibility node ID.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "tab_id": {
+            "type": "string",
+            "description": "ID of the tab to type in."
+          },
+          "selector": {
+            "type": "string",
+            "description": "CSS selector or accessibility node ID identifying the input element."
+          },
+          "text": {
+            "type": "string",
+            "description": "The text to type into the element."
+          }
+        },
+        "required": ["tab_id", "selector", "text"]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "pinchtab_screenshot",
+      "description": "Take a screenshot of a browser tab. Returns a base64-encoded image of the current page viewport (or the full scrollable page if full_page=true). Note: screenshots are expensive in token consumption — prefer pinchtab_snapshot for content analysis when visuals aren't required.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "tab_id": {
+            "type": "string",
+            "description": "ID of the tab to screenshot."
+          },
+          "full_page": {
+            "type": "boolean",
+            "description": "If true, capture the full scrollable page instead of just the visible viewport. Default: false."
+          }
+        },
+        "required": ["tab_id"]
+      }
+    }
+  }
+]

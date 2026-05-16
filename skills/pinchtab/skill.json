@@ -1,0 +1,26 @@
+{
+  "id": "pinchtab",
+  "name": "PinchTab Browser Automation",
+  "version": "1.0.0",
+  "description": "Browser automation via PinchTab's HTTP API (localhost:9867). Provides tools for web navigation, content extraction, element interaction, screenshots, and tab management. Requires a running PinchTab sidecar process.",
+  "brief": "You have access to PinchTab browser automation tools. Load this skill with `use_skill('pinchtab')` to navigate the web, extract content, click elements, take screenshots, and manage browser tabs. Requires PinchTab running at localhost:9867.",
+  "author": "Evonic",
+  "tools_file": "tools.json",
+  "lazy_tools": true,
+  "variables": [
+    {
+      "name": "pinchtab_host",
+      "label": "PinchTab Host",
+      "type": "string",
+      "default": "localhost",
+      "description": "Hostname where the PinchTab HTTP API is listening."
+    },
+    {
+      "name": "pinchtab_port",
+      "label": "PinchTab Port",
+      "type": "string",
+      "default": "9867",
+      "description": "Port where the PinchTab HTTP API is listening."
+    }
+  ]
+}
