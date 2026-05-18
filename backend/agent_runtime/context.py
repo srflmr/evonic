@@ -4,6 +4,7 @@ context.py — builds LLM input: system prompt, tool list, message formatting.
 Pure data preparation — no LLM calls, no threading.
 """
 
+import json
 import logging
 import os
 from datetime import datetime, timezone, timedelta
@@ -528,13 +529,26 @@ def build_tools(agent: Dict[str, Any]) -> List[Dict[str, Any]]:
 
 
 def get_compiled_context(agent_id: str) -> dict:
-    """Return the compiled system prompt and tool definitions for an agent."""
+    """Return the compiled system prompt, tool definitions, and token estimates."""
     agent = db.get_agent(agent_id)
     if not agent:
-        return {"system_prompt": "", "tools": []}
+        return {"system_prompt": "", "tools": [], "tokens": {"system_prompt": 0, "tool_definitions": 0, "total": 0}}
+
+    system_prompt = build_system_prompt(agent)
+    tools = build_tools(agent)
+
+    # Token estimates using the same len(text)//4 heuristic as llm_loop.py
+    sp_tokens = len(system_prompt) // 4
+    tool_tokens = len(json.dumps(tools)) // 4
+
     return {
-        "system_prompt": build_system_prompt(agent),
-        "tools": build_tools(agent)
+        "system_prompt": system_prompt,
+        "tools": tools,
+        "tokens": {
+            "system_prompt": sp_tokens,
+            "tool_definitions": tool_tokens,
+            "total": sp_tokens + tool_tokens,
+        }
     }
 
 
