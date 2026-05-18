@@ -540,6 +540,22 @@ def run_setup(
         return {"success": True, "agent_id": agent_id}
 
     except Exception as e:
+        # Roll back partial DB state so retries work:
+        # the agent (created at step 3) and model (created at step 1).
+        # Use raw SQL because db.delete_agent() refuses to delete super agents.
+        try:
+            with db._connect() as conn:
+                conn.execute("DELETE FROM agents WHERE id = ?", (agent_id,))
+                conn.execute("DELETE FROM agent_tools WHERE agent_id = ?", (agent_id,))
+                conn.commit()
+        except Exception:
+            pass
+        try:
+            with db._connect() as conn:
+                conn.execute("DELETE FROM llm_models WHERE id = ?", (model_id,))
+                conn.commit()
+        except Exception:
+            pass
         return {"error": str(e)}
 
 

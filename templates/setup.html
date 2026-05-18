@@ -505,7 +505,7 @@ function submitSetup() {
         },
         error: function(xhr) {
             const msg = (xhr.responseJSON || {}).error || 'Unexpected error. Please try again.';
-            showStepError(3, msg);
+            showStepError(4, msg);
             $('#s4-next').prop('disabled', false);
             $('#create-spinner').addClass('hidden');
         }
