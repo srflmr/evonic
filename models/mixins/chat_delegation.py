@@ -95,13 +95,13 @@ class ChatDelegationMixin:
     def upsert_agent_state(self, content: str, agent_id: str):
         self._chat_db(agent_id).upsert_agent_state(content)
 
-    def get_agent_state(self, agent_id: str) -> str | None:
+    def get_agent_state(self, agent_id: str) -> Optional[str]:
         return self._chat_db(agent_id).get_agent_state()
 
     def upsert_session_state(self, session_id: str, content: str, agent_id: str):
         self._chat_db(agent_id).upsert_session_state(session_id, content)
 
-    def get_session_state(self, session_id: str, agent_id: str) -> str | None:
+    def get_session_state(self, session_id: str, agent_id: str) -> Optional[str]:
         return self._chat_db(agent_id).get_session_state(session_id)
 
     def clear_session(self, session_id: str, agent_id: str = None):
@@ -180,7 +180,7 @@ class ChatDelegationMixin:
                 )
         return result
 
-    def get_latest_agent_request_metadata(self, session_id: str, agent_id: str = None, sender_agent_id: str = None) -> dict | None:
+    def get_latest_agent_request_metadata(self, session_id: str, agent_id: str = None, sender_agent_id: str = None) -> Optional[dict]:
         agent_id = agent_id or self._find_agent_for_session(session_id)
         if not agent_id:
             return None

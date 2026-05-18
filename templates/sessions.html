@@ -434,7 +434,7 @@ function renderEntries(entries, { persistent = false } = {}) {
             if (!thinkingId) thinkingId = chatUI.showThinkingIndicator();
             let result;
             try { result = JSON.parse(entry.content); } catch (_) { result = entry.content; }
-            chatUI.appendTimelineEntry(thinkingId, {type: 'tool_result', result, error: !!entry.error});
+            chatUI.appendTimelineEntry(thinkingId, {type: 'tool_result', tool: entry.function, result, error: !!entry.error});
         } else if (type === 'intermediate') {
             if (!thinkingId) thinkingId = chatUI.showThinkingIndicator();
             chatUI.appendTimelineEntry(thinkingId, {type: 'response', content: entry.content});

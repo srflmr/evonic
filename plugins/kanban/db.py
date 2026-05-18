@@ -12,7 +12,7 @@ import json
 import threading
 from contextlib import contextmanager
 from datetime import datetime, timezone
-from typing import Generator
+from typing import Generator, Optional
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 # Prefer shared/data/ when present (post-migration environments)
@@ -329,7 +329,7 @@ class KanbanDB:
 
     # ── Read ─────────────────────────────────────────────────────────────────
 
-    def get_active_task_for_agent(self, agent_id: str) -> dict | None:
+    def get_active_task_for_agent(self, agent_id: str) -> Optional[dict]:
         """Return the first in-progress task assigned to agent_id, or None."""
         with self._connect() as conn:
             row = conn.execute(
@@ -345,7 +345,7 @@ class KanbanDB:
             ).fetchall()
         return [self._row_to_dict(r) for r in rows]
 
-    def get(self, task_id: str) -> dict | None:
+    def get(self, task_id: str) -> Optional[dict]:
         with self._connect() as conn:
             row = conn.execute(
                 "SELECT * FROM tasks WHERE id = ?", (task_id,)
@@ -370,7 +370,7 @@ class KanbanDB:
             new_id = cur.lastrowid
         return self.get(new_id)
 
-    def update(self, task_id: str, fields: dict) -> dict | None:
+    def update(self, task_id: str, fields: dict) -> Optional[dict]:
         """Update specific fields. Returns updated task dict or None if not found."""
         allowed = {
             'title', 'description', 'status', 'priority', 'assignee',
@@ -392,7 +392,7 @@ class KanbanDB:
 
     # ── Atomic operations ────────────────────────────────────────────────────
 
-    def assign(self, task_id: str, agent_id: str) -> dict | None:
+    def assign(self, task_id: str, agent_id: str) -> Optional[dict]:
         """Set assignee atomically. Returns updated task or None if not found."""
         with self._connect() as conn:
             row = conn.execute(
@@ -408,7 +408,7 @@ class KanbanDB:
 
     # ─── Comments ──────────────────────────────────────────────────────────────
 
-    def add_comment(self, task_id: str, content: str, author: str = None) -> dict | None:
+    def add_comment(self, task_id: str, content: str, author: str = None) -> Optional[dict]:
         """Add a comment to a task. Returns the comment dict or None."""
         now = _now()
         with self._connect() as conn:
@@ -449,7 +449,7 @@ class KanbanDB:
             comments = [c for c in comments if c.get('author') not in exclude_authors]
         return comments
 
-    def get_last_comment(self, task_id: str) -> dict | None:
+    def get_last_comment(self, task_id: str) -> Optional[dict]:
         """Get the most recent comment for a task, or None if no comments exist."""
         with self._connect() as conn:
             row = conn.execute(
@@ -458,7 +458,7 @@ class KanbanDB:
             ).fetchone()
         return dict(row) if row else None
 
-    def get_last_comment_before(self, task_id: str, before: str) -> dict | None:
+    def get_last_comment_before(self, task_id: str, before: str) -> Optional[dict]:
         """Get the most recent comment created strictly before `before` (ISO timestamp)."""
         with self._connect() as conn:
             row = conn.execute(
@@ -491,7 +491,7 @@ class KanbanDB:
 
     # ─── Activity Log ──────────────────────────────────────────────────────────
 
-    def add_activity(self, task_id: str, action: str, details: str = None) -> dict | None:
+    def add_activity(self, task_id: str, action: str, details: str = None) -> Optional[dict]:
         """Log an activity for a task. Returns the activity dict or None."""
         now = _now()
         with self._connect() as conn:
@@ -528,14 +528,14 @@ class KanbanDB:
     def log_task_deleted(self, task_id: str):
         self.add_activity(task_id, 'deleted', 'Task deleted')
 
-    def archive_task(self, task_id: str) -> dict | None:
+    def archive_task(self, task_id: str) -> Optional[dict]:
         """Archive a task by setting archived_at. Returns updated task or None."""
         now = _now()
         with self._connect() as conn:
             conn.execute("UPDATE tasks SET archived_at = ?, updated_at = ? WHERE id = ?", (now, now, task_id))
         return self.get(task_id)
 
-    def unarchive_task(self, task_id: str) -> dict | None:
+    def unarchive_task(self, task_id: str) -> Optional[dict]:
         """Unarchive a task by clearing archived_at. Returns updated task or None."""
         now = _now()
         with self._connect() as conn:
@@ -601,7 +601,7 @@ class KanbanDB:
         except Exception:
             return False
 
-    def get_process_log(self, task_id: int) -> dict | None:
+    def get_process_log(self, task_id: int) -> Optional[dict]:
         """Get process log for a task. Returns dict with messages list or None."""
         with self._connect() as conn:
             row = conn.execute(

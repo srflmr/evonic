@@ -1,4 +1,5 @@
 """
+from typing import Optional
 Kanban Board Plugin — Event Handlers
 
 Handles the full kanban workflow:
@@ -1546,7 +1547,7 @@ def _state_handler(agent_id: str, session_id: str, agent_state, label: str, data
 
 # ─── Tool guard ───────────────────────────────────────────────────────────────
 
-def _tool_guard(agent_id: str, tool_name: str, args: dict) -> dict | None:
+def _tool_guard(agent_id: str, tool_name: str, args: dict) -> Optional[dict]:
     """Block tools for agents with a pending or paused task.
 
     Pending: Autopilot=ON allows KANBAN_ALLOWED_TOOLS. Autopilot=OFF allows
@@ -1920,7 +1921,7 @@ def on_tool_executed(event, sdk):
 
 # ─── Busy message provider ────────────────────────────────────────────────────
 
-def _busy_message_provider(agent_id: str, agent_state) -> str | None:
+def _busy_message_provider(agent_id: str, agent_state) -> Optional[str]:
     """Return a contextual message when the agent is busy with a kanban task."""
     task_id = _active_tasks.get(agent_id) or _pending_tasks.get(agent_id) or _paused_tasks.get(agent_id)
     if not task_id:

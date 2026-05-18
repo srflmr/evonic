@@ -1,4 +1,5 @@
 """
+from typing import Optional
 Unit tests for the CoT/thinking tool call fallback in agent_runtime.py.
 
 Covers the scenario where a model emits <tool_call> XML inside thinking content
@@ -26,7 +27,7 @@ from backend.llm_client import strip_thinking_tags
 # Helpers — replicate the agent_runtime fallback logic in isolation
 # ---------------------------------------------------------------------------
 
-def _simulate_fallback(raw_content: str, reasoning_content: str | None):
+def _simulate_fallback(raw_content: str, reasoning_content: Optional[str]):
     """
     Replicate the relevant section of agent_runtime._run_tool_loop:
 

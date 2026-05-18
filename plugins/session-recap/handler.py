@@ -1,4 +1,5 @@
 """
+from typing import Optional
 Session Recap Extractor — parses native session summaries for actionable items.
 
 Hooks into the `summary_updated` event, which fires whenever the built-in
@@ -235,7 +236,7 @@ def _extract_user_info(summary: str, tail_messages: list) -> dict:
     return {'name': name, 'phone': phone}
 
 
-def _extract_booking_info(summary: str, tail_messages: list) -> str | None:
+def _extract_booking_info(summary: str, tail_messages: list) -> Optional[str]:
     """Extract booking details from the structured summary Bookings section."""
     # Try to pull out the Bookings: block from the structured summary
     bookings_match = re.search(

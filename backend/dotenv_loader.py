@@ -12,11 +12,12 @@ a ``.env`` file and populates ``os.environ``. It handles:
 
 import re
 import os
+from typing import Optional
 
 __all__ = ["load_dotenv"]
 
 
-def load_dotenv(dotenv_path: str | None = None, *, override: bool = False) -> bool:
+def load_dotenv(dotenv_path: Optional[str] = None, *, override: bool = False) -> bool:
     """Parse *dotenv_path* (default ``.env`` in the calling directory) and set
     the resulting key=value pairs on ``os.environ``.
 

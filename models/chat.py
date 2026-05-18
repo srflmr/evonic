@@ -274,7 +274,7 @@ class AgentChatDB:
                         r['metadata'] = None
             return rows
 
-    def get_latest_agent_request_metadata(self, session_id: str, sender_agent_id: str = None) -> dict | None:
+    def get_latest_agent_request_metadata(self, session_id: str, sender_agent_id: str = None) -> Optional[dict]:
         """Return metadata of the most recent user message with agent_message=true in the session.
 
         Used by auto-forward to locate report_to_id even when the originating
@@ -337,7 +337,7 @@ class AgentChatDB:
                 (self._AGENT_STATE_KEY, content))
             conn.commit()
 
-    def get_agent_state(self) -> str | None:
+    def get_agent_state(self) -> Optional[str]:
         with self._connect() as conn:
             # Try global key first
             row = conn.execute(
@@ -367,7 +367,7 @@ class AgentChatDB:
                 (session_id, content))
             conn.commit()
 
-    def get_session_state(self, session_id: str) -> str | None:
+    def get_session_state(self, session_id: str) -> Optional[str]:
         """Get session-level state for a specific session_id.
 
         If no session_state exists yet, performs one-time migration from the
