@@ -75,6 +75,14 @@ PROVIDER_DEFAULTS = {
         # prior assistant messages, so default thinking on for this provider.
         "default_thinking": True,
     },
+    "deepseek": {
+        "type": "remote",
+        "base_url": "https://api.deepseek.com",
+        "api_key_required": True,
+        "placeholder_model": "deepseek-v4-pro",
+        "label": "DeepSeek",
+        "description": "Cloud · API key required",
+    },
     "llama.cpp": {
         "type": "local",
         "base_url": "http://localhost:8080/v1",
@@ -525,13 +533,29 @@ def run_setup(
         if password:
             from werkzeug.security import generate_password_hash
 
-            pw_hash = generate_password_hash(password)
+            pw_hash = generate_password_hash(password, method="pbkdf2:sha256")
             env_path = os.path.join(config.BASE_DIR, ".env")
             _update_env_var(env_path, "ADMIN_PASSWORD_HASH", pw_hash)
 
         return {"success": True, "agent_id": agent_id}
 
     except Exception as e:
+        # Roll back partial DB state so retries work:
+        # the agent (created at step 3) and model (created at step 1).
+        # Use raw SQL because db.delete_agent() refuses to delete super agents.
+        try:
+            with db._connect() as conn:
+                conn.execute("DELETE FROM agents WHERE id = ?", (agent_id,))
+                conn.execute("DELETE FROM agent_tools WHERE agent_id = ?", (agent_id,))
+                conn.commit()
+        except Exception:
+            pass
+        try:
+            with db._connect() as conn:
+                conn.execute("DELETE FROM llm_models WHERE id = ?", (model_id,))
+                conn.commit()
+        except Exception:
+            pass
         return {"error": str(e)}
 
 
@@ -639,7 +663,7 @@ def run_reconfigure(
         if password:
             from werkzeug.security import generate_password_hash
 
-            pw_hash = generate_password_hash(password)
+            pw_hash = generate_password_hash(password, method="pbkdf2:sha256")
             env_path = os.path.join(config.BASE_DIR, ".env")
             _update_env_var(env_path, "ADMIN_PASSWORD_HASH", pw_hash)
 

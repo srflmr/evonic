@@ -15,6 +15,7 @@ from the summary and recent messages to enrich notifications.
 
 Then notifies admins via webhook and/or channel message.
 """
+from typing import Optional
 
 import re
 
@@ -235,7 +236,7 @@ def _extract_user_info(summary: str, tail_messages: list) -> dict:
     return {'name': name, 'phone': phone}
 
 
-def _extract_booking_info(summary: str, tail_messages: list) -> str | None:
+def _extract_booking_info(summary: str, tail_messages: list) -> Optional[str]:
     """Extract booking details from the structured summary Bookings section."""
     # Try to pull out the Bookings: block from the structured summary
     bookings_match = re.search(

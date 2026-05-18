@@ -390,13 +390,14 @@ def enforce_auth():
     if request.path in ('/login', '/logout'):
         return None
 
-    # --- Setup flow: when no super agent exists, allow setup endpoints ---
+    # Setup endpoints handle their own auth/state validation — always allow them
+    if request.path == '/setup':
+        return None
+    if request.path in ('/api/setup', '/api/setup/test-connection', '/api/setup/docker-status'):
+        return None
+
+    # --- Setup flow: when no super agent exists, redirect everything else ---
     if not db.has_super_agent():
-        if request.path == '/setup':
-            return None
-        if request.path in ('/api/setup', '/api/setup/test-connection', '/api/setup/docker-status'):
-            return None
-        # All other requests redirect to setup
         if request.path.startswith('/api/'):
             return jsonify({'error': 'Super agent setup required', 'setup_required': True}), 503
         return redirect('/setup')

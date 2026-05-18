@@ -11,6 +11,7 @@ instead of in the main response body:
 The fallback logic (after thinking extraction) should recover tool calls in both
 cases and populate tool_calls so the agent loop executes them.
 """
+from typing import Optional
 
 import json
 import pytest
@@ -26,7 +27,7 @@ from backend.llm_client import strip_thinking_tags
 # Helpers — replicate the agent_runtime fallback logic in isolation
 # ---------------------------------------------------------------------------
 
-def _simulate_fallback(raw_content: str, reasoning_content: str | None):
+def _simulate_fallback(raw_content: str, reasoning_content: Optional[str]):
     """
     Replicate the relevant section of agent_runtime._run_tool_loop:
 

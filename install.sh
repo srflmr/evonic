@@ -12,7 +12,7 @@ set -e
 # ── Configuration ────────────────────────────────────────────────────────────
 EVONIC_HOME="${EVONIC_HOME:-$HOME/.evonic}"
 REPO_URL="https://github.com/anvie/evonic.git"
-VENV_DIR="$EVONIC_HOME/venv"
+VENV_DIR="$EVONIC_HOME/.venv"
 BIN_DIR="$EVONIC_HOME/bin"
 WRAPPER="$BIN_DIR/evonic"
 
@@ -72,6 +72,16 @@ check_prereqs() {
     if [ -n "$missing" ]; then
         die "Missing prerequisites: $missing. Please install them and re-run."
     fi
+
+    # The codebase uses Python 3.10+ type union syntax (X | Y).
+    # Python 3.9 is the absolute minimum supported version.
+    pyver=$(python3 --version 2>&1 | awk '{print $2}')
+    major=$(echo "$pyver" | cut -d. -f1)
+    minor=$(echo "$pyver" | cut -d. -f2)
+    if [ "$major" -lt 3 ] || { [ "$major" -eq 3 ] && [ "$minor" -lt 9 ]; }; then
+        die "Python 3.9+ is required. Found: $(python3 --version 2>&1)"
+    fi
+    ok "Python version $(python3 --version 2>&1) meets minimum requirement (3.9+)"
 }
 
 # ── Step 2: Clone or update repository ──────────────────────────────────────
@@ -168,8 +178,8 @@ create_wrapper() {
 EVONIC_HOME="\${EVONIC_HOME:-$EVONIC_HOME}"
 
 # Activate venv and run
-if [ -f "\$EVONIC_HOME/venv/bin/activate" ]; then
-    . "\$EVONIC_HOME/venv/bin/activate"
+if [ -f "\$EVONIC_HOME/.venv/bin/activate" ]; then
+    . "\$EVONIC_HOME/.venv/bin/activate"
 fi
 
 cd "\$EVONIC_HOME"

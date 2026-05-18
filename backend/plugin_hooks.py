@@ -17,7 +17,7 @@ _logger = logging.getLogger(__name__)
 # ═══════════════════════════════════════════════════════════════════
 # A generic synchronous pre-execution hook that plugins can use to block
 # specific tool calls. Guards are plain callables:
-#   guard(agent_id: str, tool_name: str, args: dict) -> dict | None
+#   guard(agent_id: str, tool_name: str, args: dict) -> Optional[dict]
 # Return {'block': True, 'error': '...'} to block, or None to allow.
 
 _tool_guards: list = []
@@ -53,7 +53,7 @@ def check_tool_guards(agent_id: str, tool_name: str, args: dict) -> Optional[dic
 # A generic synchronous hook that plugins can use to inject system messages into
 # the LLM conversation after an intermediate agent response. Interceptors are
 # called after tool execution and before the next LLM call (intermediate only).
-#   interceptor(agent_id: str, content: str, messages: list) -> dict | None
+#   interceptor(agent_id: str, content: str, messages: list) -> Optional[dict]
 # Return None to pass, or {'inject': 'text'} / {'inject': [msg_dicts]} to inject.
 
 _message_interceptors: list = []
@@ -97,7 +97,7 @@ def run_message_interceptors(agent_id: str, content: str, messages: list) -> lis
 # ═══════════════════════════════════════════════════════════════════
 # Plugins can supply tools + system messages that should be present at the start of
 # each agent turn. Providers are called once per _run_tool_loop call.
-#   provider(agent_id: str, session_id: str) -> dict | None
+#   provider(agent_id: str, session_id: str) -> Optional[dict]
 # Return None to skip, or:
 #   {"id": "x", "tools": [...tool_defs...], "system_md": "..."}
 
@@ -134,7 +134,7 @@ def get_turn_context(agent_id: str, session_id: str) -> list:
 # ═══════════════════════════════════════════════════════════════════
 # Plugins can register a provider that returns a human-readable message explaining
 # why the agent is busy and cannot process the incoming session.
-#   provider(agent_id: str, agent_state) -> str | None
+#   provider(agent_id: str, agent_state) -> Optional[str]
 # Return a non-empty string to supply the message, or None to pass.
 # Last-registered provider wins (highest priority first via reversed list).
 
@@ -153,7 +153,7 @@ def unregister_busy_message_provider(fn: Callable) -> None:
         _busy_message_providers.remove(fn)
 
 
-def get_busy_message(agent_id: str, agent_state) -> str | None:
+def get_busy_message(agent_id: str, agent_state) -> Optional[str]:
     """Ask registered providers for a contextual busy rejection message.
     Returns the first non-empty response (last registered = highest priority)."""
     for provider in reversed(list(_busy_message_providers)):

@@ -3,6 +3,7 @@
 Generates 6-character alphanumeric codes using an unambiguous character set
 (excludes 0/O, 1/I/L to avoid visual confusion). Displayed as XXXXXX (no hyphen).
 """
+from typing import Optional
 
 import random
 import re
@@ -28,12 +29,12 @@ def format_pair_code(raw: str) -> str:
     return raw.upper()
 
 
-def validate_pair_code(code: str | None) -> bool:
+def validate_pair_code(code: Optional[str]) -> bool:
     """Check if a string matches the XXXXXX pattern (6 uppercase alphanumeric chars)."""
     return bool(code is not None and _PATTERN.match(code))
 
 
-def extract_pair_code(text: str | None) -> str | None:
+def extract_pair_code(text: Optional[str]) -> str | None:
     """Extract a 6-char alphanumeric pairing code from arbitrary text.
 
     Accepts codes with or without hyphen (e.g. 'ABC123' or legacy 'ABC-123'),

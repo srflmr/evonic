@@ -1850,7 +1850,7 @@ def setup_wizard():
         if pw1 != pw2:
             print("  Error: Passwords do not match. Try again.")
             continue
-        new_hash = generate_password_hash(pw1)
+        new_hash = generate_password_hash(pw1, method="pbkdf2:sha256")
         _update_env_var(env_path, "ADMIN_PASSWORD_HASH", new_hash)
         print("  Password set successfully.")
         break
@@ -1925,7 +1925,7 @@ def pass_setup():
         if pw1 != pw2:
             print("Error: Passwords do not match.")
             sys.exit(1)
-        new_hash = generate_password_hash(pw1)
+        new_hash = generate_password_hash(pw1, method="pbkdf2:sha256")
         _update_env_var(env_path, "ADMIN_PASSWORD_HASH", new_hash)
         print("Password set successfully.")
     else:
@@ -1956,7 +1956,7 @@ def pass_setup():
             print("Error: Passwords do not match.")
             sys.exit(1)
 
-        new_hash = generate_password_hash(pw1)
+        new_hash = generate_password_hash(pw1, method="pbkdf2:sha256")
         _update_env_var(env_path, "ADMIN_PASSWORD_HASH", new_hash)
         print("Password changed successfully.")
 
@@ -2505,7 +2505,7 @@ def reconfigure_wizard(supervisor=False):
         if pw1 != pw2:
             print("  Error: Passwords do not match. Try again.")
             continue
-        new_hash = generate_password_hash(pw1)
+        new_hash = generate_password_hash(pw1, method="pbkdf2:sha256")
 
         _update_env_var(env_path, "ADMIN_PASSWORD_HASH", new_hash)
         print("  Password set successfully.")

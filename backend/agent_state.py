@@ -26,6 +26,8 @@ Usage:
     AgentState.deserialize(json_str)     # restore from DB
 """
 
+from typing import Optional, Union
+
 import json
 import os
 
@@ -68,13 +70,13 @@ class AgentState:
 
     # ── Blocking ────────────────────────────────────────────────────────────
 
-    def is_blocked(self, tool_name: str) -> bool | str:
+    def is_blocked(self, tool_name: str) -> Union[bool, str]:
         """Return True (mode block) or a string message (state block) if the tool is blocked."""
         if self.mode == "plan" and tool_name in GUARDED_TOOLS:
             return True
         return self.is_blocked_by_state(tool_name)
 
-    def is_blocked_by_state(self, tool_name: str) -> str | None:
+    def is_blocked_by_state(self, tool_name: str) -> Optional[str]:
         """Check all state slots for tool blocks. Returns a blocking message or None."""
         for ns, slot in self.states.items():
             allowed = slot.get("allowed_tools")
@@ -101,7 +103,7 @@ class AgentState:
             "allowed_tools": allowed_tools,
         }
 
-    def get_state(self, namespace: str) -> dict | None:
+    def get_state(self, namespace: str) -> Optional[dict]:
         """Get the current state slot for a namespace, or None."""
         return self.states.get(namespace)
 

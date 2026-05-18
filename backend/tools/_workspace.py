@@ -1,6 +1,7 @@
 """
 _workspace.py — shared workspace path resolution for file tools.
 """
+from typing import Optional
 
 import os
 
@@ -14,7 +15,7 @@ def is_self_path(file_path: str) -> bool:
     return bool(file_path) and (file_path.startswith(_SELF_PREFIX) or file_path == '/_self')
 
 
-def resolve_self_path(agent_id: str, file_path: str) -> str | None:
+def resolve_self_path(agent_id: str, file_path: str) -> Optional[str]:
     """Resolve /_self/... to the agent's local directory on the evonic server.
 
     Returns the absolute local path, or None if the resolved path escapes

@@ -374,7 +374,7 @@ class TelegramChannel(BaseChannel):
     def get_channel_type() -> str:
         return 'telegram'
 
-    def get_system_instructions(self) -> str | None:
+    def get_system_instructions(self) -> Optional[str]:
         return (
             "IMPORTANT — Telegram Formatting Constraint:\n"
             "You are responding via Telegram which uses PLAIN TEXT only. "
