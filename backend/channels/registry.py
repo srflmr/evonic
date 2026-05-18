@@ -1,7 +1,7 @@
 """Channel Manager — lifecycle management for active channels."""
 
 import logging
-from typing import Dict, Type
+from typing import Dict, Type, Optional
 from backend.channels.base import BaseChannel
 from backend.channels.telegram import TelegramChannel
 from backend.channels.whatsapp import WhatsAppChannel
@@ -70,7 +70,7 @@ class ChannelManager:
         _logger.info("Channel %s stopped", channel_id)
         return True
 
-    def get_channel_instance(self, channel_id: str) -> BaseChannel | None:
+    def get_channel_instance(self, channel_id: str) -> Optional[BaseChannel]:
         """Return the active channel instance for the given channel_id, or None."""
         return self._active.get(channel_id)
 

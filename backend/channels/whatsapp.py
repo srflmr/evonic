@@ -9,7 +9,7 @@ import subprocess
 import time
 import threading
 import requests
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 from backend.channels.base import BaseChannel, strip_system_tags
 
 _logger = logging.getLogger(__name__)
@@ -66,7 +66,7 @@ class WhatsAppChannel(BaseChannel):
     def get_channel_type() -> str:
         return 'whatsapp'
 
-    def get_system_instructions(self) -> str | None:
+    def get_system_instructions(self) -> Optional[str]:
         return (
             "IMPORTANT — WhatsApp Formatting Constraint:\n"
             "You are responding via WhatsApp which uses PLAIN TEXT only. "

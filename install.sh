@@ -72,6 +72,16 @@ check_prereqs() {
     if [ -n "$missing" ]; then
         die "Missing prerequisites: $missing. Please install them and re-run."
     fi
+
+    # The codebase uses Python 3.10+ type union syntax (X | Y).
+    # Python 3.9 is the absolute minimum supported version.
+    pyver=$(python3 --version 2>&1 | awk '{print $2}')
+    major=$(echo "$pyver" | cut -d. -f1)
+    minor=$(echo "$pyver" | cut -d. -f2)
+    if [ "$major" -lt 3 ] || { [ "$major" -eq 3 ] && [ "$minor" -lt 9 ]; }; then
+        die "Python 3.9+ is required. Found: $(python3 --version 2>&1)"
+    fi
+    ok "Python version $(python3 --version 2>&1) meets minimum requirement (3.9+)"
 }
 
 # ── Step 2: Clone or update repository ──────────────────────────────────────

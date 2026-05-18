@@ -320,7 +320,7 @@ def run_tool_loop(agent: Dict[str, Any],
     # otherwise the API rejects with "reasoning_content must be passed back".
     _had_tool_call_iteration = False
 
-    def _get_last_user_message(msgs: list) -> dict | None:
+    def _get_last_user_message(msgs: list) -> Optional[dict]:
         """Return the last user-role message in the list, or None."""
         for m in reversed(msgs):
             if isinstance(m, dict) and m.get("role") == "user":

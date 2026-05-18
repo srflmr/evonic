@@ -5,7 +5,7 @@ import time
 import threading
 from abc import ABC, abstractmethod
 from threading import Timer
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 
 _SYSTEM_TAG_RE = re.compile(r'\[(?:SYSTEM(?:/[^\]]*)?|System/[^\]]*)\]\s*')
 
@@ -116,15 +116,15 @@ class BaseChannel(ABC):
         """Return the channel type identifier (e.g., 'telegram')."""
         pass
 
-    def get_system_instructions(self) -> str | None:
+    def get_system_instructions(self) -> Optional[str]:
         """Hook for subclasses to inject channel-specific instructions before LLM call.
 
         Return a string to insert as a system message, or None for no injection.
         """
         return None
 
-    def _check_allowlist(self, external_user_id: str, user_name: str | None = None) -> tuple:
-        """Check if user is allowed to chat. Returns (allowed: bool, pair_code: str|None).
+    def _check_allowlist(self, external_user_id: str, user_name: Optional[str] = None) -> tuple:
+        """Check if user is allowed to chat. Returns (allowed: bool, pair_code: Optional[str]).
 
         In 'restricted' mode (default for new channels), unregistered users get
         a pairing code that an admin must approve. In 'open' mode, everyone is allowed.
