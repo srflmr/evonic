@@ -579,7 +579,13 @@ def api_list_artifacts(agent_id):
         ext = os.path.splitext(fname)[1].lower()
         if ext in ('.md', '.pdf'):
             return 'document'
-        if ext in ('.txt', '.csv', '.json', '.yaml', '.yml', '.xml', '.log'):
+        if ext in ('.txt', '.csv', '.json', '.yaml', '.yml', '.xml', '.log',
+                   '.py', '.c', '.rs', '.js', '.ts', '.jsx', '.tsx', '.cpp', '.cc', '.cxx',
+                   '.h', '.hpp', '.java', '.go', '.rb', '.php', '.cs', '.swift', '.kt',
+                   '.scala', '.r', '.m', '.sh', '.bash', '.zsh', '.ps1', '.sql',
+                   '.html', '.css', '.scss', '.less', '.toml', '.ini', '.cfg', '.conf',
+                   '.env', '.lock', '.diff', '.patch', '.Makefile', '.Dockerfile',
+                   '.vue', '.svelte', '.lua', '.pl', '.pm', '.gradle', '.groovy'):
             return 'text'
         if ext in ('.png', '.jpg', '.jpeg', '.gif', '.svg', '.webp', '.bmp', '.ico'):
             return 'image'

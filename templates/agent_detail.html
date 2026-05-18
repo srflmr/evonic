@@ -3811,8 +3811,14 @@ async function renderArtifactContent(filename, category, fileUrl, ext) {
                 <div class="flex justify-center">
                     <img src="${fileUrl}" alt="${filename}" class="max-w-full max-h-[70vh] rounded-md shadow-lg object-contain">
                 </div>`;
-        } else if (['txt', 'csv', 'json', 'yaml', 'yml', 'xml', 'log'].includes(ext)) {
-            // Plain text viewer
+        } else if (['txt', 'csv', 'json', 'yaml', 'yml', 'xml', 'log',
+                     'py', 'c', 'rs', 'js', 'ts', 'jsx', 'tsx', 'cpp', 'cc', 'cxx',
+                     'h', 'hpp', 'java', 'go', 'rb', 'php', 'cs', 'swift', 'kt',
+                     'scala', 'r', 'm', 'sh', 'bash', 'zsh', 'ps1', 'sql',
+                     'html', 'css', 'scss', 'less', 'toml', 'ini', 'cfg', 'conf',
+                     'env', 'lock', 'diff', 'patch', 'Makefile', 'Dockerfile',
+                     'vue', 'svelte', 'lua', 'pl', 'pm', 'gradle', 'groovy'].includes(ext)) {
+            // Plain text / code viewer
             const res = await fetch(fileUrl);
             const text = await res.text();
             const escaped = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
