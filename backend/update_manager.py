@@ -353,7 +353,7 @@ def check_for_update(force=False) -> dict:
 
         sup.git_fetch_tags(git_root)
         current = sup.get_current_release(git_root)
-        latest = sup.get_latest_tag(git_root)
+        latest = sup.get_latest_release(git_root)
 
         with _lock:
             _state['current_version'] = current
