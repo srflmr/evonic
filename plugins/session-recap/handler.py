@@ -15,6 +15,8 @@ from the summary and recent messages to enrich notifications.
 
 Then notifies admins via webhook and/or channel message.
 """
+from __future__ import annotations
+
 from typing import Optional
 
 import re

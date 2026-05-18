@@ -9,6 +9,8 @@ Handles the full kanban workflow:
 - Scanner/notifier (periodic scan + agent notification via scheduler)
 - on_tool_executed, on_kanban_task_created, on_kanban_task_updated, on_schedule_fired
 """
+from __future__ import annotations
+
 from typing import Optional
 
 import json as _json
