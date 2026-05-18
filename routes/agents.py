@@ -1375,20 +1375,32 @@ def api_chat_stream(agent_id):
     # fetch and this SSE subscription, avoiding duplicate delivery of already-seen events.
     after_seq = request.args.get('after', 0, type=int)
 
-    # Snapshot buffered events BEFORE subscribing so we don't miss any live events
-    # emitted between the snapshot and the subscription.
+    # Subscribe to live events BEFORE snapshotting the buffer. This ensures no events
+    # are lost in the window between snapshot and subscribe. Overlap (events captured
+    # by both snapshot and live handler) is safely deduplicated by seq on the client.
+    for event_name, handler in handlers.items():
+        event_stream.on(event_name, handler)
+
+    event_stream.register_web_listener(session_id)
+
+    # Snapshot buffered events after subscribing — any event emitted after this point
+    # is caught by the live handler; events before are in the snapshot.
     buffered_raw = event_stream.get_session_events(session_id, after_seq)
 
     # Only pre-fill events from the current in-progress turn.
     # Treat turn_complete and session_clear as "boundary" events — discard everything
     # up to and including the last one so a fresh SSE connection never replays a
     # completed turn or a past session_clear that would wipe the UI.
-    last_complete = -1
-    for i, e in enumerate(buffered_raw):
-        if e['event'] in ('turn_complete', 'session_clear'):
-            last_complete = i
-    if last_complete >= 0:
-        buffered_raw = buffered_raw[last_complete + 1:]
+    # IMPORTANT: Only strip on fresh connections (after_seq == 0). On reconnections
+    # (after_seq > 0), the client hasn't seen these events yet and needs them —
+    # especially turn_complete which finalizes the thinking bubble.
+    if after_seq == 0:
+        last_complete = -1
+        for i, e in enumerate(buffered_raw):
+            if e['event'] in ('turn_complete', 'session_clear'):
+                last_complete = i
+        if last_complete >= 0:
+            buffered_raw = buffered_raw[last_complete + 1:]
 
     # Prune resolved approval cycles — if an approval_required has already been
     # followed by a matching approval_resolved, discard both. Only keep the most
@@ -1417,12 +1429,6 @@ def api_chat_stream(agent_id):
                     del active_approvals[aid]
     if discard_set:
         buffered_raw = [e for i, e in enumerate(buffered_raw) if i not in discard_set]
-
-    # Subscribe to live events
-    for event_name, handler in handlers.items():
-        event_stream.on(event_name, handler)
-
-    event_stream.register_web_listener(session_id)
 
     # Pre-fill the queue with buffered events so a reconnecting client immediately
     # sees the in-progress reasoning trace without waiting for the next live event.

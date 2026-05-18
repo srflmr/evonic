@@ -869,7 +869,7 @@ def run_tool_loop(agent: Dict[str, Any],
             messages.append({"role": "assistant", "content": raw_content})
             messages.append({"role": "user", "content": _nudge})
             event_stream.emit('output_parser_nudge', {
-                'agent_id': agent_id, 'session_id': session_id,
+                'agent_id': agent_id,
                 'external_user_id': external_user_id, 'channel_id': channel_id,
                 'extracted_count': len(_extracted),
             })
