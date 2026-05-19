@@ -1691,7 +1691,11 @@ class AgentRuntime:
         return _ctx.get_compiled_context(agent_id, user_id=user_id)
 
     def _build_message_entry(self, msg: dict, agent: dict) -> dict:
-        """Convert a DB message row into an LLM message dict."""
+        """Convert a DB message row into an LLM message dict.
+
+        Safety net: applies RTK compression before falling back to blunt
+        truncation, mirroring the logic in context.py._build_message_entry().
+        """
         entry = {"role": msg["role"]}
         msg_image = None
         if msg.get("metadata") and isinstance(msg["metadata"], dict):
@@ -1706,10 +1710,23 @@ class AgentRuntime:
             entry["content"] = parts
         elif msg.get("content"):
             content = msg["content"]
+            # Safety net: try RTK compression before falling back to blunt truncation
             if msg.get("role") == "tool" and len(content) > MAX_TOOL_RESULT_CHARS:
-                remaining = len(content) - MAX_TOOL_RESULT_CHARS
-                content = (content[:MAX_TOOL_RESULT_CHARS] +
-                           f"\n...[truncated — {remaining} chars omitted; full result saved]")
+                try:
+                    from backend.token_compressor.compressor_registry import get_registry
+                    reg = get_registry()
+                    hint = _ctx.command_hint_from_content(content)
+                    compressed = reg.compress(hint, 0, content)
+                    if compressed != content:
+                        content = compressed
+                except Exception:
+                    pass
+
+                # Still apply blunt truncation if RTK didn't shrink enough
+                if len(content) > MAX_TOOL_RESULT_CHARS:
+                    remaining = len(content) - MAX_TOOL_RESULT_CHARS
+                    content = (content[:MAX_TOOL_RESULT_CHARS] +
+                               f"\n...[truncated — {remaining} chars omitted; full result saved]")
             entry["content"] = content
         if msg.get("tool_calls"):
             entry["tool_calls"] = msg["tool_calls"]

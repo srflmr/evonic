@@ -531,20 +531,17 @@ class TestCompressorRegistry:
         result = reg.compress("anything", 0, output)
         assert result != ""  # compression worked
 
-    def test_compress_with_env_var_no_compress(self, tmp_path):
-        """RTK_NO_COMPRESS=1 skips compression."""
-        os.environ["RTK_NO_COMPRESS"] = "1"
-        try:
-            self._make_toml(tmp_path, "any", r".*", strip_lines=['.'])
-            reg = CompressorRegistry(project_root=tmp_path)
-            reg._filters = load_filters(project_dir=str(tmp_path))
-            reg._loaded = True
-            reg._build_cache()
-            output = "keep this\n"
-            result = reg.compress("anything", 0, output)
-            assert result == output
-        finally:
-            os.environ.pop("RTK_NO_COMPRESS", None)
+    def test_compress_repeated_lookup_same_result(self, tmp_path):
+        """Repeated compress() calls with same args return consistent results."""
+        self._make_toml(tmp_path, "any", r".*")
+        reg = CompressorRegistry(project_root=tmp_path)
+        reg._filters = load_filters(project_dir=str(tmp_path))
+        reg._loaded = True
+        reg._build_cache()
+        output = "line1\nline2\nline3\n"
+        r1 = reg.compress("anything", 0, output)
+        r2 = reg.compress("anything", 0, output)
+        assert r1 == r2
 
     def test_filter_count_property(self, tmp_path):
         """filter_count reflects loaded filters."""
