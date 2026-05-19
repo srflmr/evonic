@@ -11,10 +11,10 @@
   "variables": [
     {
       "name": "MODEL_MODEL_MAP",
-      "label": "Model \u2192 Model Mapping",
+      "label": "Model → Model Mapping",
       "type": "textarea",
       "default": "{}",
-      "description": "JSON mapping public model aliases (keys) to internal model_name values (values). Used by /v1/models and /v1/chat/completions.\n\nExample: {\n  \"my-llm\": \"deepseek-v4-flash\"\n}"
+      "description": "JSON mapping public model aliases (keys) to internal model_name values (values). Used by /v1/models and /v1/chat/completions.\n\nExample:\n{\n  \"flash\": \"deepseek-v4-flash\",\n  \"pro\": \"deepseek-v4-pro\"\n}"
     }
   ]
 }
