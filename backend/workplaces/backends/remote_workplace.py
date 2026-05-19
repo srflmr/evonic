@@ -16,6 +16,7 @@ Config keys expected in workplace.config:
   workspace_path  — remote working directory (optional, used as cwd)
 """
 
+import os
 import base64
 import shlex
 
@@ -57,14 +58,19 @@ class RemoteWorkplaceBackend(ExecutionBackend):
         return self._ssh.run_bash(prefixed, timeout, env)
 
     def run_python(self, code: str, timeout: int, env: dict) -> dict:
-        # Python scripts run from workspace_path via bash -c wrapper
+        # Ensure evonic helpers are available on the remote (lazy upload on first call)
+        self._ssh._ensure_evonic_on_remote()
+        remote_evonic = os.path.expanduser('~/.evonic/evonic')
         if self._workspace:
-            escaped = self._workspace.replace("'", "'\\\\''")
-            wrapped = f"cd '{escaped}' && python3 -"
+            escaped = self._workspace.replace("'", "'\\''")
             # SSHBackend's run_python pipes code to python3, but we need bash wrapping;
             # call run_bash with explicit python3 inline execution
-            env_exports = ' '.join(f'{k}={v!r}' for k, v in (env or {}).items())
-            bash_script = f"{'export ' + env_exports + ' && ' if env_exports else ''}cd '{escaped}' && python3 - <<'__PYEOF__'\n{code}\n__PYEOF__"
+            merged = dict(env or {})
+            merged['PYTHONPATH'] = f"{remote_evonic}:{merged.get('PYTHONPATH', '')}".rstrip(':')
+            env_exports = ' '.join(f'{k}={v!r}' for k, v in merged.items())
+            bash_script = f"""{'export ' + env_exports + ' && ' if env_exports else ''}cd '{escaped}' && python3 - <<'__PYEOF__'
+{code}
+__PYEOF__"""
             return self._ssh.run_bash(bash_script, timeout, {})
         return self._ssh.run_python(code, timeout, env)
 

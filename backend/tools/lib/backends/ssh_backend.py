@@ -23,6 +23,10 @@ logger = logging.getLogger(__name__)
 _MAX_OUTPUT_BYTES = 64 * 1024  # 64 KB
 _MAX_RETRIES = 5
 
+# Path to local runpy_helpers directory (evonic package) for uploading to remote.
+_HELPERS_DIR = os.path.normpath(os.path.join(os.path.dirname(__file__), '..', '..', 'runpy_helpers'))
+_REMOTE_EVONIC_DIR = '~/.evonic/evonic'
+
 
 class SSHBackend(ExecutionBackend):
     """Executes bash/python on a remote server via SSH."""
@@ -47,6 +51,7 @@ class SSHBackend(ExecutionBackend):
         self._kill_flag = threading.Event()
         self._remote_pid = None
         self._active_channel = None
+        self._evonic_installed = False
 
         self._client = paramiko.SSHClient()
         self._client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
@@ -310,6 +315,34 @@ class SSHBackend(ExecutionBackend):
         finally:
             process_tracker.unregister(self._session_id)
 
+    def _ensure_evonic_on_remote(self):
+        """Upload evonic helpers to ~/.evonic/evonic/ on first run_python call.
+
+        Mirrors how DockerBackend mounts the helpers and LocalBackend sets
+        PYTHONPATH, adapted for remote execution via SFTP.
+        """
+        if self._evonic_installed:
+            return
+        remote_dir = os.path.expanduser(_REMOTE_EVONIC_DIR)
+        remote_bin = remote_dir + '/bin'
+        self._exec(f'mkdir -p {shlex.quote(remote_dir)} {shlex.quote(remote_bin)}', '', 10)
+        files = [
+            ('__init__.py', f'{remote_dir}/__init__.py'),
+            ('display.py', f'{remote_dir}/display.py'),
+            ('http.py', f'{remote_dir}/http.py'),
+            ('bin/rg', f'{remote_bin}/rg'),
+        ]
+        for rel_path, remote_path in files:
+            local_path = os.path.join(_HELPERS_DIR, rel_path)
+            if os.path.isfile(local_path):
+                result = self.sftp_upload(local_path, remote_path)
+                if 'error' in result:
+                    logger.warning('[ssh_evonic] Upload failed %s: %s', rel_path, result['error'])
+                    return
+        self._exec(f'chmod +x {shlex.quote(remote_bin)}/rg', '', 5)
+        self._evonic_installed = True
+        logger.info('[ssh_evonic] Installed evonic helpers on %s', self._host)
+
     def run_bash(self, script: str, timeout: int, env: dict) -> dict:
         # Prepend env exports before the script
         env_prefix = ''.join(
@@ -318,8 +351,13 @@ class SSHBackend(ExecutionBackend):
         return self._tracked_exec('bash -s', env_prefix + script, timeout)
 
     def run_python(self, code: str, timeout: int, env: dict) -> dict:
+        self._ensure_evonic_on_remote()
+        remote_dir = os.path.expanduser(_REMOTE_EVONIC_DIR)
+        merged = dict(env or {})
+        existing = merged.get('PYTHONPATH', '')
+        merged['PYTHONPATH'] = f'{remote_dir}:{existing}'.rstrip(':')
         env_prefix = ''.join(
-            f"export {k}={_shell_quote(v)}\n" for k, v in env.items()
+            f"export {k}={_shell_quote(v)}\n" for k, v in merged.items()
         )
         # Wrap: set env vars in shell, then pipe code to python3
         wrapper = env_prefix + 'python3 -'
