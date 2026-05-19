@@ -1,0 +1,62 @@
+[filter]
+command = "(?:npx\\s+)?(?:jest|vitest|eslint|tsc|npm|node)\\b"
+description = "JS/Node.js tool output compressor — covers jest, vitest, eslint, npm install/test, tsc, node"
+strip_ansi = true
+
+# Strip lines: PASS confirmations, progress bars, node runtime warnings, TS prefixes
+strip_lines = [
+  "^\\s*PASS\\s",
+  "^\\s*✓",
+  "\\[\\d+[mhs]",
+  "\\|\\s*[█▉▊▋▌▍▎▏=]",
+  "[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]",
+  "\\(node:\\d+\\)\\s+(ExperimentalWarning|DeprecationWarning|Warning):",
+  "^\\s*(npm\\s)?WARN(\\s|$)",
+  "^TS\\d+:",
+  "^\\s*$",
+]
+
+# Keep lines: failures, errors, warnings, summaries, file:line:col diagnostics
+keep_lines = [
+  "FAIL\\s",
+  "✗|×|✘|✖",
+  "error",
+  "Error",
+  "ERROR",
+  "warning",
+  "Warning",
+  "WARNING",
+  "\\d+ failing",
+  "Test Suites:",
+  "Tests:\\s",
+  "Snapshots:\\s",
+  "added \\d+ package",
+  "removed \\d+ package",
+  "changed \\d+ package",
+  "\\w+\\.(ts|js|tsx|jsx|vue|svelte):\\d+:\\d+",
+  "\\d+ errors?",
+  "\\d+ warnings?",
+  "\\d+ problems?",
+  "\\d+:?\\d+ms",
+  "Linting",
+]
+
+on_empty = "✓ All checks passed"
+
+# Replace: strip ANSI residual, normalize file:line:col prefixes
+[[filter.replace]]
+pattern = "\\x1b\\[[0-9;]*[a-zA-Z]"
+replacement = ""
+
+# Replace: strip leading "./" from file paths
+[[filter.replace]]
+pattern = "^\\./"
+replacement = ""
+
+[[filter.match_output]]
+pattern = "Test Suites:.*"
+message = "[{0}]"
+
+[[filter.match_output]]
+pattern = "Tests:\\s+\\d+.*"
+message = "[{0}]"

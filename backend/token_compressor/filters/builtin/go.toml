@@ -1,0 +1,56 @@
+[filter]
+command = "^go\\s+(test|build|vet|mod|run)\\b"
+description = "Go tool output compressor — covers go test, go build, go vet, go mod tidy, go run"
+strip_ansi = true
+
+# Strip lines: setup noise, "ok" pass confirmations, RUN/PASS verbosity, building messages
+strip_lines = [
+  "^\\s*ok\\s+",
+  "^\\s*\\?\\s+",
+  "^\\s*=== RUN\\s+",
+  "^\\s*--- PASS:\\s+",
+  "^\\s*PASS$",
+  "\\[build\\]",
+  "^build(ing)?\\s",
+  "^\\s*$",
+]
+
+# Keep lines: failures, errors, warnings, test summary, stdout-like content
+keep_lines = [
+  "FAIL\\b",
+  "--- FAIL:\\s+",
+  "FAIL\\s+",
+  "error",
+  "Error",
+  "ERROR",
+  "warning",
+  "Warning",
+  "WARNING",
+  "\\w+\\.go:\\d+:\\d+",
+  "\\w+\\.go:\\d+:",
+  "^exit status \\d+",
+  "\\d+ files?\\s+listed",
+  "^\\s*[a-z_./]+\\.go:\\d+:",
+]
+
+on_empty = "✓ All tests passed"
+
+# Replace: strip ANSI residual
+[[filter.replace]]
+pattern = "\\x1b\\[[0-9;]*[a-zA-Z]"
+replacement = ""
+
+# Replace: normalize file:line prefixes (strip leading whitespace)
+[[filter.replace]]
+pattern = "^\\s+"
+replacement = ""
+
+# match_output: compact FAIL/ok lines into a summary line
+[[filter.match_output]]
+pattern = "^(FAIL|ok)\\s+[-./a-zA-Z0-9_]+"
+message = "[{0}]"
+
+# match_output: capture test summary with duration
+[[filter.match_output]]
+pattern = "^(ok|FAIL)\\s+[-./a-zA-Z0-9_]+\\s+\\d+\\.\\d+s"
+message = "[{0}]"
