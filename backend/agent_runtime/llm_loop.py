@@ -91,59 +91,6 @@ from config import (AGENT_MAX_TOOL_ITERATIONS as MAX_TOOL_ITERATIONS,
 _rtk_registry = None
 
 
-def _extract_bash_command(script: str) -> str:
-    """Extract the real command from a multi-line bash script.
-
-    Looks for the last substantive command line, skipping:
-    - empty lines and comments (#)
-    - plain 'cd', 'export', 'set' directives
-    - shell meta-noise (shebang lines, trap, exec redirects)
-    """
-    if not script:
-        return "bash"
-    lines = [l.strip() for l in script.split("\n")]
-    candidates = []
-    for line in reversed(lines):
-        if not line or line.startswith("#") or line.startswith("#!/"):
-            continue
-        # Skip meta-directives
-        if line.startswith(("cd ", "export ", "set ", "trap ", "exec ", "echo ")):
-            continue
-        candidates.insert(0, line)
-    if not candidates:
-        return "bash"
-    # Take first (chronologically last substantive) command, strip pipes to get base
-    cmd = candidates[-1]
-    # Strip leading env vars: FOO=bar cmd -> cmd
-    cmd = re.sub(r"^\s*(?:\w+=[^\s]+\s+)+", "", cmd)
-    # Get the base command name (first word before pipe/redirect/semicolon)
-    base = re.split(r"[|;&<>]", cmd)[0].strip().split()[0] if cmd.split() else "bash"
-    return base
-
-
-def _extract_python_command(code: str) -> str:
-    """Detect likely Python command from code content.
-
-    Heuristics:
-    - 'import pytest' / 'from pytest import ...' -> pytest
-    - 'import unittest' -> python -m unittest
-    - 'subprocess.run' -> the command inside subprocess
-    - Otherwise -> python
-    """
-    if not code:
-        return "python"
-    # Check for known test / tool patterns
-    for line in code.split("\n"):
-        stripped = line.strip()
-        if re.match(r"^(?:import\s+pytest|from\s+pytest\s)", stripped):
-            return "pytest"
-        if re.match(r"^(?:import\s+unittest|from\s+unittest\s)", stripped):
-            return "python -m unittest"
-        if "subprocess.run" in stripped or "subprocess.call" in stripped:
-            return "python subprocess"
-    return "python"
-
-
 def _get_rtk_registry():
     """Lazy-init the RTK compressor registry. Safe to call from hot paths."""
     global _rtk_registry
@@ -156,47 +103,10 @@ def _get_rtk_registry():
 def _extract_command(tool_name: str, args: dict) -> str:
     """Derive a command hint for compressor filter matching.
 
-    Produces strings like "git status", "pytest", "read src/main.py", etc.
-    Used by split-path compression to pick the right TOML filter.
+    Delegates to backend.token_compressor.extract_command.
     """
-    if tool_name == 'bash':
-        script = args.get('script', '')
-        if not script:
-            return 'bash'
-        for line in script.strip().split('\n'):
-            s = line.strip()
-            if not s or s.startswith('#'):
-                continue
-            if s.startswith(('cd ', 'export ', 'set ', 'echo ')):
-                continue
-            return s[:120]
-        return 'bash'
-
-    if tool_name == 'runpy':
-        code = args.get('code', '')
-        if not code:
-            return 'python'
-        for line in code.strip().split('\n')[:5]:
-            s = line.strip()
-            if s.startswith('import pytest'):
-                return 'pytest'
-            if s.startswith('import unittest'):
-                return 'python -m unittest'
-            if 'subprocess.run' in s or 'subprocess.call' in s:
-                return 'python'
-            if 'os.system' in s:
-                return 'python'
-        return 'python'
-
-    if tool_name == 'read_file':
-        fp = args.get('file_path', '')
-        return f'read {fp}' if fp else 'read'
-
-    if tool_name == 'write_file':
-        fp = args.get('file_path', '')
-        return f'write {fp}' if fp else 'write'
-
-    return tool_name
+    from backend.token_compressor.extract_command import extract_command
+    return extract_command(tool_name, args)
 
 
 def run_tool_loop(agent: Dict[str, Any],
@@ -1571,7 +1481,7 @@ def run_tool_loop(agent: Dict[str, Any],
                 _cmd = _extract_command(fn_name, args)
                 compressed_str = _get_rtk_registry().compress(_cmd, _exit_code, result_str)
             except Exception:
-                # Fail-open: fall back to old truncation behavior
+                _logger.warning("RTK compression failed for %r — falling back to truncation", fn_name, exc_info=True)
                 if len(result_str) > MAX_TOOL_RESULT_CHARS:
                     remaining = len(result_str) - MAX_TOOL_RESULT_CHARS
                     compressed_str = (result_str[:MAX_TOOL_RESULT_CHARS] +
