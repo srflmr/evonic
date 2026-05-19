@@ -15,6 +15,13 @@
       "type": "textarea",
       "default": "{}",
       "description": "JSON mapping public model aliases (keys) to internal model_name values (values). Used by /v1/models and /v1/chat/completions.\n\nExample:\n{\n  \"flash\": \"deepseek-v4-flash\",\n  \"pro\": \"deepseek-v4-pro\"\n}"
+    },
+    {
+      "name": "SYSTEM_PROMPTS",
+      "label": "Per-Model System Prompts",
+      "type": "textarea",
+      "default": "{}",
+      "description": "JSON mapping model aliases to base system prompts. The base prompt is always injected as the first system message — the user cannot override it. If the request also includes a system message, it is appended after the base prompt.\n\nExample:\n{\n  \"flash\": \"You are a fast, concise assistant. Keep responses brief and direct.\",\n  \"pro\": \"You are a thorough, analytical assistant. Provide detailed reasoning.\"\n}"
     }
   ]
 }

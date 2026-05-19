@@ -4,7 +4,7 @@ Expose Evonic LLM models via an OpenAI-compatible REST API. Bearer-token-authent
 
 ## Configuration
 
-The plugin has one config variable: **ROUTER_MODEL_LIST**.
+The plugin has three config variables. They are managed in **Admin → Plugins → Model Router API → Edit Variables**.
 
 ### ROUTER_MODEL_LIST
 
@@ -23,6 +23,36 @@ Go to **Admin → Settings → LLM Models** in the Evonic web UI. Each model has
 | Allow all enabled models | *(leave empty)* |
 | A few popular models | `deepseek-v4-flash,moonshotai/kimi-k2-thinking,Qwen3.6-27B-MTP` |
 | Single model only | `deepseek-v4-flash` |
+
+### MODEL_MODEL_MAP
+
+A JSON object mapping public model aliases (keys) to internal `model_name` values (values). These aliases are exposed through the `/v1/models` endpoint and accepted by the `model` field in `/v1/chat/completions`. This lets you present user-friendly model names to API consumers.
+
+**Example:**
+```json
+{
+  "flash": "deepseek-v4-flash",
+  "pro": "deepseek-v4-pro"
+}
+```
+
+If set to `{}` (default), the API will fall back to listing all enabled LLM models directly.
+
+### SYSTEM_PROMPTS
+
+A JSON object mapping model aliases to base system prompts. When configured, the system prompt is **always injected** as the first `system` message in every chat completion request for that model alias. The user cannot modify or remove this prompt.
+
+If the API consumer also includes a `{role: "system"}` message in their request, it is **appended after** the base prompt — both are sent to the model.
+
+**Example:**
+```json
+{
+  "flash": "You are a fast, concise assistant. Keep responses brief and direct.",
+  "pro": "You are a thorough, analytical assistant. Provide detailed reasoning."
+}
+```
+
+Set to `{}` (default) to disable per-model system prompts entirely.
 
 ---
 

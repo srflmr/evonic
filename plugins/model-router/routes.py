@@ -29,7 +29,7 @@ from flask import (
     stream_with_context,
 )
 
-from plugins.model_router.db import TokenDB, hash_token
+from .db import TokenDB, hash_token
 
 PLUGIN_DIR = os.path.dirname(os.path.abspath(__file__))
 token_db = TokenDB()
@@ -60,11 +60,41 @@ def _parse_allowed_models(raw):
 def _get_router_model_list():
     """Load ROUTER_MODEL_LIST from plugin config, parse as comma-separated."""
     from backend.plugin_manager import plugin_manager
-    cfg = plugin_manager.get_plugin_config('model_router')
+    cfg = plugin_manager.get_plugin_config('model-router')
     raw = cfg.get('ROUTER_MODEL_LIST', '')
     if not raw or not raw.strip():
         return []  # empty means allow all enabled models
     return [m.strip() for m in raw.split(',') if m.strip()]
+
+
+def _get_model_model_map():
+    """Load MODEL_MODEL_MAP from plugin config, parse as JSON.
+
+    Returns a dict mapping public model aliases (keys) to internal
+    model_name values (values).
+    """
+    from backend.plugin_manager import plugin_manager
+    cfg = plugin_manager.get_plugin_config('model-router')
+    raw = cfg.get('MODEL_MODEL_MAP', '{}')
+    try:
+        return json.loads(raw) if isinstance(raw, str) else raw
+    except json.JSONDecodeError:
+        return {}
+
+
+def _get_system_prompts():
+    """Load SYSTEM_PROMPTS from plugin config, parse as JSON.
+
+    Returns a dict mapping model aliases to base system prompt strings.
+    Returns an empty dict if not configured or on parse error.
+    """
+    from backend.plugin_manager import plugin_manager
+    cfg = plugin_manager.get_plugin_config('model-router')
+    raw = cfg.get('SYSTEM_PROMPTS', '{}')
+    try:
+        return json.loads(raw) if isinstance(raw, str) else raw
+    except json.JSONDecodeError:
+        return {}
 
 
 def _validate_bearer_token():
@@ -232,6 +262,14 @@ def create_blueprint():
         stream = data.get('stream', False)
         temperature = data.get('temperature')
         max_tokens = data.get('max_tokens')
+
+        # --- Inject per-model base system prompt ---
+        system_prompts = _get_system_prompts()
+        configured_prompt = system_prompts.get(alias)
+        if configured_prompt:
+            messages = [
+                {'role': 'system', 'content': configured_prompt}
+            ] + messages
 
         # --- Lookup model config ---
         model_config, error = _lookup_model(actual_model_name)
@@ -418,7 +456,7 @@ def create_blueprint():
                 token_db.increment_quota(token_row)
                 token_db.log_usage(
                     token_id=token_row['id'],
-                    model=alias,
+                    model=model_name,
                     session_id=None,
                     prompt_tokens=total_prompt_tokens,
                     completion_tokens=total_completion_tokens,
@@ -485,11 +523,6 @@ def create_blueprint():
     # =======================================================================
     # Admin endpoints - /api/ prefix - session auth via global enforce_auth
     # =======================================================================
-
-    @bp.route('/api/model-router/admin')
-    def admin_dashboard():
-        """Admin dashboard page for token management."""
-        return render_template('admin.html')
 
     @bp.route('/api/model-router/admin/tokens', methods=['GET'])
     def admin_list_tokens():
@@ -672,22 +705,30 @@ def create_blueprint():
         _plaintext_cache[token_id] = plaintext
         return jsonify({'plaintext': plaintext})
 
-    @bp.route('/api/model-router/admin/models', methods=['GET'])
-    def admin_models():
-        """Return all enabled LLM models from the DB for the admin UI."""
-        from models.db import db as _db
-        models = _db.get_llm_models()
-        # Sanitize: remove api_key
-        for m in models:
-            m.pop('api_key', None)
-        return jsonify({'models': models})
+    @bp.route('/api/model-router/models', methods=['GET'])
+    def admin_list_models():
+        """Return model aliases from MODEL_MODEL_MAP for the admin UI.
 
-    @bp.route('/api/model-router/admin/models', methods=['GET'])
-    def admin_models():
-        """Return all enabled LLM models from the DB for the admin UI."""
+        Filters aliases to only include those whose target model_name maps
+        to an enabled model in the DB. Falls back to enabled system-wide
+        llm_models if MODEL_MODEL_MAP is empty or has no valid aliases.
+        """
         from models.db import db as _db
-        models = _db.get_llm_models()
-        # Sanitize: remove api_key
+        model_map = _get_model_model_map()
+        if model_map:
+            enabled_model_names = {
+                m['model_name'] for m in _db.get_enabled_llm_models()
+            }
+            valid_aliases = [
+                alias for alias, target in model_map.items()
+                if target in enabled_model_names
+            ]
+            if valid_aliases:
+                return jsonify({
+                    'models': [{'id': a, 'name': a} for a in valid_aliases]
+                })
+        # Fallback: enabled models from DB
+        models = _db.get_enabled_llm_models()
         for m in models:
             m.pop('api_key', None)
         return jsonify({'models': models})
@@ -725,12 +766,26 @@ def create_blueprint():
                 data['MODEL_MODEL_MAP'] = json.dumps(model_map)
             except (json.JSONDecodeError, TypeError):
                 return jsonify({'error': 'Invalid MODEL_MODEL_MAP format'}), 400
+
+        # Validate SYSTEM_PROMPTS if provided
+        if 'SYSTEM_PROMPTS' in data:
+            try:
+                prompts = json.loads(data['SYSTEM_PROMPTS'])
+                if not isinstance(prompts, dict):
+                    return jsonify({'error': 'SYSTEM_PROMPTS must be a JSON object'}), 400
+                for k, v in prompts.items():
+                    if not isinstance(k, str) or not isinstance(v, str):
+                        return jsonify({'error': 'All keys and values in SYSTEM_PROMPTS must be strings'}), 400
+                # Save as string
+                data['SYSTEM_PROMPTS'] = json.dumps(prompts)
+            except (json.JSONDecodeError, TypeError):
+                return jsonify({'error': 'Invalid SYSTEM_PROMPTS format'}), 400
         
         # Save config
         try:
             # Import PluginManager to save config
             from backend.plugin_lifecycle import plugin_manager
-            plugin_manager.save_plugin_config('model_router', data)
+            plugin_manager.save_plugin_config('model-router', data)
             return jsonify({'success': True})
         except Exception as e:
             return jsonify({'error': f'Failed to save config: {str(e)}'}), 500
