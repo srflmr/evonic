@@ -951,20 +951,21 @@ def run_tool_loop(agent: Dict[str, Any],
             elif content and CONTINUATION_RE.search(content) and _continuation_nudge_count < MAX_CONTINUATION_NUDGES:
                 if PLANNING_RE.search(content):
                     _logger.debug("Nudge negated by PLANNING_RE — treating as final")
-                    break
-                _continuation_nudge_count += 1
-                _logger.debug("Continuation phrase detected — nudging LLM (%d/%d)",
-                              _continuation_nudge_count, MAX_CONTINUATION_NUDGES)
-                _nudge_meta = {"reasoning_content": reasoning_text} if reasoning_text else None
-                db.add_chat_message(session_id, 'assistant', content, agent_id=db_agent_id, metadata=_nudge_meta)
-                chatlog.append({'type': 'intermediate', 'session_id': session_id, 'content': content})
-                _asst_nudge_msg: Dict[str, Any] = {"role": "assistant", "content": content}
-                if reasoning_text:
-                    _asst_nudge_msg["reasoning_content"] = reasoning_text
-                messages.append(_asst_nudge_msg)
-                # Nudge injected internally only — not persisted to DB
-                messages.append({"role": "user", "content": CONTINUATION_NUDGE})
-                continue
+                    # Fall through to final-response handling below (don't nudge)
+                else:
+                    _continuation_nudge_count += 1
+                    _logger.debug("Continuation phrase detected — nudging LLM (%d/%d)",
+                                  _continuation_nudge_count, MAX_CONTINUATION_NUDGES)
+                    _nudge_meta = {"reasoning_content": reasoning_text} if reasoning_text else None
+                    db.add_chat_message(session_id, 'assistant', content, agent_id=db_agent_id, metadata=_nudge_meta)
+                    chatlog.append({'type': 'intermediate', 'session_id': session_id, 'content': content})
+                    _asst_nudge_msg: Dict[str, Any] = {"role": "assistant", "content": content}
+                    if reasoning_text:
+                        _asst_nudge_msg["reasoning_content"] = reasoning_text
+                    messages.append(_asst_nudge_msg)
+                    # Nudge injected internally only — not persisted to DB
+                    messages.append({"role": "user", "content": CONTINUATION_NUDGE})
+                    continue
 
             # If LLM responded with only [DONE], suppress it and treat as finished.
             elif content and content.strip() == "[DONE]":
