@@ -37,7 +37,7 @@ func GUIAvailable() bool { return true }
 // Must be called from the main goroutine.
 func RunGUI(cfg *config.Config) {
 	a := app.New()
-	w := a.NewWindow("Evonet")
+	w := a.NewWindow("Evonet v1.1.0")
 	w.Resize(fyne.NewSize(700, 420))
 
 	root := container.NewStack()
@@ -51,7 +51,7 @@ func RunGUI(cfg *config.Config) {
 // Must be called from the main goroutine.
 func ShowPairingDialog(prefilledServerURL string) {
 	a := app.New()
-	w := a.NewWindow("Evonet")
+	w := a.NewWindow("Evonet v1.1.0")
 	w.Resize(fyne.NewSize(700, 420))
 
 	root := container.NewStack()
