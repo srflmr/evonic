@@ -193,7 +193,7 @@ func showAboutDialog(w fyne.Window) {
 	desc.Alignment = fyne.TextAlignCenter
 	desc.Wrapping = fyne.TextWrapWord
 
-	version := widget.NewLabelWithStyle("Version 1.0.0 (GUI Mac)", fyne.TextAlignCenter, fyne.TextStyle{Italic: true})
+	version := widget.NewLabelWithStyle("Version 1.1.0 (GUI Mac)", fyne.TextAlignCenter, fyne.TextStyle{Italic: true})
 
 	separator := widget.NewSeparator()
 
@@ -296,7 +296,7 @@ func doPair(serverURL, code string) (*config.Config, error) {
 		"pairing_code": code,
 		"device_name":  hostname,
 		"platform":     runtime.GOOS,
-		"version":      "1.0.0",
+		"version":      "1.1.0",
 	}
 	body, _ := json.Marshal(payload)
 

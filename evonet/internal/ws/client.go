@@ -119,7 +119,7 @@ func (c *Client) connect() error {
 	hostname, _ := os.Hostname()
 	header.Set("X-Device-Name", hostname)
 	header.Set("X-Platform", runtime.GOOS)
-	header.Set("X-Evonet-Version", "1.0.0")
+	header.Set("X-Evonet-Version", "1.1.0")
 
 	conn, _, err := websocket.DefaultDialer.Dial(url, header)
 	if err != nil {
