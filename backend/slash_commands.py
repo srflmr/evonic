@@ -729,10 +729,11 @@ def _register_builtins():
                 lines = [f"Model '{new_model_id}' not found. Available models:"]
                 for m in all_models:
                     m_name = m.get("name", "unknown")
-                    m_id = m.get("id", "")
                     m_model = m.get("model_name", "")
-                    enabled = "✓" if m.get("enabled") else "✗"
-                    lines.append(f"  [{enabled}] {m_id} — {m_name} ({m_model})")
+                    if m_model:
+                        lines.append(f"- {m_name} ({m_model})")
+                    else:
+                        lines.append(f"- {m_name}")
                 return "\n".join(lines)
             else:
                 return f"Model '{new_model_id}' not found and no models are configured."
@@ -745,9 +746,9 @@ def _register_builtins():
         model_name = model.get("name", "unknown")
         model_model = model.get("model_name", "")
         if model_model:
-            return f"Model set to: {model_name} ({model_model}) [id: {model['id']}]"
+            return f"Model set to: {model_name} ({model_model})"
         else:
-            return f"Model set to: {model_name} [id: {model['id']}]"
+            return f"Model set to: {model_name}"
 
     command_registry.register(
         "model",
