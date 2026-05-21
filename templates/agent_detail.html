@@ -3888,7 +3888,7 @@ async function renderArtifactContent(filename, category, fileUrl, ext) {
 }
 
 async function deleteArtifact(filename) {
-    if (!confirm(`Delete artifact "${filename}"?`)) return;
+    if (!await showConfirm({title: 'Delete Artifact', message: `Delete artifact "${filename}"? This cannot be undone.`, confirmText: 'Delete'})) return;
     try {
         const res = await fetch(`/api/agents/${AGENT_ID}/artifacts/${filename}`, { method: 'DELETE' });
         const data = await res.json();
