@@ -652,7 +652,7 @@ class SchemaMixin:
             except sqlite3.OperationalError:
                 pass
             try:
-                cursor.execute("ALTER TABLE cloud_connectors RENAME COLUMN home_id TO workplace_id")
+                cursor.execute("ALTER TABLE tunnel_connectors RENAME COLUMN home_id TO workplace_id")
             except sqlite3.OperationalError:
                 pass
             try:
@@ -665,7 +665,7 @@ class SchemaMixin:
                 CREATE TABLE IF NOT EXISTS workplaces (
                     id TEXT PRIMARY KEY,
                     name TEXT NOT NULL,
-                    type TEXT NOT NULL CHECK(type IN ('local', 'remote', 'cloud')),
+                    type TEXT NOT NULL CHECK(type IN ('local', 'remote', 'tunnel')),
                     config TEXT NOT NULL DEFAULT '{}',
                     status TEXT DEFAULT 'disconnected',
                     error_msg TEXT,
@@ -675,9 +675,21 @@ class SchemaMixin:
                 )
             """)
 
-            # Cloud connectors table (Evonet program pairing records)
+
+            # Migration: rename type cloud to tunnel for existing workplaces
+            try:
+                cursor.execute("UPDATE workplaces SET type = 'tunnel' WHERE type = 'cloud'")
+            except sqlite3.OperationalError:
+                pass
+
+            # Migration: rename cloud_connectors to tunnel_connectors for existing databases
+            try:
+                cursor.execute("ALTER TABLE cloud_connectors RENAME TO tunnel_connectors")
+            except sqlite3.OperationalError:
+                pass
+            # Tunnel connectors table (Evonet program pairing records)
             cursor.execute("""
-                CREATE TABLE IF NOT EXISTS cloud_connectors (
+                CREATE TABLE IF NOT EXISTS tunnel_connectors (
                     id TEXT PRIMARY KEY,
                     workplace_id TEXT NOT NULL REFERENCES workplaces(id) ON DELETE CASCADE,
                     connector_token TEXT UNIQUE,
@@ -698,12 +710,12 @@ class SchemaMixin:
 
             # Migration: relax connector_token NOT NULL so NULL is allowed before pairing completes
             try:
-                col_info = cursor.execute("PRAGMA table_info(cloud_connectors)").fetchall()
+                col_info = cursor.execute("PRAGMA table_info(tunnel_connectors)").fetchall()
                 token_col = next((c for c in col_info if c[1] == 'connector_token'), None)
                 if token_col and token_col[3] == 1:  # notnull == 1
-                    cursor.execute("ALTER TABLE cloud_connectors RENAME TO cloud_connectors_old")
+                    cursor.execute("ALTER TABLE tunnel_connectors RENAME TO tunnel_connectors_old")
                     cursor.execute("""
-                        CREATE TABLE cloud_connectors (
+                        CREATE TABLE tunnel_connectors (
                             id TEXT PRIMARY KEY,
                             workplace_id TEXT NOT NULL REFERENCES workplaces(id) ON DELETE CASCADE,
                             connector_token TEXT UNIQUE,
@@ -716,19 +728,19 @@ class SchemaMixin:
                         )
                     """)
                     cursor.execute("""
-                        INSERT INTO cloud_connectors
+                        INSERT INTO tunnel_connectors
                         SELECT id, workplace_id,
                                CASE WHEN connector_token = '' THEN NULL ELSE connector_token END,
                                pairing_code, pairing_expires_at, device_name, platform, version, last_seen_at
-                        FROM cloud_connectors_old
+                        FROM tunnel_connectors_old
                     """)
-                    cursor.execute("DROP TABLE cloud_connectors_old")
+                    cursor.execute("DROP TABLE tunnel_connectors_old")
             except sqlite3.OperationalError:
                 pass
 
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_workplaces_type ON workplaces(type)")
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_cloud_connectors_workplace ON cloud_connectors(workplace_id)")
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_cloud_connectors_token ON cloud_connectors(connector_token)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_tunnel_connectors_workplace ON tunnel_connectors(workplace_id)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_tunnel_connectors_token ON tunnel_connectors(connector_token)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_agents_workplace ON agents(workplace_id)")
 
             # ==================== Portals Table ====================

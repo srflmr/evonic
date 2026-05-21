@@ -1,5 +1,5 @@
 """
-CloudWorkplaceBackend — executes commands on a remote computer running the Evonet connector
+TunnelWorkplaceBackend — executes commands on a remote computer running the Evonet connector
 program via a WebSocket relay.
 
 The WebSocket connection is established by Evonet (outbound), managed by ConnectorRelay.
@@ -30,7 +30,7 @@ from backend.tools.lib.exec_backend import ExecutionBackend, file_stat_code, par
 _logger = logging.getLogger(__name__)
 
 
-class CloudWorkplaceBackend(ExecutionBackend):
+class TunnelWorkplaceBackend(ExecutionBackend):
     """Executes commands via JSON-RPC over the Evonet WebSocket connection."""
 
     def __init__(self, workplace_id: str, workspace: str = None):
@@ -170,7 +170,8 @@ class CloudWorkplaceBackend(ExecutionBackend):
         return {'content': r.get('content', '')}
 
     def write_file(self, path: str, content: str, create_dirs: bool = True) -> dict:
-        # Evonet auto-creates parent directories
+        if create_dirs:
+            self.make_dirs(os.path.dirname(path) or '.')
         r = self._call('write_file', {'path': path, 'content': content}, timeout=30)
         if 'error' in r or ('exit_code' in r and r['exit_code'] < 0):
             return {'error': r.get('stderr', '') or r.get('error', 'write failed')}
@@ -203,13 +204,13 @@ class CloudWorkplaceBackend(ExecutionBackend):
     def destroy(self) -> dict:
         with self._ws_lock:
             self._ws = None
-        return {'result': 'ok', 'detail': 'CloudWorkplaceBackend released (Evonet connection not closed).'}
+        return {'result': 'ok', 'detail': 'TunnelWorkplaceBackend released (Evonet connection not closed).'}
 
     def status(self) -> dict:
         with self._ws_lock:
             connected = self._ws is not None
         return {
-            'backend': 'cloud_workplace',
+            'backend': 'tunnel_workplace',
             'workplace_id': self._workplace_id,
             'workspace': self._workspace,
             'evonet_connected': connected,

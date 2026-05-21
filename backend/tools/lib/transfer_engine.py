@@ -24,7 +24,7 @@ def backend_type_name(backend) -> str:
         return 'local'
     if cls == 'SSHBackend' or cls == 'RemoteWorkplaceBackend':
         return 'ssh'
-    if cls == 'CloudWorkplaceBackend':
+    if cls == 'TunnelWorkplaceBackend':
         return 'evonet'
     if cls == 'DockerBackend':
         return 'docker'

@@ -1141,14 +1141,14 @@ class AgentRuntime:
                 self._message_queue.put(task)
 
     def _check_evonet_offline(self, agent: dict, ctx: SessionContext):
-        """Return a completed turn result dict if the agent's Cloud Workplace is offline,
+        """Return a completed turn result dict if the agent's Tunnel Workplace is offline,
         otherwise return None so normal processing continues."""
         workplace_id = agent.get('workplace_id')
         if not workplace_id:
             return None
         try:
             workplace = db.get_workplace(workplace_id)
-            if not workplace or workplace.get('type') != 'cloud':
+            if not workplace or workplace.get('type') != 'tunnel':
                 return None
             from backend.workplaces.manager import workplace_manager
             status = workplace_manager.get_status(workplace_id)
@@ -1159,7 +1159,7 @@ class AgentRuntime:
             _logger.warning("Failed to check Evonet status for workplace=%s, letting request through", workplace_id, exc_info=True)
             return None  # if we can't determine, let it proceed normally
 
-        workplace_name = workplace.get('name', 'Cloud Workplace')
+        workplace_name = workplace.get('name', 'Tunnel Workplace')
         reply = (
             f"⚠️ **{workplace_name}** is currently offline.\n\n"
             "Connection to Evonet device lost. "
@@ -1228,7 +1228,7 @@ class AgentRuntime:
             'channel_id': ctx.channel_id,
         })
 
-        # Early rejection: if the agent has a cloud Workplace and Evonet is offline,
+        # Early rejection: if the agent has a tunnel Workplace and Evonet is offline,
         # reply immediately without hitting the LLM.
         _early_reply = self._check_evonet_offline(agent, ctx)
         if _early_reply:
@@ -1460,7 +1460,7 @@ class AgentRuntime:
                         assigned_tool_ids.append(_tid)
 
             # Resolve workspace: workplace config takes priority over agent.workspace.
-            # For cloud workplaces, never fall back to the agent's /workspace path —
+            # For tunnel workplaces, never fall back to the agent's /workspace path —
             # Evonet runs on the remote device and has its own working directory.
             _workplace_id = agent.get('workplace_id') or None
             if _workplace_id:
@@ -1468,7 +1468,7 @@ class AgentRuntime:
                     import json as _json
                     _workplace = db.get_workplace(_workplace_id)
                     _workplace_cfg = _json.loads(_workplace.get('config', '{}')) if _workplace else {}
-                    if _workplace and _workplace.get('type') == 'cloud':
+                    if _workplace and _workplace.get('type') == 'tunnel':
                         _workspace = _workplace_cfg.get('workspace_path') or None
                     else:
                         _workspace = _workplace_cfg.get('workspace_path') or agent.get('workspace') or None

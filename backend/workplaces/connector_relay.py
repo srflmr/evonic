@@ -6,7 +6,7 @@ The WebSocket endpoint is served by Flask-Sock on the main app port:
 
 The route in app.py calls connector_relay.handle_ws(ws, request) for each
 incoming connection.  This module authenticates the token, wires up the
-CloudWorkplaceBackend, and runs the JSON-RPC message loop.
+TunnelWorkplaceBackend, and runs the JSON-RPC message loop.
 """
 
 import json

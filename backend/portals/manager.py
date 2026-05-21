@@ -130,9 +130,9 @@ class PortalManager:
         return backend
 
     def _create_evonet(self, config: dict) -> ExecutionBackend:
-        """Create evonet backend — always reuses an existing cloud workplace.
+        """Create evonet backend — always reuses an existing tunnel workplace.
 
-        Requires workplace_id in config. The cloud workplace must be connected
+        Requires workplace_id in config. The tunnel workplace must be connected
         (Evonet running on the target device).
         """
         workplace_id = config.get("workplace_id")
@@ -150,9 +150,9 @@ class PortalManager:
             raise RuntimeError(f"Workplace '{workplace_id}' not found.")
 
         wp_type = workplace.get("type")
-        if wp_type != "cloud":
+        if wp_type != "tunnel":
             raise RuntimeError(
-                f"Workplace '{workplace_id}' is type '{wp_type}', must be 'cloud' "
+                f"Workplace '{workplace_id}' is type '{wp_type}', must be 'tunnel' "
                 f"for an evonet portal."
             )
 
@@ -160,7 +160,7 @@ class PortalManager:
         status_info = workplace_manager.get_status(workplace_id)
         if status_info.get("status") != "connected":
             raise RuntimeError(
-                f"Cloud workplace '{workplace_id}' is not connected. "
+                f"Tunnel workplace '{workplace_id}' is not connected. "
                 f"Please start Evonet on the target device."
             )
 

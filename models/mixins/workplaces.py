@@ -4,7 +4,7 @@ from typing import Dict, Any, List, Optional
 
 
 class WorkplaceMixin:
-    """Workplace CRUD and cloud connector management. Requires self._connect() from the host class."""
+    """Workplace CRUD and tunnel connector management. Requires self._connect() from the host class."""
 
     # ==================== Workplaces ====================
 
@@ -93,13 +93,13 @@ class WorkplaceMixin:
                 """, (status, error_msg, workplace_id))
             conn.commit()
 
-    # ==================== Cloud Connectors ====================
+    # ==================== Tunnel Connectors ====================
 
     def get_connector(self, connector_id: str) -> Optional[Dict[str, Any]]:
         with self._connect() as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
-            cursor.execute("SELECT * FROM cloud_connectors WHERE id = ?", (connector_id,))
+            cursor.execute("SELECT * FROM tunnel_connectors WHERE id = ?", (connector_id,))
             row = cursor.fetchone()
             return dict(row) if row else None
 
@@ -107,7 +107,7 @@ class WorkplaceMixin:
         with self._connect() as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
-            cursor.execute("SELECT * FROM cloud_connectors WHERE connector_token = ?", (token,))
+            cursor.execute("SELECT * FROM tunnel_connectors WHERE connector_token = ?", (token,))
             row = cursor.fetchone()
             return dict(row) if row else None
 
@@ -115,7 +115,7 @@ class WorkplaceMixin:
         with self._connect() as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
-            cursor.execute("SELECT * FROM cloud_connectors WHERE workplace_id = ?", (workplace_id,))
+            cursor.execute("SELECT * FROM tunnel_connectors WHERE workplace_id = ?", (workplace_id,))
             row = cursor.fetchone()
             return dict(row) if row else None
 
@@ -123,7 +123,7 @@ class WorkplaceMixin:
         with self._connect() as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
-            cursor.execute("SELECT * FROM cloud_connectors WHERE pairing_code = ?", (code,))
+            cursor.execute("SELECT * FROM tunnel_connectors WHERE pairing_code = ?", (code,))
             row = cursor.fetchone()
             return dict(row) if row else None
 
@@ -132,7 +132,7 @@ class WorkplaceMixin:
         with self._connect() as conn:
             cursor = conn.cursor()
             cursor.execute("""
-                INSERT INTO cloud_connectors
+                INSERT INTO tunnel_connectors
                 (id, workplace_id, connector_token, pairing_code, pairing_expires_at, device_name, platform, version)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """, (
@@ -158,19 +158,19 @@ class WorkplaceMixin:
         values = list(updates.values()) + [connector_id]
         with self._connect() as conn:
             cursor = conn.cursor()
-            cursor.execute(f"UPDATE cloud_connectors SET {set_clause} WHERE id = ?", values)
+            cursor.execute(f"UPDATE tunnel_connectors SET {set_clause} WHERE id = ?", values)
             conn.commit()
             return cursor.rowcount > 0
 
     def delete_connector(self, connector_id: str) -> bool:
         with self._connect() as conn:
             cursor = conn.cursor()
-            cursor.execute("DELETE FROM cloud_connectors WHERE id = ?", (connector_id,))
+            cursor.execute("DELETE FROM tunnel_connectors WHERE id = ?", (connector_id,))
             conn.commit()
             return cursor.rowcount > 0
 
     def set_pairing_code(self, workplace_id: str, code: str, expires_at: str) -> str:
-        """Create or update pairing code for a cloud workplace. Returns connector_id."""
+        """Create or update pairing code for a tunnel workplace. Returns connector_id."""
         existing = self.get_connector_by_workplace(workplace_id)
         if existing:
             self.update_connector(existing['id'], {

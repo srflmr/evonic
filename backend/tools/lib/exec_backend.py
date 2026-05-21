@@ -39,7 +39,7 @@ def file_stat_code(path: str) -> str:
     """Return a Python code snippet that prints exists/size/is_binary for *path*.
 
     Used by SSH-based backends (SSHBackend, RemoteWorkplaceBackend,
-    CloudWorkplaceBackend) to query file metadata on a remote host.
+    TunnelWorkplaceBackend) to query file metadata on a remote host.
     The snippet prints ``exists=0|1 size=<int> is_binary=0|1`` on a
     single line, parseable by :func:`parse_file_stat_output`.
     """

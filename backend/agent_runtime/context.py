@@ -98,7 +98,7 @@ def _build_portal_info(agent_id: str) -> list:
         elif backend_type == "evonet":
             lines.append(
                 f"- `/_portal/{vpath}/` → `{real_path}` "
-                f"(Evonet cloud{status_note}) — {name}"
+                f"(Evonet tunnel{status_note}) — {name}"
             )
         else:
             lines.append(
