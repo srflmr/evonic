@@ -15,11 +15,12 @@ import (
 
 const maxLines = 1000
 
-// LogWriter implements io.Writer and feeds text to a Fyne Entry widget.
+// LogWriter implements io.Writer and feeds text to a Fyne RichText widget.
 // It also mirrors output to stderr. Updates are batched (100ms) and
 // dispatched to the main goroutine via fyne.Do to satisfy macOS/Cocoa.
+// Text is rendered in dark green via a custom theme color name (colorNameLogText).
 type LogWriter struct {
-	entry   *widget.Entry
+	entry   *widget.RichText
 	scroll  *container.Scroll
 	mu      sync.Mutex
 	lines   []string
@@ -28,7 +29,7 @@ type LogWriter struct {
 	closeCh chan struct{}
 }
 
-func newLogWriter(entry *widget.Entry, scroll *container.Scroll) *LogWriter {
+func newLogWriter(entry *widget.RichText, scroll *container.Scroll) *LogWriter {
 	lw := &LogWriter{
 		entry:   entry,
 		scroll:  scroll,
@@ -73,7 +74,16 @@ func (lw *LogWriter) flusher() {
 
 			// fyne.Do queues onto the main goroutine — required on macOS/Cocoa
 			fyne.Do(func() {
-				lw.entry.SetText(text)
+				lw.entry.Segments = []widget.RichTextSegment{
+					&widget.TextSegment{
+						Style: widget.RichTextStyle{
+							ColorName: colorNameLogText,
+							Inline:    true,
+						},
+						Text: text,
+					},
+				}
+				lw.entry.Refresh()
 				lw.scroll.ScrollToBottom()
 			})
 		case <-lw.closeCh:
@@ -90,7 +100,8 @@ func (lw *LogWriter) Clear() {
 	lw.mu.Unlock()
 
 	fyne.Do(func() {
-		lw.entry.SetText("")
+		lw.entry.Segments = nil
+		lw.entry.Refresh()
 		lw.scroll.ScrollToTop()
 	})
 }

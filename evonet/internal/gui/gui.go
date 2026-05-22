@@ -30,6 +30,24 @@ import (
 	"github.com/evonic/evonet/internal/ws"
 )
 
+// colorNameLogText is a custom theme color name for the log view text.
+// The logTheme wrapper returns dark green for this name while delegating
+// everything else to the default theme.
+const colorNameLogText fyne.ThemeColorName = "evonet.log.text"
+
+// logTheme wraps a Fyne theme and overrides only the log text color.
+type logTheme struct {
+	fyne.Theme
+}
+
+func (t *logTheme) Color(name fyne.ThemeColorName, variant fyne.ThemeVariant) color.Color {
+	if name == colorNameLogText {
+		// dark green
+		return color.RGBA{R: 0, G: 0x66, B: 0, A: 255}
+	}
+	return t.Theme.Color(name, variant)
+}
+
 // GUIAvailable returns true — the real GUI is compiled in.
 func GUIAvailable() bool { return true }
 
@@ -64,11 +82,13 @@ func ShowPairingDialog(prefilledServerURL string) {
 // showConnectorView renders the log area with Stop/Start and Reset buttons.
 // Creates its own LogWriter and wires window close. Safe to call from main goroutine.
 func showConnectorView(a fyne.App, w fyne.Window, root *fyne.Container, cfg *config.Config) {
-	logEntry := widget.NewMultiLineEntry()
-	logEntry.Disable()
+	logEntry := widget.NewRichText()
 	logEntry.Wrapping = fyne.TextWrapWord
 	logScroll := container.NewScroll(logEntry)
 	lw := newLogWriter(logEntry, logScroll)
+
+	// Set a custom theme so that only the log text renders in dark green.
+	a.Settings().SetTheme(&logTheme{Theme: theme.DefaultTheme()})
 
 	log.SetOutput(lw)
 	log.SetFlags(log.Ltime)
