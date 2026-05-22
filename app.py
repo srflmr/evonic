@@ -396,6 +396,8 @@ def enforce_auth():
         return None  # Baileys sidecar calls this from localhost
     if request.path == '/api/connector/pair':
         return None  # Evonet pairing is unauthenticated (uses pairing code)
+    if request.path.endswith('/download-binary') and request.path.startswith('/api/workplaces/'):
+        return None  # Evonet binary download is unauthenticated (uses embedded connector_token)
     if request.path == '/ws/connector':
         return None  # Evonet connector authenticates via Bearer token, not session
     if request.path.startswith('/static/'):

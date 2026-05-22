@@ -374,8 +374,8 @@ def api_binary_platforms(workplace_id):
     return resp
 
 
-@workplaces_bp.route('/api/workplaces/<workplace_id>/download-binary', methods=['POST'])
-def api_download_binary(workplace_id):
+def _build_binary(workplace_id, platform):
+    """Common logic — builds and returns the pre-configured binary Response or an error Response."""
     import config as _cfg
 
     workplace = db.get_workplace(workplace_id)
@@ -384,8 +384,6 @@ def api_download_binary(workplace_id):
     if workplace.get('type') != 'tunnel':
         return jsonify({'error': 'Binary download is only for tunnel workplaces'}), 400
 
-    data = request.get_json() or {}
-    platform = data.get('platform', 'linux-amd64')
     if platform not in _PLATFORM_BINARIES:
         return jsonify({'error': f'Unknown platform. Choose from: {", ".join(_PLATFORM_BINARIES)}'}), 400
 
@@ -473,3 +471,13 @@ def api_download_binary(workplace_id):
             'Pragma': 'no-cache',
         }
     )
+
+
+@workplaces_bp.route('/api/workplaces/<workplace_id>/download-binary', methods=['GET', 'POST'])
+def api_download_binary(workplace_id):
+    if request.method == 'GET':
+        platform = request.args.get('platform', 'linux-amd64')
+    else:
+        data = request.get_json() or {}
+        platform = data.get('platform', 'linux-amd64')
+    return _build_binary(workplace_id, platform)
