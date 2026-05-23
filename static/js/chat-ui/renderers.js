@@ -207,6 +207,41 @@ function _renderBashResult(r) {
     return $wrap;
 }
 
+function _renderRecallResult(result) {
+    const $wrap = $('<div>');
+    const memories = result.memories || [];
+
+    if (!memories.length) {
+        const msg = result.result || 'No memories found.';
+        return $('<div class="text-xs text-gray-500 italic px-2 py-1">').text(msg);
+    }
+
+    // Count badge
+    $wrap.append(
+        $('<div class="text-[10px] font-semibold text-purple-600 dark:text-purple-300 mb-1.5">').text(
+            `${memories.length} memory item${memories.length !== 1 ? 's' : ''}`
+        )
+    );
+
+    for (const m of memories) {
+        const $item = $('<div class="mb-1.5 border border-purple-200 rounded px-2 py-1.5 bg-purple-50/50 dark:bg-purple-900/20 dark:border-purple-700">');
+        const $meta = $('<div class="flex items-center gap-2 text-[10px] text-purple-400 mb-0.5">');
+        $meta.append(
+            $('<span class="font-semibold">').text('#' + m.id),
+            $('<span>').text(m.category || 'general')
+        );
+        if (m.created_at) {
+            $meta.append($('<span>').text(new Date(m.created_at).toLocaleString()));
+        }
+        $item.append($meta);
+        $item.append(
+            $('<div class="text-xs text-gray-700 dark:text-gray-200 whitespace-pre-wrap break-words">').text(m.content)
+        );
+        $wrap.append($item);
+    }
+    return $wrap;
+}
+
 /**
  * Build a jQuery element for the tool result detail section.
  * Returns jQuery element.
@@ -235,6 +270,10 @@ export function buildToolResultDetail(ev) {
     // single-key data wrapper
     if (typeof ev.result === 'object' && ev.result !== null && Object.keys(ev.result).length === 1 && 'data' in ev.result && typeof ev.result.data === 'string') {
         return $('<pre class="text-xs bg-gray-50 dark:bg-gray-900 dark:text-gray-300 border border-gray-200 rounded p-2 overflow-x-auto font-mono text-gray-700 max-h-[300px] whitespace-pre-wrap">').text(ev.result.data);
+    }
+    // recall — show full memory contents
+    if (ev.tool === 'recall' && typeof ev.result === 'object' && ev.result !== null && 'memories' in ev.result) {
+        return _renderRecallResult(ev.result);
     }
     return $('<div class="text-xs text-green-700 bg-green-50 border border-green-200 rounded px-2 py-1">').text(summarizeToolResult(ev.result));
 }
