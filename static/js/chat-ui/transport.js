@@ -14,7 +14,12 @@ const SSE_EVENTS = [
     'turn_begin', 'turn_split', 'thinking', 'tool_call_started', 'tool_executed',
     'response_chunk', 'done', 'approval_required', 'approval_resolved', 'retry',
     'message_injected', 'message_injection_applied', 'session_clear',
+    'heartbeat',
 ];
+
+// If no event (including heartbeats) arrives within this window, the connection
+// is assumed dead and the adapter will force-reconnect.
+const LIVENESS_TIMEOUT_MS = 45_000;
 
 export class SSEAdapter {
     /**
@@ -34,6 +39,8 @@ export class SSEAdapter {
         this._fillingGap = false;
         this._pendingQueue = [];
         this._log = log('sse');
+        this._lastEventAt = 0;
+        this._livenessInterval = null;
     }
 
     start(handler) {
@@ -44,6 +51,10 @@ export class SSEAdapter {
 
     stop() {
         this._intentionallyStopped = true;
+        if (this._livenessInterval) {
+            clearInterval(this._livenessInterval);
+            this._livenessInterval = null;
+        }
         if (this._es) {
             this._es.close();
             this._es = null;
@@ -54,12 +65,31 @@ export class SSEAdapter {
         this._log.info('open', url);
         const es = new EventSource(url);
         this._es = es;
+        this._lastEventAt = Date.now();
+
+        // Clear any previous liveness interval before starting a new one
+        if (this._livenessInterval) clearInterval(this._livenessInterval);
+        this._livenessInterval = setInterval(() => {
+            if (this._intentionallyStopped) return;
+            const elapsed = Date.now() - this._lastEventAt;
+            if (elapsed > LIVENESS_TIMEOUT_MS) {
+                this._log.warn('liveness timeout — no event for', elapsed, 'ms, forcing reconnect');
+                console.warn('[sse] liveness timeout, elapsed=', elapsed, '_lastSeq=', this._lastSeq);
+                if (this._es) { this._es.close(); this._es = null; }
+                const u = new URL(url, window.location.origin);
+                if (this._lastSeq > 0) u.searchParams.set('after', this._lastSeq);
+                const resumeUrl = u.pathname + u.search;
+                this._connect(resumeUrl);
+            }
+        }, LIVENESS_TIMEOUT_MS);
 
         for (const evtName of SSE_EVENTS) {
             es.addEventListener(evtName, (e) => {
+                this._lastEventAt = Date.now();
                 let data;
                 try { data = JSON.parse(e.data); } catch (err) { data = {}; }
                 this._log.debug('event', evtName, 'seq', data.seq, 'size', e.data.length);
+                if (evtName === 'heartbeat') return;  // liveness only — don't process
                 this._handleRaw(evtName, data);
             });
         }

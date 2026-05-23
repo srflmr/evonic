@@ -1494,9 +1494,9 @@ def api_chat_stream(agent_id):
                 try:
                     item = q.get(timeout=30)
                 except queue.Empty:
-                    # No events for 30s — send a heartbeat comment to keep the connection alive.
-                    # The client uses this to detect a live stream vs a stale one.
-                    yield ": heartbeat\n\n"
+                    # No events for 30s — send a heartbeat as a real SSE event so the
+                    # client can detect it (EventSource ignores comment-only lines).
+                    yield "event: heartbeat\ndata: {}\n\n"
                     continue
                 sse_event, payload, seq = item
                 id_line = f"id: {seq}\n" if seq is not None else ''
@@ -1572,7 +1572,7 @@ def api_approvals_stream():
                 try:
                     item = q.get(timeout=30)
                 except queue.Empty:
-                    yield ": heartbeat\n\n"
+                    yield "event: heartbeat\ndata: {}\n\n"
                     continue
                 sse_event, payload, seq = item
                 id_line = f"id: {seq}\n" if seq is not None else ''
@@ -1717,7 +1717,7 @@ def api_agents_status_stream():
                     payload = q.get(timeout=30)
                 except _queue.Empty:
                     # Heartbeat to keep the connection alive through proxies
-                    yield ': heartbeat\n\n'
+                    yield 'event: heartbeat\ndata: {}\n\n'
                     continue
                 yield f'event: agent_busy_changed\ndata: {json.dumps(payload)}\n\n'
         finally:
