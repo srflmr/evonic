@@ -257,8 +257,14 @@ class AgentState:
 
     # ── Rendering ────────────────────────────────────────────────────────────
 
-    def render(self) -> str:
-        """Render state as a markdown system message for LLM injection."""
+    def render(self, agent_id: str = None) -> str:
+        """Render state as a markdown system message for LLM injection.
+
+        Args:
+            agent_id: If provided, plan file path is resolved relative to
+                      agents/<agent-id>/ (with fallback to project root for
+                      backward compatibility with old centralized plans).
+        """
         if self.mode == "plan":
             mode_note = (
                 "plan — write tools are **blocked** until user approves. "
@@ -284,7 +290,7 @@ class AgentState:
 
         if self.plan_file:
             lines.append(f"**Plan file**: `{self.plan_file}`")
-            plan_content = self._read_plan_file()
+            plan_content = self._read_plan_file(agent_id)
             if plan_content:
                 lines.append("")
                 lines.append("### Active Plan")
@@ -322,25 +328,51 @@ class AgentState:
 
         return "\n".join(lines)
 
-    def _read_plan_file(self) -> str:
-        """Read plan file content from disk, capped at _PLAN_FILE_MAX_CHARS."""
+    def _read_plan_file(self, agent_id: str = None) -> str:
+        """Read plan file content from disk, capped at _PLAN_FILE_MAX_CHARS.
+
+        Resolution order:
+        1. If agent_id is provided, try agents/<agent-id>/<plan_file> first
+           (the new per-agent plan directory).
+        2. Fallback to _PROJECT_ROOT/<plan_file> for backward compatibility
+           with old centralized plans.
+        """
         if not self.plan_file:
             return ""
-        path = os.path.join(_PROJECT_ROOT, self.plan_file)
-        path = os.path.normpath(path)
-        # Safety: must stay within project root
-        if not path.startswith(_PROJECT_ROOT):
-            return "_[plan file path rejected: outside project root]_"
-        try:
-            with open(path, 'r', encoding='utf-8') as f:
-                content = f.read()
-            if len(content) > _PLAN_FILE_MAX_CHARS:
-                content = content[:_PLAN_FILE_MAX_CHARS] + f"\n\n_[truncated — {len(content) - _PLAN_FILE_MAX_CHARS} chars omitted]_"
-            return content
-        except FileNotFoundError:
-            return f"_[plan file not found: {self.plan_file}]_"
-        except Exception as e:
-            return f"_[plan file read error: {e}]_"
+
+        candidates = []
+        if agent_id:
+            agents_dir = os.path.join(_PROJECT_ROOT, 'agents')
+            agent_plan = os.path.normpath(
+                os.path.join(agents_dir, agent_id, self.plan_file)
+            )
+            agent_root = os.path.realpath(os.path.join(agents_dir, agent_id))
+            if os.path.realpath(agent_plan).startswith(agent_root + os.sep):
+                candidates.append(agent_plan)
+
+        # Fallback: old centralized plan path
+        legacy_path = os.path.normpath(os.path.join(_PROJECT_ROOT, self.plan_file))
+        if legacy_path.startswith(_PROJECT_ROOT):
+            candidates.append(legacy_path)
+
+        if not candidates:
+            return "_[plan file path rejected: outside allowed directories]_"
+
+        last_error = None
+        for path in candidates:
+            try:
+                with open(path, 'r', encoding='utf-8') as f:
+                    content = f.read()
+                if len(content) > _PLAN_FILE_MAX_CHARS:
+                    content = content[:_PLAN_FILE_MAX_CHARS] + f"\n\n_[truncated — {len(content) - _PLAN_FILE_MAX_CHARS} chars omitted]_"
+                return content
+            except FileNotFoundError:
+                last_error = f"_[plan file not found: {self.plan_file}]_"
+            except Exception as e:
+                last_error = f"_[plan file read error: {e}]_"
+                break  # don't fallback on permission/IO errors
+
+        return last_error or ""
 
     # ── Persistence ──────────────────────────────────────────────────────────
 

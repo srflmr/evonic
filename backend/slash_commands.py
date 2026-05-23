@@ -580,8 +580,11 @@ def _register_builtins():
             sess_ms = AgentState.deserialize(session_content)
             lines.append(f"Mode: {sess_ms.mode}")
             if sess_ms.plan_file:
-                plan_path = os.path.join(os.path.dirname(__file__), "..", sess_ms.plan_file)
-                if os.path.exists(plan_path):
+                # Try per-agent path first, then fallback to legacy centralized path
+                project_root = os.path.normpath(os.path.join(os.path.dirname(__file__), '..'))
+                agent_plan = os.path.normpath(os.path.join(project_root, 'agents', agent_id, sess_ms.plan_file))
+                legacy_plan = os.path.normpath(os.path.join(project_root, sess_ms.plan_file))
+                if os.path.exists(agent_plan) or os.path.exists(legacy_plan):
                     lines.append(f"Plan file: {sess_ms.plan_file}")
         else:
             lines.append("Mode: plan")

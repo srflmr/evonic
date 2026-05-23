@@ -279,7 +279,8 @@ def _build_static_prompt(agent: Dict[str, Any]) -> str:
     parts.append(
         f"- `/_self/SYSTEM.md` — your system prompt\n"
         f"- `/_self/kb/` — your knowledge base files\n"
-        f"- `/_self/sessions/` — your session data"
+        f"- `/_self/sessions/` — your session data\n"
+        f"- `/_self/plan/` — your plan files"
     )
 
     # Inform agents about portal virtual paths configured for them

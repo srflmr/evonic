@@ -568,23 +568,24 @@ def _extract_tasks_from_markdown(content: str) -> list:
 def _builtin_save_plan_factory(agent_context: dict):
     """Factory for the built-in 'save_plan' tool.
 
-    Writes a markdown plan file to the plan/ directory and links it to the
-    agent state so the content is re-injected on every subsequent LLM call.
+    Writes a markdown plan file to the agent's personal plan/ directory
+    (agents/<agent-id>/plan/) and links it to the agent state so the content
+    is re-injected on every subsequent LLM call.
     Available in both plan and execute modes (not in GUARDED_TOOLS).
     """
     import os
 
-    # Resolve plan/ directory relative to project root
-    plan_dir = os.path.normpath(
-        os.path.join(os.path.dirname(__file__), '..', '..', 'plan')
-    )
+    agent_id = agent_context.get('id', '')
+    # Resolve plan/ directory under the agent's own directory
+    _base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    plan_dir = os.path.join(_base_dir, 'agents', agent_id, 'plan')
 
     tool_def = {
         "type": "function",
         "function": {
             "name": "save_plan",
             "description": (
-                "Save a markdown plan file to the plan/ directory and link it to your agent state. "
+                "Save a markdown plan file to your personal plan/ directory (accessible via /_self/plan/) and link it to your agent state. "
                 "The plan content will be re-injected into your context on every turn, "
                 "so you never lose your objective even after conversation summarization. "
                 "You MUST call this before set_mode('execute'). "
