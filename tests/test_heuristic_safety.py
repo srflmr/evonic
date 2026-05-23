@@ -323,6 +323,35 @@ def test_git_add_dot_detected():
 
     print("✅ test_git_add_dot_detected passed")
 
+def test_git_add_specific_files_is_safe():
+    """Test that 'git add .gitignore' or specific files is NOT flagged (false positive fix)."""
+    safe_cases = [
+        # git add .gitignore (should NOT match git add .)
+        "git add .gitignore",
+        # git add .gitignore with other specific files
+        "git add .gitignore file1.py file2.py",
+        # Full sample command from user
+        "cd /workspace/dev/agent-ctf && git add .gitignore agent-ctf app/__main__.py app/templates/web/public-base.html challenges/level1.json challenges/level5.json && git diff --cached",
+        # Adding other specific files
+        "git add specific_file.py",
+        # Adding .env file (dot files in general should be safe)
+        "git add .env.example",
+    ]
+
+    for code in safe_cases:
+        result = check_safety(code, tool_type='bash')
+        assert result['level'] == 'safe', f"Expected 'safe' for '{code}', got '{result['level']}' (score={result['score']})"
+        assert result['score'] == 0, f"Expected score 0 for '{code}', got {result['score']}"
+
+    # Also test with Python tool type (DESTRUCTIVE_PATTERNS)
+    result_py = check_safety("git add .gitignore", tool_type='python')
+    assert result_py['level'] == 'safe', f"Expected 'safe' for python, got '{result_py['level']}'"
+
+    print("\u2705 test_git_add_specific_files_is_safe passed")
+
+
+
+
 
 def test_git_rebase_detected():
     """Test that 'git rebase origin/main' is detected."""
@@ -663,6 +692,7 @@ if __name__ == '__main__':
         test_network_command_exec_modifier,
         test_rm_rf_detected,
         test_git_add_dot_detected,
+        test_git_add_specific_files_is_safe,
         test_git_rebase_detected,
         test_git_reset_hard_detected,
         test_git_branch_dash_d_detected,
