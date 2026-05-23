@@ -2528,13 +2528,10 @@ block content %}
     // The backend may return: "HTTP 401: {\"error\":\"API key required...\"}"
     function _parseTestError(rawError) {
         if (!rawError) return { message: "Unknown error", detail: "" };
-        // Try to extract the nested JSON error message
-        const jsonMatch = rawError.match(/\{[^}]*"error"\s*:\s*"([^"]+)"/);
+        // Try to extract "error":"..." or "error":{"message":"..."} from nested JSON
+        const jsonMatch = rawError.match(/\{[^}]*"error"\s*:\s*(?:"([^"]+)"|\{"message"\s*:\s*"([^"]+)"\})/);
         if (jsonMatch) {
-            return {
-                message: jsonMatch[1],
-                detail: rawError
-            };
+            return { message: jsonMatch[1] || jsonMatch[2], detail: rawError };
         }
         // If starts with "HTTP NNN: ", split it
         const httpMatch = rawError.match(/^HTTP\s+(\d+):\s*(.*)/);
@@ -2605,6 +2602,9 @@ block content %}
             '</div>';
         footer.classList.add("hidden");
 
+        // Show toast for immediate visual feedback
+        if (window.toast) toast.show("Testing model connection\u2026", "info", 2000);
+
         try {
             const response = await fetch("/api/models/" + modelId + "/test", {
                 method: "POST",
@@ -2613,6 +2613,7 @@ block content %}
 
             if (result.success) {
                 // Success state
+                if (window.toast) toast.success("Connected successfully!", 3000);
                 if (header) {
                     header.className = "flex justify-between items-center p-5 border-b border-green-200 dark:border-green-700 bg-green-50 dark:bg-green-900/20";
                 }
@@ -2636,6 +2637,8 @@ block content %}
                 const parsed = _parseTestError(result.error);
                 const statusCode = result.status_code;
                 const tips = _getTestTroubleshootingTips(statusCode, parsed.message);
+
+                if (window.toast) toast.error("Connection failed: " + (statusCode ? "(HTTP " + statusCode + ") " : "") + parsed.message, 5000);
 
                 if (header) {
                     header.className = "flex justify-between items-center p-5 border-b border-red-200 dark:border-red-700 bg-red-50 dark:bg-red-900/20";
@@ -2678,6 +2681,7 @@ block content %}
             title.className = "m-0 text-red-700 dark:text-red-400";
 
             const errorMsg = error.message || "An unexpected network error occurred";
+            if (window.toast) toast.error("Connection failed: " + errorMsg, 5000);
             testStatus.innerHTML =
                 '<div class="p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-700 rounded-lg">' +
                 '<div class="flex items-start gap-2 mb-2">' +
@@ -2690,6 +2694,12 @@ block content %}
                 '<li>Check if the provider\'s service is currently online</li>' +
                 '</ul></div>' +
                 "</div>";
+        } finally {
+            // Always re-enable the test button when the request finishes
+            if (_currentTestModelId === modelId && testBtn) {
+                testBtn.disabled = false;
+                testBtn.classList.remove("opacity-50", "cursor-not-allowed");
+            }
         }
 
         // Show Close button in footer
