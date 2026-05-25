@@ -399,6 +399,12 @@ def start_update(tag=None) -> dict:
             _state['error'] = 'No target version specified'
             _persist_state(_state)
             return {'error': 'No target version specified'}
+
+        current = _state.get('current_version')
+        if target and current and target == current:
+            _state['status'] = 'idle'
+            _persist_state(_state)
+            return {'error': f'Already running {target}'}
         
         _persist_state(_state)
 

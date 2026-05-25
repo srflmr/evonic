@@ -1216,7 +1216,19 @@ def run_update(tag: str, cfg: dict, notifier: Optional[TelegramNotifier],
         _notify(notifier, step, 'Starting new release & monitoring')
         ok, pid = start_daemon(release_path, app_root)
         if not ok:
-            raise UpdateError('Failed to start daemon from new release')
+            # Surface the actual crash reason from server.log
+            log_path = _log_file(app_root)
+            tail = ''
+            try:
+                with open(log_path) as f:
+                    lines = f.readlines()
+                    tail = ''.join(lines[-15:]).strip()
+            except Exception:
+                pass
+            detail = 'Failed to start daemon from new release'
+            if tail:
+                detail += f'\n{tail}'
+            raise UpdateError(detail)
 
         # Resolve the actual port from the release's .env so health checks
         # work on non-default ports (e.g. when PORT != 8080).
