@@ -271,6 +271,9 @@ _ENV_FILE_PATTERNS = [
 # Basename patterns for .env files
 _ENV_BASENAME_PATTERN = re.compile(r"^\.env(?:\.\w+)?$")
 
+# Template .env files that are safe to read (no real secrets)
+_ENV_TEMPLATE_SUFFIXES = {"example", "sample", "template"}
+
 
 def check_env_path(file_path: str, agent: dict = None) -> dict:
     """
@@ -295,6 +298,10 @@ def check_env_path(file_path: str, agent: dict = None) -> dict:
     # Layer 1: Basename matching
     basename = os.path.basename(normalized)
     if _ENV_BASENAME_PATTERN.match(basename):
+        # Allow template files (.env.example, .env.sample, .env.template)
+        suffix = basename.split(".", 2)[-1] if basename.count(".") >= 2 else ""
+        if suffix in _ENV_TEMPLATE_SUFFIXES:
+            return {"blocked": False, "error": None, "reason": None, "requires_approval": False}
         return {
             "blocked": True,
             "error": (
@@ -310,6 +317,9 @@ def check_env_path(file_path: str, agent: dict = None) -> dict:
     parts = normalized.replace("\\", "/").split("/")
     for part in parts:
         if _ENV_BASENAME_PATTERN.match(part):
+            suffix = part.split(".", 2)[-1] if part.count(".") >= 2 else ""
+            if suffix in _ENV_TEMPLATE_SUFFIXES:
+                continue
             return {
                 "blocked": True,
                 "error": (
