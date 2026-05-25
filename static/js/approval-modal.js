@@ -208,6 +208,9 @@ async function resolveApproval(decision) {
             statusEl.className = 'text-xs font-semibold mt-3 text-center ' + (decision === 'approve' ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400');
             statusEl.classList.remove('hidden');
             setTimeout(closeModal, 1500);
+        } else if (res.status === 409) {
+            // Already resolved (e.g. from another tab) — just close the modal
+            closeModal();
         } else {
             const body = await res.json().catch(function() { return {}; });
             statusEl.textContent = body.error || 'Failed to submit decision.';
