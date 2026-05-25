@@ -53,12 +53,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ripgrep \
     git \
     zip \
+    unzip \
     p7zip-full \
     bzip2 \
     unrar-free \
     # Utilities
     ccrypt \
     xxd \
+    binutils \
+    file \
     tmux \
     jq \
     sqlite3 libsqlite3-dev \

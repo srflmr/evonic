@@ -248,10 +248,9 @@ class TestEnvFileProtection(unittest.TestCase):
         """.env.example files should be allowed (they don't contain secrets)."""
         path = self._create_test_file('.env.example', 'EXAMPLE_KEY=placeholder\n')
         result = read_file_execute(self.agent, {'file_path': path})
-        # .env.example should still be blocked by the pattern
-        # (it matches .env.* pattern)
-        self.assertIsInstance(result, dict)
-        self.assertIn('error', result)
+        # Template .env files (.env.example, .env.sample, .env.template) are safe
+        self.assertIsInstance(result, str)
+        self.assertIn('EXAMPLE_KEY=placeholder', result)
 
     def test_safety_checker_disabled(self):
         """When safety checker is disabled, .env files should be accessible."""
