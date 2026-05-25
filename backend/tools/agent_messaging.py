@@ -374,6 +374,18 @@ def _exec_send_agent_message(args: dict, agent_context: dict) -> dict:
         report_to_channel_id or 'none', result,
     )
 
+    if not result.get('success'):
+        reason = result.get('reason', 'unknown')
+        _logger.error(
+            "Agent message FAILED: '%s' → '%s', notify_agent reason=%s, result=%s",
+            sender_id, target_id, reason, result,
+        )
+        return {
+            'success': False,
+            'error': f"Message delivery failed: {reason}.",
+            'detail': result,
+        }
+
     return {
         'success': True,
         'message': f"Message sent to {target_agent.get('name', target_id)}.",
