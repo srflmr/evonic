@@ -1282,6 +1282,36 @@ def api_chat_agent_state(agent_id):
     return jsonify({'mode': None, 'active_model': None, 'loaded_skills': loaded_skills})
 
 
+@agents_bp.route('/api/agents/<agent_id>/plan-file', methods=['GET'])
+def api_agent_plan_file(agent_id):
+    """Return the rendered plan file content for an agent.
+
+    Reads plan_file path from session state (query param ?session_id=)
+    and returns the markdown content from disk.
+    """
+    import json as _json
+
+    session_id = request.args.get('session_id', '').strip()
+    if not session_id:
+        return jsonify({'error': 'session_id required'}), 400
+
+    session_content = db.get_session_state(session_id, agent_id=agent_id)
+    session_data = _json.loads(session_content) if session_content else {}
+    plan_file = session_data.get('plan_file')
+
+    if not plan_file:
+        return jsonify({'error': 'No plan file set', 'plan_file': None}), 404
+
+    from backend.agent_state import AgentState
+    state = AgentState(plan_file=plan_file)
+    content = state._read_plan_file(agent_id)
+
+    if not content:
+        return jsonify({'error': 'Plan file is empty or could not be read', 'plan_file': plan_file}), 404
+
+    return jsonify({'plan_file': plan_file, 'content': content})
+
+
 @agents_bp.route('/api/agents/<agent_id>/chat/clear', methods=['POST'])
 def api_chat_clear(agent_id):
     agent = db.get_agent(agent_id)

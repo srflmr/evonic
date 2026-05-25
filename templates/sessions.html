@@ -58,6 +58,34 @@ html.dark #mobile-agent-state-content .border-gray-100 { border-color: #374151 !
 .user-id-system { color: #97989F; }
 .user-id-agent  { color: #97989F; }
 .user-id-human  { color: #15803d; }
+/* Plan file modal */
+#plan-modal-backdrop {
+    z-index: 100;
+    transition: opacity 0.2s ease;
+}
+#plan-modal-backdrop.hidden { opacity: 0; pointer-events: none; }
+#plan-modal-backdrop:not(.hidden) { opacity: 1; }
+#plan-modal {
+    max-width: 42rem;
+    max-height: 80vh;
+    transition: transform 0.2s ease, opacity 0.2s ease;
+}
+#plan-modal.hidden { opacity: 0; pointer-events: none; }
+#plan-modal:not(.hidden) { opacity: 1; }
+#plan-modal-content .recap-prose { font-size: 0.875rem; line-height: 1.65; }
+/* Dark mode modal */
+html.dark #plan-modal { background: #1f2937; }
+html.dark #plan-modal .recap-prose { color: #cbd5e1; }
+html.dark #plan-modal .recap-prose th, html.dark #plan-modal .recap-prose td { border-color: #334155; }
+html.dark #plan-modal .recap-prose th { background: #1e293b; color: #f1f5f9; }
+html.dark #plan-modal .recap-prose tr:nth-child(even) { background: #0f172a; }
+html.dark #plan-modal .recap-prose tr:hover { background: #334155; }
+html.dark #plan-modal .recap-prose h1, html.dark #plan-modal .recap-prose h2,
+html.dark #plan-modal .recap-prose h3, html.dark #plan-modal .recap-prose h4,
+html.dark #plan-modal .recap-prose h5, html.dark #plan-modal .recap-prose h6 { color: #f1f5f9; }
+html.dark #plan-modal .recap-prose blockquote { border-left-color: #475569; color: #94a3b8; }
+html.dark #plan-modal .recap-prose code { background: #1e293b; color: #e2e8f0; }
+html.dark #plan-modal .recap-prose pre { background: #1e293b; }
 </style>
 <div class="sessions-page flex flex-col h-[calc(100vh-3.5rem)]">
 
@@ -1259,7 +1287,7 @@ async function loadSessionSummary() {
             planHtml += `<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${modeColor}">${esc(stateData.mode)}</span> `;
         }
         if (stateData.plan_file) {
-            planHtml += `<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300 ml-1">📋 ${esc(stateData.plan_file)}</span> `;
+            planHtml += `<button class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300 ml-1 cursor-pointer hover:underline hover:bg-purple-200 dark:hover:bg-purple-800 transition-colors border-0" onclick="openPlanModal('${esc(stateData.plan_file)}')" title="Click to view plan">📋 ${esc(stateData.plan_file)}</button> `;
         }
         if (stateData.tasks && stateData.tasks.length > 0) {
             const icons = {pending: '\u2610', in_progress: '\u27f3', done: '\u2713'};
@@ -1638,5 +1666,87 @@ startSidebarPolling();
 
 // Cleanup on page leave
 window.addEventListener('beforeunload', () => { stopPolling(); disconnectSessionStream(); clearInterval(sidebarPollTimer); });
+
+// ==================== Plan File Modal ====================
+
+let _planModalFetchedFor = null; // track which plan file was last fetched (avoid re-fetch on re-open)
+
+function openPlanModal(planFile) {
+    if (!currentAgentId || !currentSessionId) return;
+    const backdrop = document.getElementById('plan-modal-backdrop');
+    const modal = document.getElementById('plan-modal');
+    const title = document.getElementById('plan-modal-title');
+    const content = document.getElementById('plan-modal-content');
+
+    // Show modal immediately with loading state
+    backdrop.classList.remove('hidden');
+    modal.classList.remove('hidden');
+    title.textContent = '\uD83D\uDCCB ' + (planFile || 'Plan File');
+    content.innerHTML = '<div class="flex items-center justify-center py-12 text-gray-400"><svg class="animate-spin h-6 w-6 mr-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg><span class="text-sm">Loading plan...</span></div>';
+
+    // Focus trap: focus the close button inside modal
+    setTimeout(function() {
+        var closeBtn = modal.querySelector('button[aria-label="Close plan modal"]');
+        if (closeBtn) closeBtn.focus();
+    }, 50);
+
+    // Fetch plan file content from API (cache per file to avoid re-fetch)
+    if (_planModalFetchedFor === planFile) return;
+    _planModalFetchedFor = planFile;
+
+    var url = '/api/agents/' + encodeURIComponent(currentAgentId) + '/plan-file?session_id=' + encodeURIComponent(currentSessionId);
+    fetch(url)
+        .then(function(res) {
+            if (!res.ok) throw new Error('Failed to load plan file');
+            return res.json();
+        })
+        .then(function(data) {
+            if (!data.content) {
+                content.innerHTML = '<div class="flex items-center justify-center py-12 text-gray-400"><span class="text-sm">\u26A0\uFE0F Plan file is empty.</span></div>';
+                return;
+            }
+            content.innerHTML = '<div class="recap-prose">' + marked.parse(data.content) + '</div>';
+        })
+        .catch(function(err) {
+            content.innerHTML = '<div class="flex items-center justify-center py-12 text-red-400"><span class="text-sm">\u26A0\uFE0F Failed to load plan file: ' + esc(err.message) + '</span></div>';
+        });
+}
+
+function closePlanModal() {
+    document.getElementById('plan-modal-backdrop').classList.add('hidden');
+    document.getElementById('plan-modal').classList.add('hidden');
+    _planModalFetchedFor = null;
+}
+
+// Escape key to close modal
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') {
+        var backdrop = document.getElementById('plan-modal-backdrop');
+        if (backdrop && !backdrop.classList.contains('hidden')) {
+            closePlanModal();
+        }
+    }
+});
 </script>
+
+<!-- Plan File Modal -->
+<div id="plan-modal-backdrop" class="hidden fixed inset-0 bg-black/50 flex items-center justify-center p-4" onclick="closePlanModal()" role="presentation">
+    <div id="plan-modal" class="hidden bg-white dark:bg-gray-800 rounded-xl shadow-2xl w-full flex flex-col overflow-hidden" role="dialog" aria-modal="true" aria-label="Plan file viewer" onclick="event.stopPropagation()">
+        <div class="flex items-center justify-between px-5 py-3 border-b border-gray-200 dark:border-gray-700 flex-shrink-0">
+            <h3 id="plan-modal-title" class="text-sm font-semibold text-gray-800 dark:text-gray-200 truncate">📋 Plan File</h3>
+            <button onclick="closePlanModal()" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700" aria-label="Close plan modal" title="Close (Esc)">
+                <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+            </button>
+        </div>
+        <div id="plan-modal-content" class="p-5 overflow-y-auto flex-1">
+            <div class="flex items-center justify-center py-12 text-gray-400">
+                <svg class="animate-spin h-6 w-6 mr-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                <span class="text-sm">Loading plan...</span>
+            </div>
+        </div>
+        <div class="px-5 py-3 border-t border-gray-200 dark:border-gray-700 flex justify-end flex-shrink-0">
+            <button onclick="closePlanModal()" class="px-4 py-1.5 text-xs font-medium text-gray-600 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-lg transition-colors">Close</button>
+        </div>
+    </div>
+</div>
 {% endblock %}
