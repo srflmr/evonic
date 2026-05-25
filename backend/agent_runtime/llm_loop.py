@@ -1422,6 +1422,7 @@ def run_tool_loop(agent: Dict[str, Any],
             # Lazy tool removal: unload_skill removes injected tools from context
             if fn_name == 'unload_skill' and isinstance(tool_result, dict) and tool_result.get('remove_tools'):
                 unload_sid = tool_result.get('id', '')
+                fns_to_remove = set()
                 if unload_sid in _loaded_lazy_skills:
                     fns_to_remove = set(_loaded_lazy_skills.pop(unload_sid))
                     tools[:] = [t for t in tools if t.get('function', {}).get('name', '') not in fns_to_remove]
