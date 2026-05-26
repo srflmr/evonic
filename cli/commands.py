@@ -2477,11 +2477,17 @@ def update_server(
     cfg = sup.load_config(cfg_path)
     app_root = cfg["app_root"]
 
-    # Update root project first to keep CLI/supervisor code up-to-date
+    # Update root project first to keep CLI/supervisor code up-to-date.
+    # Use fetch + reset instead of pull --ff-only so diverged branches
+    # don't block the update (the root project should always track remote).
     print("Updating root project from origin/main...")
-    rc, out, err = sup._git(app_root, ['pull', '--ff-only', 'origin', 'main'])
+    rc, _, err = sup._git(app_root, ['fetch', 'origin', 'main'])
     if rc != 0:
-        print(f"Git pull failed: {err or out}")
+        print(f"Git fetch failed: {err}")
+        sys.exit(1)
+    rc, _, err = sup._git(app_root, ['reset', '--hard', 'FETCH_HEAD'])
+    if rc != 0:
+        print(f"Git reset failed: {err}")
         sys.exit(1)
     print("Root project updated.")
 
