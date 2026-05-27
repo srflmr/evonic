@@ -58,11 +58,29 @@ function renderSidebar(agents) {
         avatar.setAttribute('data-agent-id', agent.id);
         avatar.setAttribute('data-busy', agent.busy ? 'true' : 'false');
         avatar.setAttribute('title', agent.name);
-        avatar.style.backgroundColor = _sidebarAvatarColor(agent.id);
 
-        var letter = document.createElement('span');
-        letter.textContent = agent.name.charAt(0).toUpperCase();
-        avatar.appendChild(letter);
+        if (agent.avatar_path) {
+            // Render custom avatar image
+            var img = document.createElement('img');
+            img.src = '/api/agents/' + encodeURIComponent(agent.id) + '/avatar';
+            img.alt = agent.name;
+            img.className = 'agent-avatar-img';
+            img.onerror = function () {
+                // Fallback to initial letter on load error
+                img.style.display = 'none';
+                var fallback = document.createElement('span');
+                fallback.textContent = agent.name.charAt(0).toUpperCase();
+                avatar.appendChild(fallback);
+                avatar.style.backgroundColor = _sidebarAvatarColor(agent.id);
+            };
+            avatar.appendChild(img);
+        } else {
+            // No custom avatar: show initial letter with colored background
+            avatar.style.backgroundColor = _sidebarAvatarColor(agent.id);
+            var letter = document.createElement('span');
+            letter.textContent = agent.name.charAt(0).toUpperCase();
+            avatar.appendChild(letter);
+        }
 
         avatar.addEventListener('click', function () {
             window.location = '/agents/' + encodeURIComponent(agent.id) + '#chat';
@@ -78,6 +96,9 @@ function renderSidebar(agents) {
 
         sidebar.appendChild(avatar);
     });
+
+    // Apply saved sidebar state after all elements (including burger) are rendered
+    _applySidebarState();
 }
 
 /** Create and position tooltip */
@@ -168,6 +189,46 @@ function subscribeBusySSE() {
         });
     } catch (_) {
         // EventSource not supported — polling fallback already active
+    }
+}
+
+/** Toggle sidebar collapsed state */
+function toggleSidebar() {
+    var sidebar = document.getElementById('agent-sidebar');
+    var burger = document.getElementById('sidebar-toggle-btn');
+    if (!sidebar) return;
+
+    var collapsed = sidebar.classList.toggle('collapsed');
+    if (burger) {
+        burger.classList.toggle('collapsed', collapsed);
+    }
+    try {
+        localStorage.setItem('evonic-sidebar-collapsed', collapsed ? '1' : '0');
+    } catch (_) {}
+}
+
+/** Apply saved sidebar state from localStorage */
+function _applySidebarState() {
+    var sidebar = document.getElementById('agent-sidebar');
+    if (!sidebar) return;
+    var burger = document.getElementById('sidebar-toggle-btn');
+
+    var collapsed;
+    try {
+        var saved = localStorage.getItem('evonic-sidebar-collapsed');
+        if (saved !== null) {
+            collapsed = saved === '1';
+        } else {
+            // Default: collapsed on mobile, open on desktop
+            collapsed = window.innerWidth <= 768;
+        }
+    } catch (_) {
+        collapsed = window.innerWidth <= 768;
+    }
+
+    if (collapsed) {
+        sidebar.classList.add('collapsed');
+        if (burger) burger.classList.add('collapsed');
     }
 }
 

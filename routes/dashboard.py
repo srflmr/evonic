@@ -221,6 +221,8 @@ def api_dashboard_sidebar():
     from routes.agents import _sanitize_agents
 
     agents = db.get_agents()
+    # Exclude disabled agents
+    agents = [a for a in agents if a.get('enabled')]
     # Sort by last_active_at descending, nulls last
     agents.sort(key=lambda a: (a.get('last_active_at') or ''), reverse=True)
 
