@@ -1,12 +1,17 @@
 /* Agent Sidebar — persistent left sidebar with agent avatars */
 
 :root {
-    --sidebar-bg: #1a1a2e;
-    --sidebar-hover: rgba(255, 255, 255, 0.08);
-    --sidebar-tooltip-bg: #1e293b;
-    --sidebar-avatar-bg: #334155;
-    --sidebar-text: #e2e8f0;
-    --sidebar-text-muted: #94a3b8;
+    --sidebar-bg: #ffffff;
+    --sidebar-hover: rgba(0, 0, 0, 0.05);
+    --sidebar-tooltip-bg: #ffffff;
+    --sidebar-avatar-bg: #e2e8f0;
+    --sidebar-text: #1e293b;
+    --sidebar-text-muted: #64748b;
+    --sidebar-border: rgba(0, 0, 0, 0.08);
+    --sidebar-scrollbar-thumb: rgba(0, 0, 0, 0.15);
+    --sidebar-avatar-shadow-hover: rgba(0, 0, 0, 0.15);
+    --sidebar-tooltip-border: rgba(0, 0, 0, 0.1);
+    --sidebar-tooltip-shadow: rgba(0, 0, 0, 0.12);
 }
 
 html.dark {
@@ -16,6 +21,11 @@ html.dark {
     --sidebar-avatar-bg: #334155;
     --sidebar-text: #e2e8f0;
     --sidebar-text-muted: #94a3b8;
+    --sidebar-border: rgba(255, 255, 255, 0.06);
+    --sidebar-scrollbar-thumb: rgba(255, 255, 255, 0.12);
+    --sidebar-avatar-shadow-hover: rgba(255, 255, 255, 0.2);
+    --sidebar-tooltip-border: rgba(255, 255, 255, 0.08);
+    --sidebar-tooltip-shadow: rgba(0, 0, 0, 0.4);
 }
 
 /* ── Sidebar Container ── */
@@ -34,9 +44,7 @@ html.dark {
     overflow-y: auto;
     overflow-x: hidden;
     z-index: 40;
-    border-right: 1px solid rgba(255, 255, 255, 0.06);
-    scrollbar-width: thin;
-    scrollbar-color: rgba(255, 255, 255, 0.12) transparent;
+    border-right: 1px solid var(--sidebar-border);
     transition: width 0.25s ease, min-width 0.25s ease, padding 0.25s ease, border 0.25s ease;
 }
 
@@ -54,7 +62,7 @@ html.dark {
 }
 
 #agent-sidebar::-webkit-scrollbar-thumb {
-    background: rgba(255, 255, 255, 0.12);
+    background: var(--sidebar-scrollbar-thumb);
     border-radius: 4px;
 }
 
@@ -75,7 +83,7 @@ html.dark {
 
 #agent-sidebar .agent-avatar:hover {
     transform: scale(1.12);
-    box-shadow: 0 0 12px rgba(255, 255, 255, 0.2);
+    box-shadow: 0 0 12px var(--sidebar-avatar-shadow-hover);
 }
 
 #agent-sidebar .agent-avatar span {
@@ -131,8 +139,8 @@ html.dark {
     min-width: 180px;
     max-width: 260px;
     pointer-events: none;
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    box-shadow: 0 4px 16px var(--sidebar-tooltip-shadow);
+    border: 1px solid var(--sidebar-tooltip-border);
 }
 
 .agent-sidebar-tooltip .tt-name {
