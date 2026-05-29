@@ -431,6 +431,56 @@ class WhatsAppChannel(BaseChannel):
             'message': text,
         })
 
+    def _do_send_file(self, external_user_id: str, file_path: str,
+                      caption: Optional[str] = None,
+                      mime_type: Optional[str] = None) -> bool:
+        """Send a file to a WhatsApp user via the bridge.
+
+        Returns True on success, False on failure (missing file, too large, etc).
+        """
+        # 1. Validate file exists and is readable
+        if not os.path.isfile(file_path) or not os.access(file_path, os.R_OK):
+            _logger.error("File not found or not readable: %s", file_path)
+            return False
+
+        # 2. Check WhatsApp file size limit: 100 MB for documents
+        file_size = os.path.getsize(file_path)
+        max_size = 100 * 1024 * 1024  # 100 MB
+        if file_size > max_size:
+            _logger.error("File too large: %s bytes (max %s)", file_size, max_size)
+            return False
+
+        # 3. Resolve JID
+        to = self._jid_map.get(external_user_id, external_user_id)
+
+        # 4. Strip markdown from caption (WhatsApp uses plain text)
+        if caption:
+            caption = _strip_markdown(caption)
+
+        # 5. Send via bridge
+        try:
+            self._bridge_post('/send-file', {
+                'to': to,
+                'filePath': file_path,
+                'caption': caption,
+                'mimeType': mime_type,
+            })
+            _logger.info("WhatsApp file sent to %s (channel %s): %s",
+                         external_user_id, self.channel_id, file_path)
+        except Exception as e:
+            _logger.error("WhatsApp file send failed to %s: %s", external_user_id, e)
+            return False
+
+        # 6. Emit event (consistent with _do_send)
+        from backend.event_stream import event_stream
+        event_stream.emit('message_sent', {
+            'channel_type': 'whatsapp',
+            'channel_id': self.channel_id,
+            'external_user_id': external_user_id,
+            'message': f"[File: {os.path.basename(file_path)}]",
+        })
+        return True
+
     def _bridge_post(self, path: str, payload: dict):
         resp = requests.post(
             f"http://127.0.0.1:{self._bridge_port}{path}",

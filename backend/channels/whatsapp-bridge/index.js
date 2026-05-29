@@ -3,6 +3,8 @@
 const express = require('express');
 const pino = require('pino');
 const QRCode = require('qrcode');
+const fs = require('fs');
+const path = require('path');
 
 const PORT = parseInt(process.env.PORT || '3001', 10);
 const CALLBACK_URL = process.env.CALLBACK_URL || '';
@@ -227,6 +229,29 @@ app.post('/typing', async (req, res) => {
     const jid = to.includes('@') ? to : `${to}@s.whatsapp.net`;
     try {
         await sock.sendPresenceUpdate('composing', jid);
+        res.json({ success: true });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+app.post('/send-file', async (req, res) => {
+    const { to, filePath, caption, mimeType } = req.body || {};
+    if (!to || !filePath) {
+        return res.status(400).json({ error: 'to and filePath required' });
+    }
+    if (!sock || connectionStatus !== 'connected') {
+        return res.status(503).json({ error: 'Not connected to WhatsApp' });
+    }
+    const jid = to.includes('@') ? to : `${to}@s.whatsapp.net`;
+    try {
+        const fileBuffer = fs.readFileSync(filePath);
+        await sock.sendMessage(jid, {
+            document: fileBuffer,
+            mimetype: mimeType || 'application/octet-stream',
+            fileName: path.basename(filePath),
+            caption: caption || undefined,
+        });
         res.json({ success: true });
     } catch (e) {
         res.status(500).json({ error: e.message });
