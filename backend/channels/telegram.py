@@ -838,6 +838,61 @@ class TelegramChannel(BaseChannel):
             'message': text,
         })
 
+    def _do_send_file(self, external_user_id: str, file_path: str,
+                      caption: str = None, mime_type: str = None) -> bool:
+        """Send a file to a Telegram user via bot.send_document."""
+        if not self._app:
+            return False
+
+        # Validate file exists and is readable
+        if not os.path.isfile(file_path):
+            _logger.error("File not found for sending: %s", file_path)
+            return False
+        if not os.access(file_path, os.R_OK):
+            _logger.error("File not readable: %s", file_path)
+            return False
+
+        # Enforce Telegram's 50 MB file size limit
+        _TG_MAX_FILE_BYTES = 50 * 1024 * 1024
+        file_size = os.path.getsize(file_path)
+        if file_size > _TG_MAX_FILE_BYTES:
+            _logger.error(
+                "File too large for Telegram: %s (%d bytes, limit %d)",
+                file_path, file_size, _TG_MAX_FILE_BYTES,
+            )
+            return False
+
+        filename = os.path.basename(file_path)
+        safe_caption = _strip_markdown(caption) if caption else None
+
+        try:
+            from telegram import InputFile
+            with open(file_path, 'rb') as fh:
+                doc = InputFile(fh, filename=filename)
+            self._run_async(
+                self._app.bot.send_document(
+                    chat_id=external_user_id,
+                    document=doc,
+                    caption=safe_caption,
+                )
+            )
+        except Exception as e:
+            _logger.error(
+                "Failed to send file %s to %s: %s",
+                file_path, external_user_id, e, exc_info=True,
+            )
+            return False
+
+        from backend.event_stream import event_stream
+        event_stream.emit('message_sent', {
+            'channel_type': 'telegram',
+            'channel_id': self.channel_id,
+            'external_user_id': external_user_id,
+            'message': f"[FILE] {filename} (with caption)" if safe_caption else f"[FILE] {filename}",
+        })
+        _logger.info("Sent file %s to %s via Telegram", filename, external_user_id)
+        return True
+
     def send_typing(self, external_user_id: str):
         if not self._app:
             return

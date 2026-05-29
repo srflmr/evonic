@@ -1906,6 +1906,33 @@ class AgentRuntime:
                     _logger.error("send_as_bot channel error: %s", e)
         return True
 
+    def send_file_as_bot(self, session_id: str, file_path: str,
+                         caption: str = None) -> bool:
+        """Send a file as the bot: resolve session channel and deliver the file.
+
+        Args:
+            session_id: The session UUID.
+            file_path: Absolute path to the file on disk.
+            caption: Optional text caption for the file.
+
+        Returns:
+            True if the file was sent successfully, False otherwise.
+        """
+        session = db.get_session_with_details(session_id)
+        if not session:
+            return False
+        if session.get('channel_id'):
+            instance = channel_manager._active.get(session['channel_id'])
+            if instance and instance.is_running:
+                try:
+                    return instance.send_file(
+                        session['external_user_id'], file_path, caption,
+                    )
+                except Exception as e:
+                    _logger.error("send_file_as_bot channel error: %s", e,
+                                  exc_info=True)
+        return False
+
     def send_as_user(self, session_id: str, text: str,
                      image_url: str | None = None,
                      metadata: dict | None = None) -> bool:

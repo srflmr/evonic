@@ -106,6 +106,29 @@ class BaseChannel(ABC):
         """Actual delivery implementation — subclasses must implement this."""
         pass
 
+    def send_file(self, external_user_id: str, file_path: str,
+                  caption: str = None, mime_type: str = None) -> bool:
+        """Send a file to a user via the channel.
+
+        Subclasses that support file delivery must override _do_send_file().
+        Default returns False (unsupported).
+
+        Args:
+            external_user_id: The user identifier on the channel.
+            file_path: Absolute path to the file on disk.
+            caption: Optional text caption for the file.
+            mime_type: Optional MIME type hint.
+
+        Returns:
+            True if the file was sent successfully, False otherwise.
+        """
+        return self._do_send_file(external_user_id, file_path, caption, mime_type)
+
+    def _do_send_file(self, external_user_id: str, file_path: str,
+                      caption: str = None, mime_type: str = None) -> bool:
+        """Actual file delivery implementation. Override in subclasses that support files."""
+        return False
+
     def send_typing(self, external_user_id: str):
         """Send a typing indicator to a user. Optional — no-op by default."""
         pass

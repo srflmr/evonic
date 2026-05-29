@@ -56,6 +56,35 @@ class PluginSDK:
         success = agent_runtime.send_as_bot(session_id, text)
         return {"success": success, "session_id": session_id}
 
+    def send_file(self, agent_id: str, external_user_id: str,
+                  channel_id: str, file_path: str,
+                  caption: str = None) -> dict:
+        """Send a file to a user via an agent session on a specific channel.
+
+        Args:
+            agent_id: The agent whose channel to use.
+            external_user_id: The user identifier on the channel.
+            channel_id: Internal channel UUID or channel type hint (e.g. 'telegram').
+            file_path: Absolute path to the file on disk.
+            caption: Optional text caption for the file.
+
+        Returns:
+            dict with 'success' (bool) and 'session_id' (str).
+        """
+        from models.db import db
+        from backend.agent_runtime import agent_runtime
+
+        resolved_channel_id = self._resolve_channel_id(agent_id, channel_id)
+        if not resolved_channel_id:
+            return {"success": False,
+                    "error": f"No active channel found for agent '{agent_id}' "
+                             f"with channel_id/type '{channel_id}'"}
+
+        session_id = db.get_or_create_session(agent_id, external_user_id,
+                                              resolved_channel_id)
+        success = agent_runtime.send_file_as_bot(session_id, file_path, caption)
+        return {"success": success, "session_id": session_id}
+
     def _resolve_channel_id(self, agent_id: str, channel_id: str) -> str:
         """Resolve a channel_id input to an actual internal channel UUID.
 
