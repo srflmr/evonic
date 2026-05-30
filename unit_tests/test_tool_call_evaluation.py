@@ -145,13 +145,22 @@ class TestToolCallEvaluation(unittest.TestCase):
     
     def test_no_tool_calls_fails(self):
         """Test: No tool calls when expected → fails"""
+        from unittest.mock import patch
         response = "I don't need any tools for this."
         expected = {"tools": ["calculator"]}
-        
-        result = self.evaluator.evaluate(response, expected, level=1)
-        
+
+        # Mock PASS2 extractor to return deterministic failure (no tools extracted)
+        # This avoids depending on a real LLM API call which is non-deterministic.
+        with patch.object(self.evaluator.extractor, 'extract', return_value={
+            "success": True, "extracted": "", "expected_format": "tools",
+            "raw_pass2": "", "pass2_prompt": "", "parse_error": None,
+            "extraction_method": "mock",
+        }):
+            result = self.evaluator.evaluate(response, expected, level=1)
+
         # Should fail or have low score since no tool calls detected
         self.assertLess(result.score, 0.8)
+        self.assertEqual(result.status, "failed")
     
     def test_details_include_called_tools(self):
         """Test: Result details include called tools list"""

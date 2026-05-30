@@ -290,18 +290,15 @@ class TestBotToggle:
 
 
 class TestGetAllSessions:
-    """Tests for get_all_sessions which discovers chat DBs on disk via AGENTS_DIR."""
+    """Tests for get_all_sessions which queries the session_index table."""
 
     @pytest.fixture(autouse=True)
     def _patch_agents_dir(self, monkeypatch, agent_id, chat_db, tmp_path):
-        """Place the chat DB at the filesystem path get_all_sessions expects."""
-        import models.mixins.chat_delegation as cd_mod
-        agent_dir = tmp_path / agent_id
-        agent_dir.mkdir(exist_ok=True)
-        # Symlink (or copy) the chat DB to where get_all_sessions looks for it
-        expected_path = agent_dir / 'chat.db'
-        os.symlink(chat_db.db_path, str(expected_path))
-        monkeypatch.setattr(cd_mod, 'AGENTS_DIR', str(tmp_path))
+        """get_all_sessions now queries session_index (populated by
+        _sync_session_index called from get_or_create_session), so no
+        filesystem-level setup is required. The chat_db fixture already
+        injects the per-agent DB into agent_chat_manager._dbs."""
+        pass
 
     def test_lists_sessions_across_agents(self, chat_db, agent_id):
         db.get_or_create_session(agent_id, 'user1')
