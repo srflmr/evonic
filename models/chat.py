@@ -40,8 +40,7 @@ class AgentChatDB:
         The connection is opened on entry and closed on exit to prevent file descriptor leaks.
         Includes automatic transaction management (commit/rollback).
         """
-        conn = sqlite3.connect(self.db_path, timeout=10)
-        conn.execute("PRAGMA busy_timeout = 10000")
+        conn = sqlite3.connect(f"file:{self.db_path}?mode=rwc&busy_timeout=10000", uri=True)
         conn.execute("PRAGMA journal_mode=WAL")
         try:
             with conn:

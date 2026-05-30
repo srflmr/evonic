@@ -150,25 +150,6 @@ function hideTooltip() {
     }
 }
 
-/** Periodically poll busy status and update data-busy attributes */
-function pollBusyStatus() {
-    setInterval(function () {
-        fetch('/api/agents/busy', { credentials: 'same-origin' })
-            .then(function (r) { return r.ok ? r.json() : null; })
-            .then(function (data) {
-                if (!data || !data.busy) return;
-                var busyMap = data.busy;
-                var avatars = document.querySelectorAll('#agent-sidebar .agent-avatar');
-                avatars.forEach(function (av) {
-                    var agentId = av.getAttribute('data-agent-id');
-                    var isBusy = !!busyMap[agentId];
-                    av.setAttribute('data-busy', isBusy ? 'true' : 'false');
-                });
-            })
-            .catch(function () { /* silent */ });
-    }, 5000);
-}
-
 /** Subscribe to SSE for real-time busy state updates */
 function subscribeBusySSE() {
     try {
@@ -238,6 +219,5 @@ function initSidebar() {
     if (!sidebar) return;
 
     fetchSidebarAgents();
-    pollBusyStatus();
     subscribeBusySSE();
 }

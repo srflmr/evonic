@@ -140,7 +140,15 @@ def _migrate_system_prompts():
         print(f"[agents] system_prompt migration error (non-fatal): {e}")
 
 
-_migrate_system_prompts()
+_migration_done = False
+
+
+def _ensure_migration():
+    """Lazy wrapper: runs _migrate_system_prompts() once on first call."""
+    global _migration_done
+    if not _migration_done:
+        _migrate_system_prompts()
+        _migration_done = True
 
 
 # ==================== Pages ====================
@@ -182,6 +190,7 @@ def agent_detail(agent_id):
 
 @agents_bp.route('/api/agents', methods=['GET'])
 def api_list_agents():
+    _ensure_migration()
     agents = db.get_agents()
     return jsonify({'agents': _sanitize_agents(agents)})
 
