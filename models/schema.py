@@ -851,6 +851,27 @@ class SchemaMixin:
                 )
             """)
 
+            # Session Index — materialized view of per-agent chat sessions in main DB.
+            # Eliminates cross-DB ATTACH/UNION ALL for session aggregation queries.
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS session_index (
+                    session_id TEXT PRIMARY KEY,
+                    agent_id TEXT NOT NULL,
+                    external_user_id TEXT NOT NULL,
+                    channel_id TEXT,
+                    bot_enabled INTEGER DEFAULT 1,
+                    archived INTEGER DEFAULT 0,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    message_count INTEGER DEFAULT 0,
+                    last_message TEXT,
+                    last_message_role TEXT
+                )
+            """)
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_session_index_agent ON session_index(agent_id)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_session_index_updated ON session_index(updated_at)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_session_index_external ON session_index(external_user_id)")
+
             conn.commit()
 
         # Migrate chat data from main DB to per-agent DBs
@@ -858,6 +879,47 @@ class SchemaMixin:
 
         # Backfill session_count for existing agents (idempotent)
         self._backfill_session_counts()
+
+        # Populate session_index from per-agent chat DBs (idempotent one-time migration)
+        self._populate_session_index()
+
+    def _populate_session_index(self):
+        """One-time migration: populate session_index from all per-agent chat DBs.
+
+        Idempotent — uses INSERT OR REPLACE so it is safe to run multiple times.
+        Called lazily from _init_tables, not at import time.
+        """
+        import logging
+        import os
+        from models.chat import AGENTS_DIR, agent_chat_manager
+        logger = logging.getLogger(__name__)
+        agents = self.get_agents()
+        with self._connect() as conn:
+            for agent in agents:
+                aid = agent['id']
+                db_path = os.path.join(AGENTS_DIR, aid, 'chat.db')
+                if not os.path.exists(db_path):
+                    continue
+                try:
+                    chat_db = agent_chat_manager.get(aid)
+                    sessions = chat_db.get_sessions_with_preview()
+                    for s in sessions:
+                        conn.execute("""
+                            INSERT OR REPLACE INTO session_index
+                                (session_id, agent_id, external_user_id, channel_id,
+                                 bot_enabled, archived, created_at, updated_at,
+                                 message_count, last_message, last_message_role)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """, (
+                            s['id'], s.get('agent_id', aid), s.get('external_user_id', ''),
+                            s.get('channel_id'), s.get('bot_enabled', 1),
+                            s.get('archived', 0), s.get('created_at'), s.get('updated_at'),
+                            s.get('message_count', 0), s.get('last_message'),
+                            s.get('last_message_role'),
+                        ))
+                    conn.commit()
+                except Exception as e:
+                    logger.warning("Failed to populate session_index for agent %s: %s", aid, e)
 
     def _backfill_session_counts(self):
         """One-time backfill: compute session_count for all agents from per-agent chat DBs."""

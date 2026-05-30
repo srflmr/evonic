@@ -4,7 +4,7 @@ from typing import Dict, Any, List, Optional
 
 import sqlite3
 
-from models.chat import AGENTS_DIR
+
 
 
 class ChatDelegationMixin:
@@ -44,6 +44,7 @@ class ChatDelegationMixin:
         session_id = self._chat_db(_db_id).get_or_create_session(
             agent_id, external_user_id, channel_id, channel_type=channel_type)
         self._refresh_session_count(_db_id)
+        self._sync_session_index(_db_id, session_id)
         return session_id
 
     def get_session_messages(self, session_id: str, limit: int = 50,
@@ -80,6 +81,9 @@ class ChatDelegationMixin:
                     conn.commit()
             except Exception:
                 pass
+            # Keep session_index in sync (message_count, last_message, last_message_role, updated_at).
+            # Only user/assistant messages to avoid write amplification from tool calls.
+            self._sync_session_index(_db_id, session_id)
         return result
 
     def touch_agent_active(self, agent_id: str) -> None:
@@ -110,6 +114,7 @@ class ChatDelegationMixin:
             self._chat_db(agent_id).clear_session(session_id)
             from models.chatlog import chatlog_manager
             chatlog_manager.get(agent_id, session_id).clear()
+            self._remove_session_index(session_id)
 
     def get_summary(self, session_id: str, agent_id: str = None):
         agent_id = agent_id or self._find_agent_for_session(session_id)
@@ -168,6 +173,7 @@ class ChatDelegationMixin:
             except FileNotFoundError:
                 pass
             self._refresh_session_count(agent_id)
+            self._remove_session_index(session_id)
             # Wipe attachments tied to this session (rows + on-disk files) so
             # they don't linger unreachable after the conversation is gone.
             try:
@@ -250,121 +256,137 @@ class ChatDelegationMixin:
             session['channel_name'] = None
         return session
 
-    # SQLite's compiled-in ATTACH limit is 10; reserve 1 slot for the main DB.
-    _ATTACH_BATCH = 9
+    # ---- Session Index helpers (materialized view in main DB) ----
+
+    def _sync_session_index(self, agent_id: str, session_id: str) -> None:
+        """Read session metadata from per-agent chat DB and upsert into main DB session_index."""
+        import logging
+        logger = logging.getLogger(__name__)
+        try:
+            chat_db = self._chat_db(agent_id)
+            session = chat_db.get_session(session_id)
+            if not session:
+                # Session deleted concurrently — remove from index if it exists.
+                self._remove_session_index(session_id)
+                return
+            mc = chat_db.get_message_count(session_id)
+            # Get last message (content + role) directly from the per-agent DB.
+            last_msg = None
+            with chat_db._connect() as agent_conn:
+                agent_conn.row_factory = sqlite3.Row
+                last_msg = agent_conn.execute("""
+                    SELECT content, role FROM chat_messages
+                    WHERE session_id = ? AND role IN ('user', 'assistant')
+                      AND content IS NOT NULL
+                    ORDER BY created_at DESC LIMIT 1
+                """, (session_id,)).fetchone()
+            with self._connect() as conn:
+                conn.execute("""
+                    INSERT OR REPLACE INTO session_index
+                        (session_id, agent_id, external_user_id, channel_id,
+                         bot_enabled, archived, created_at, updated_at,
+                         message_count, last_message, last_message_role)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    session_id,
+                    session.get('agent_id', agent_id),
+                    session.get('external_user_id', ''),
+                    session.get('channel_id'),
+                    session.get('bot_enabled', 1),
+                    session.get('archived', 0),
+                    session.get('created_at'),
+                    session.get('updated_at'),
+                    mc,
+                    last_msg['content'] if last_msg else None,
+                    last_msg['role'] if last_msg else None,
+                ))
+                conn.commit()
+        except Exception:
+            logger.debug("_sync_session_index failed for session %s agent %s",
+                         session_id, agent_id, exc_info=True)
+
+    def _remove_session_index(self, session_id: str) -> None:
+        """Remove a session from the materialized session_index."""
+        try:
+            with self._connect() as conn:
+                conn.execute("DELETE FROM session_index WHERE session_id = ?", (session_id,))
+                conn.commit()
+        except Exception:
+            pass
+
 
     def get_all_sessions(self, search: str = None, limit: int = 50, offset: int = 0,
                           exclude_test: bool = True) -> tuple:
-        """Aggregate sessions across all per-agent chat DBs using ATTACH + UNION ALL.
+        """Query session_index (materialized view in main DB) joined with agents/channels.
 
-        Agents are processed in batches of 9 to stay within SQLite's compiled-in
-        10-database ATTACH limit.  All matching rows are collected across batches,
-        sorted globally in Python, then paginated."""
-        agents = self.get_agents()
-        if not agents:
-            return [], 0
-
-        # Build the list of agent DBs that actually exist on disk.
-        valid = []
-        for agent in agents:
-            aid = agent['id']
-            db_path = os.path.join(AGENTS_DIR, aid, 'chat.db')
-            if not os.path.exists(db_path):
-                continue
-            safe_id = aid.replace('-', '_').replace('.', '_').replace('"', '_')
-            valid.append((aid, db_path, f"a_{safe_id}"))
-
-        if not valid:
-            return [], 0
-
-        # WHERE clause (shared across all batches)
-        where_parts = []
+        Single query against the main DB — no ATTACH/DETACH, no UNION ALL,
+        no Python-side sort of all rows.  SQL handles ORDER BY, LIMIT, OFFSET."""
+        where_parts = ["si.archived = 0"]
         where_params = []
+
         if exclude_test:
             where_parts.append(
-                "NOT (combined.external_user_id = 'web_test' AND combined.channel_id IS NULL)"
+                "NOT (si.external_user_id = 'web_test' AND si.channel_id IS NULL)"
             )
         if search:
-            q = f"%{search}%"
+            q = "%" + search + "%"
             where_parts.append(
-                "(ag.name LIKE ? OR combined.external_user_id LIKE ? OR peer.name LIKE ?)"
+                "(COALESCE(ag.name, si.agent_id) LIKE ?"
+                " OR si.external_user_id LIKE ?"
+                " OR peer.name LIKE ?)"
             )
             where_params.extend([q, q, q])
-        where_sql = " AND ".join(where_parts) if where_parts else "1=1"
 
-        _qmsg = ('SELECT m2.content FROM "{a}".chat_messages m2 '
-                 "WHERE m2.session_id = s.id AND m2.role IN ('user', 'assistant') "
-                 'AND m2.content IS NOT NULL ORDER BY m2.created_at DESC LIMIT 1')
-        _qrole = ('SELECT m3.role FROM "{a}".chat_messages m3 '
-                  "WHERE m3.session_id = s.id AND m3.role IN ('user', 'assistant') "
-                  'AND m3.content IS NOT NULL ORDER BY m3.created_at DESC LIMIT 1')
-        _qcnt = 'SELECT COUNT(*) FROM "{a}".chat_messages m WHERE m.session_id = s.id'
+        where_sql = " AND ".join(where_parts)
 
-        all_rows = []
+        # Base query: session_index joined with agents and channels.
+        base_from = """session_index si
+            LEFT JOIN agents ag ON ag.id = si.agent_id
+            LEFT JOIN channels ch ON ch.id = si.channel_id
+            LEFT JOIN agents peer ON (
+                si.external_user_id LIKE '__agent__%'
+                AND peer.id = substr(si.external_user_id, 10)
+            )"""
+
+        # Count total matching rows (same WHERE, no LIMIT/OFFSET).
+        count_sql = f"SELECT COUNT(*) FROM {base_from} WHERE {where_sql}"
+
+        # Data query with ORDER BY, LIMIT, OFFSET.
+        columns = """si.session_id AS id,
+                     si.agent_id, si.channel_id, si.external_user_id,
+                     si.bot_enabled, si.created_at, si.updated_at,
+                     si.message_count, si.last_message, si.last_message_role,
+                     COALESCE(ag.name, si.agent_id) AS agent_name,
+                     ch.type AS channel_type, ch.name AS channel_name,
+                     peer.name AS peer_agent_name"""
+        data_sql = f"""SELECT {columns}
+                       FROM {base_from}
+                       WHERE {where_sql}
+                       ORDER BY si.updated_at DESC
+                       LIMIT ? OFFSET ?"""
 
         with self._connect() as conn:
             conn.row_factory = sqlite3.Row
-
-            for i in range(0, len(valid), self._ATTACH_BATCH):
-                batch = valid[i:i + self._ATTACH_BATCH]
-                attached_aliases = []
-
-                for _aid, db_path, alias in batch:
-                    conn.execute(f'ATTACH DATABASE ? AS "{alias}"', (db_path,))
-                    attached_aliases.append(alias)
-
-                arms = []
-                for _aid, _db_path, alias in batch:
-                    arms.append(f'''
-                        SELECT s.id, s.agent_id, s.channel_id, s.external_user_id,
-                               s.bot_enabled, s.created_at, s.updated_at,
-                               ({_qcnt.format(a=alias)}) AS message_count,
-                               ({_qmsg.format(a=alias)}) AS last_message,
-                               ({_qrole.format(a=alias)}) AS last_message_role
-                        FROM "{alias}".chat_sessions s
-                        WHERE s.archived = 0
-                    ''')
-
-                union_body = " UNION ALL ".join(arms)
-                data_sql = f"""
-                    SELECT combined.*,
-                           COALESCE(ag.name, combined.agent_id) AS agent_name,
-                           ch.type AS channel_type, ch.name AS channel_name,
-                           peer.name AS peer_agent_name
-                    FROM ({union_body}) combined
-                    LEFT JOIN agents ag ON ag.id = combined.agent_id
-                    LEFT JOIN channels ch ON ch.id = combined.channel_id
-                    LEFT JOIN agents peer ON (
-                        combined.external_user_id LIKE '__agent__%'
-                        AND peer.id = substr(combined.external_user_id, 10)
-                    )
-                    WHERE {where_sql}
-                """
-                rows = conn.execute(data_sql, where_params).fetchall()
-                all_rows.extend(dict(r) for r in rows)
-
-                for alias in attached_aliases:
-                    conn.execute(f'DETACH DATABASE "{alias}"')
-
-        # Sort globally then paginate in Python (needed because batches are independent).
-        all_rows.sort(key=lambda r: r.get('updated_at') or '', reverse=True)
-        total = len(all_rows)
-
+            total_row = conn.execute(count_sql, where_params).fetchone()
+            total = total_row[0] if total_row else 0
         if limit > 0:
-            return all_rows[offset:offset + limit], total
+            with self._connect() as conn:
+                conn.row_factory = sqlite3.Row
+                rows = conn.execute(data_sql, where_params + [limit, offset]).fetchall()
+                return [dict(r) for r in rows], total
         return [], total
 
     @functools.lru_cache(maxsize=256)
     def _find_agent_for_session(self, session_id: str) -> Optional[str]:
-        """Look up which agent owns a session by scanning agent chat DBs.
-        Result is LRU-cached (max 256 entries) to avoid repeated full agent scans
-        when multiple methods query the same session_id in a single request."""
-        agents = self.get_agents()
-        for agent in agents:
-            chat_db = self._chat_db(agent['id'])
-            if chat_db.has_session(session_id):
-                return agent['id']
-        return None
+        """Look up which agent owns a session from the session_index in main DB.
+        Result is LRU-cached (max 256 entries) to avoid repeated main DB queries."""
+        with self._connect() as conn:
+            conn.row_factory = sqlite3.Row
+            row = conn.execute(
+                "SELECT agent_id FROM session_index WHERE session_id = ?",
+                (session_id,)
+            ).fetchone()
+            return row['agent_id'] if row else None
 
     def clear_all_sessions(self):
         """Drop all chat sessions, messages, and summaries across all agents.
@@ -376,6 +398,13 @@ class ChatDelegationMixin:
         for agent in agents:
             chat_db = self._chat_db(agent['id'])
             chat_db.clear_all()
+        # Clear the session_index too — all sessions are gone.
+        try:
+            with self._connect() as conn:
+                conn.execute("DELETE FROM session_index")
+                conn.commit()
+        except Exception:
+            pass
         # Wipe attachments after sessions to keep storage in sync with the
         # newly-cleared chat history.
         try:
