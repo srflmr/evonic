@@ -12,6 +12,19 @@ class AgentMixin:
             cursor.execute("SELECT * FROM agents ORDER BY last_active_at DESC NULLS LAST, name")
             return [dict(row) for row in cursor.fetchall()]
 
+    def get_enabled_agents_sorted(self, limit: int = None) -> List[Dict[str, Any]]:
+        """Enabled agents sorted by last_active_at DESC, then by name.
+        Filters and sorts in SQL instead of Python for performance."""
+        with self._connect() as conn:
+            conn.row_factory = sqlite3.Row
+            sql = """SELECT * FROM agents
+                     WHERE enabled = 1
+                     ORDER BY last_active_at DESC NULLS LAST, name"""
+            if limit is not None:
+                sql += " LIMIT ?"
+                return [dict(row) for row in conn.execute(sql, (limit,))]
+            return [dict(row) for row in conn.execute(sql)]
+
     def get_agent(self, agent_id: str) -> Optional[Dict[str, Any]]:
         with self._connect() as conn:
             conn.row_factory = sqlite3.Row

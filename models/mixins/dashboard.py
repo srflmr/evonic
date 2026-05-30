@@ -6,10 +6,14 @@ class DashboardMixin:
     """Dashboard stats and analytics queries. Requires self._connect() and self._chat_db()
     from the host class."""
 
-    def get_dashboard_stats(self) -> Dict[str, Any]:
+    def get_dashboard_stats(self, _conn=None) -> Dict[str, Any]:
         """Aggregate counts for dashboard stat cards"""
-        with self._connect() as conn:
+        if _conn:
+            cursor = _conn.cursor()
+        else:
+            conn = self._connect().__enter__()
             cursor = conn.cursor()
+        try:
             cursor.execute("SELECT COUNT(*) FROM agents")
             agent_count = cursor.fetchone()[0]
             cursor.execute("SELECT COUNT(*) FROM tools")
@@ -35,29 +39,48 @@ class DashboardMixin:
                 'eval_run_count': eval_run_count,
                 'latest_eval_score': latest_eval_score,
             }
+        finally:
+            if not _conn:
+                conn.__exit__(None, None, None)
 
-    def get_recent_agents(self, limit: int = 5) -> List[Dict[str, Any]]:
+    def get_recent_agents(self, limit: int = 5, _conn=None) -> List[Dict[str, Any]]:
         """Most recently created agents with tool, channel, and session counts"""
-        with self._connect() as conn:
+        if _conn:
+            conn = _conn
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
+        else:
+            conn = self._connect().__enter__()
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+        try:
             cursor.execute("""
                 SELECT a.*,
-                    (SELECT COUNT(*) FROM agent_tools WHERE agent_id = a.id) as tool_count,
-                    (SELECT COUNT(*) FROM channels WHERE agent_id = a.id) as channel_count
+                    COALESCE(t.cnt, 0) as tool_count,
+                    COALESCE(c.cnt, 0) as channel_count
                 FROM agents a
+                LEFT JOIN (SELECT agent_id, COUNT(*) as cnt FROM agent_tools GROUP BY agent_id) t ON t.agent_id = a.id
+                LEFT JOIN (SELECT agent_id, COUNT(*) as cnt FROM channels GROUP BY agent_id) c ON c.agent_id = a.id
                 ORDER BY a.created_at DESC
                 LIMIT ?
             """, (limit,))
             agents = [dict(row) for row in cursor.fetchall()]
-        # session_count is already included in a.* above — no N+1 per-agent DB opens needed
-        return agents
+            return agents
+        finally:
+            if not _conn:
+                conn.__exit__(None, None, None)
 
-    def get_recent_runs(self, limit: int = 5) -> List[Dict[str, Any]]:
+    def get_recent_runs(self, limit: int = 5, _conn=None) -> List[Dict[str, Any]]:
         """Most recent evaluation runs for dashboard"""
-        with self._connect() as conn:
+        if _conn:
+            conn = _conn
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
+        else:
+            conn = self._connect().__enter__()
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+        try:
             cursor.execute("""
                 SELECT run_id, model_name, overall_score, started_at, completed_at,
                     (SELECT COUNT(*) FROM individual_test_results WHERE run_id = e.run_id) as test_count,
@@ -67,12 +90,21 @@ class DashboardMixin:
                 LIMIT ?
             """, (limit,))
             return [dict(row) for row in cursor.fetchall()]
+        finally:
+            if not _conn:
+                conn.__exit__(None, None, None)
 
-    def get_model_leaderboard(self, limit: int = 5) -> List[Dict[str, Any]]:
+    def get_model_leaderboard(self, limit: int = 5, _conn=None) -> List[Dict[str, Any]]:
         """Top models by best evaluation score"""
-        with self._connect() as conn:
+        if _conn:
+            conn = _conn
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
+        else:
+            conn = self._connect().__enter__()
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+        try:
             cursor.execute("""
                 SELECT g.model_name, g.best_score, g.run_count, g.last_run,
                     (SELECT run_id FROM evaluation_runs
@@ -93,12 +125,21 @@ class DashboardMixin:
                 ) g
             """, (limit,))
             return [dict(row) for row in cursor.fetchall()]
+        finally:
+            if not _conn:
+                conn.__exit__(None, None, None)
 
-    def get_model_usage(self) -> List[Dict[str, Any]]:
+    def get_model_usage(self, _conn=None) -> List[Dict[str, Any]]:
         """Count of agents per model for distribution display"""
-        with self._connect() as conn:
+        if _conn:
+            conn = _conn
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
+        else:
+            conn = self._connect().__enter__()
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+        try:
             cursor.execute("""
                 SELECT COALESCE(model, 'default') as model, COUNT(*) as agent_count
                 FROM agents
@@ -106,3 +147,6 @@ class DashboardMixin:
                 ORDER BY agent_count DESC
             """)
             return [dict(row) for row in cursor.fetchall()]
+        finally:
+            if not _conn:
+                conn.__exit__(None, None, None)

@@ -1,6 +1,7 @@
 import os
 import re
 import sys
+import sqlite3
 
 import logging
 import threading
@@ -158,13 +159,15 @@ def api_docker_status():
 @dashboard_bp.route('/api/dashboard/data')
 def api_dashboard_data():
     """Full dashboard data for client-side rendering"""
-    stats = db.get_dashboard_stats()
-    recent_agents = db.get_recent_agents(limit=5)
-    for a in recent_agents:
-        a.pop('workspace', None)
-    recent_runs = db.get_recent_runs(limit=5)
-    leaderboard = db.get_model_leaderboard(limit=5)
-    model_usage = db.get_model_usage()
+    with db._connect() as conn:
+        conn.row_factory = sqlite3.Row
+        stats = db.get_dashboard_stats(_conn=conn)
+        recent_agents = db.get_recent_agents(limit=5, _conn=conn)
+        for a in recent_agents:
+            a.pop('workspace', None)
+        recent_runs = db.get_recent_runs(limit=5, _conn=conn)
+        leaderboard = db.get_model_leaderboard(limit=5, _conn=conn)
+        model_usage = db.get_model_usage(_conn=conn)
 
     all_skills = skills_manager.list_skills()
     skill_stats = {
@@ -204,9 +207,11 @@ def api_dashboard_data():
 @dashboard_bp.route('/api/dashboard/stats')
 def api_dashboard_stats():
     """Dashboard stats for async refresh"""
-    stats = db.get_dashboard_stats()
-    leaderboard = db.get_model_leaderboard(limit=5)
-    model_usage = db.get_model_usage()
+    with db._connect() as conn:
+        conn.row_factory = sqlite3.Row
+        stats = db.get_dashboard_stats(_conn=conn)
+        leaderboard = db.get_model_leaderboard(limit=5, _conn=conn)
+        model_usage = db.get_model_usage(_conn=conn)
     return jsonify({
         'stats': stats,
         'leaderboard': leaderboard,
@@ -220,13 +225,7 @@ def api_dashboard_sidebar():
     from backend.agent_runtime import agent_runtime
     from routes.agents import _sanitize_agents
 
-    agents = db.get_agents()
-    # Exclude disabled agents
-    agents = [a for a in agents if a.get('enabled')]
-    # Sort by last_active_at descending, nulls last
-    agents.sort(key=lambda a: (a.get('last_active_at') or ''), reverse=True)
-    # Limit sidebar to max 15 agents
-    agents = agents[:15]
+    agents = db.get_enabled_agents_sorted(limit=15)
 
     busy_agents = agent_runtime.get_busy_agents()
     for agent in agents:
