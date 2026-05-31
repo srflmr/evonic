@@ -2862,7 +2862,7 @@ async function restoreActiveReasoning() {
             }
         }
 
-        _currentTurn = { abortController: null, thinkingId, stream: null, pollTimer: null };
+        _currentTurn = { abortController: null, thinkingId, stream: null, pollTimer: null, _finalRendered: false };
 
         chatUI.scrollToBottom();
 
@@ -2870,7 +2870,14 @@ async function restoreActiveReasoning() {
         _currentTurn.stream = chatUI.connectThinkingStream(
             `/api/agents/${encodeURIComponent(AGENT_ID)}/chat/stream?session_id=${encodeURIComponent(sessionId)}&after=${resumeSeq}`,
             thinkingId,
-            { userMsgEl, onSplit: (newId) => { _currentTurn.thinkingId = newId; }, onDone: () => { if (_currentTurn) _currentTurn.thinkingId = null; } }
+            { userMsgEl,
+              onSplit: (newId) => { _currentTurn.thinkingId = newId; },
+              onDone: () => { if (_currentTurn) _currentTurn.thinkingId = null; },
+              onFinalResponse: (content) => {
+                  if (_currentTurn) _currentTurn._finalRendered = true;
+                  chatUI.appendMessage('assistant', content, { metadata: {} });
+              }
+            }
         );
 
         // Poll until the final response lands
@@ -3094,7 +3101,7 @@ async function sendChat() {
         sessionId = sData.session_id || null;
     } catch(e) { /* SSE won't work but chat still functions */ }
 
-    _currentTurn = { abortController, thinkingId, stream: null, pollTimer: null };
+    _currentTurn = { abortController, thinkingId, stream: null, pollTimer: null, _finalRendered: false };
 
     if (sessionId) {
         _currentTurn.stream = chatUI.connectThinkingStream(
@@ -3104,6 +3111,10 @@ async function sendChat() {
                 userMsgEl: userMsgEl,
                 onSplit: (newId) => { thinkingId = newId; _currentTurn.thinkingId = newId; },
                 onDone: () => { thinkingId = null; if (_currentTurn) _currentTurn.thinkingId = null; },
+                onFinalResponse: (content) => {
+                    if (_currentTurn) _currentTurn._finalRendered = true;
+                    chatUI.appendMessage('assistant', content, { metadata: {} });
+                },
             }
         );
     }
@@ -3248,7 +3259,10 @@ function pollForResponse(existingThinkingId) {
                     chatUI.finalizeThinkingBubble(thinkingId, (entry.metadata || {}).thinking_duration);
                     thinkingId = null; if (_currentTurn) _currentTurn.thinkingId = null;
                     const fMeta = entry.metadata || {};
-                    if (fMeta.concurrency_limited || fMeta.busy_ack) {
+                    // Skip appendMessage if SSE onFinalResponse already rendered the bubble
+                    if (_currentTurn && _currentTurn._finalRendered) {
+                        _currentTurn._finalRendered = false;
+                    } else if (fMeta.concurrency_limited || fMeta.busy_ack) {
                         chatUI.appendMessage('system', '[SYSTEM/Concurrency]\n' + entry.content, {metadata: fMeta});
                     } else {
                         chatUI.appendMessage(entry.type === 'error' ? 'error' : 'assistant',

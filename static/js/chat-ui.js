@@ -69,12 +69,13 @@ function installDiagnostic(ui, activeTurns, eventLog) {
 const ALLOWED_TAGS = new Set([
     'a','b','i','em','strong','code','pre','blockquote',
     'ul','ol','li','p','br','hr','h1','h2','h3','h4','h5','h6',
-    'table','thead','tbody','tr','th','td','span','div',
+    'table','thead','tbody','tr','th','td','span','div','img',
 ]);
 const ALLOWED_ATTRS = {
     a:    ['href', 'title', 'target'],
     code: ['class'],
     pre:  ['class'],
+    img:  ['src', 'alt', 'class'],
 };
 
 function _walkSanitize(node) {
@@ -264,6 +265,41 @@ function _renderBashResult(r) {
     return $wrap;
 }
 
+function _renderRecallResult(result) {
+    const $wrap = $('<div>');
+    const memories = result.memories || [];
+
+    if (!memories.length) {
+        const msg = result.result || 'No memories found.';
+        return $('<div class="text-xs text-gray-500 italic px-2 py-1">').text(msg);
+    }
+
+    // Count badge
+    $wrap.append(
+        $('<div class="text-[10px] font-semibold text-purple-600 dark:text-purple-300 mb-1.5">').text(
+            `${memories.length} memory item${memories.length !== 1 ? 's' : ''}`
+        )
+    );
+
+    for (const m of memories) {
+        const $item = $('<div class="mb-1.5 border border-purple-200 rounded px-2 py-1.5 bg-purple-50/50 dark:bg-purple-900/20 dark:border-purple-700">');
+        const $meta = $('<div class="flex items-center gap-2 text-[10px] text-purple-400 mb-0.5">');
+        $meta.append(
+            $('<span class="font-semibold">').text('#' + m.id),
+            $('<span>').text(m.category || 'general')
+        );
+        if (m.created_at) {
+            $meta.append($('<span>').text(new Date(m.created_at).toLocaleString()));
+        }
+        $item.append($meta);
+        $item.append(
+            $('<div class="text-xs text-gray-700 dark:text-gray-200 whitespace-pre-wrap break-words">').text(m.content)
+        );
+        $wrap.append($item);
+    }
+    return $wrap;
+}
+
 function buildToolResultDetail(ev) {
     if (ev.error) {
         let msg = typeof ev.error === 'string' && ev.error.length > 1 ? ev.error : null;
@@ -288,6 +324,10 @@ function buildToolResultDetail(ev) {
     // single-key data wrapper
     if (typeof ev.result === 'object' && ev.result !== null && Object.keys(ev.result).length === 1 && 'data' in ev.result && typeof ev.result.data === 'string') {
         return $('<pre class="text-xs bg-gray-50 dark:bg-gray-900 dark:text-gray-300 border border-gray-200 rounded p-2 overflow-x-auto font-mono text-gray-700 max-h-[300px] whitespace-pre-wrap">').text(ev.result.data);
+    }
+    // recall — show full memory contents
+    if (ev.tool === 'recall' && typeof ev.result === 'object' && ev.result !== null && 'memories' in ev.result) {
+        return _renderRecallResult(ev.result);
     }
     return $('<div class="text-xs text-green-700 bg-green-50 border border-green-200 rounded px-2 py-1">').text(summarizeToolResult(ev.result));
 }
@@ -518,12 +558,6 @@ function buildMessageBubble(role, content, opts = {}, cfg = {}) {
         formatTimestamp = null,
     } = cfg;
 
-    // Check for attachment metadata — render attachment card regardless of role
-    const attachmentInfo = opts.metadata && opts.metadata.attachment_info;
-    if (attachmentInfo) {
-        return buildAttachmentCard(attachmentInfo, role, content, cfg);
-    }
-
     const isUser      = role === 'user';
     const isError     = role === 'error';
     const isSystem    = !isUser && !isError && role !== 'assistant' && /^\[system/i.test(content);
@@ -562,7 +596,24 @@ function buildMessageBubble(role, content, opts = {}, cfg = {}) {
         $bubble.append(_buildSysBalloon(sysTag, sysContent, 'text-orange-500', 'text-orange-400', 120));
 
     } else if (isUser) {
-        $bubble = $('<div class="rounded-2xl px-4 py-2.5 text-sm whitespace-pre-wrap break-words">').addClass(userBubbleClass).text(content);
+        $bubble = $('<div class="rounded-2xl px-4 py-2.5 text-sm whitespace-pre-wrap break-words">').addClass(userBubbleClass);
+        // Render image attachment if present
+        const meta = opts.metadata || {};
+        if (meta.image_url) {
+            const $img = $('<img>').attr('src', meta.image_url)
+                .addClass('max-w-[240px] max-h-[240px] rounded-lg mb-1 cursor-pointer')
+                .on('click', function() { window.open(meta.image_url, '_blank'); });
+            $bubble.append($img);
+        }
+        // Render non-image file badge
+        if (meta.attachment_info && !meta.attachment_info.is_image) {
+            const info = meta.attachment_info;
+            const $badge = $('<div class="flex items-center gap-1.5 mb-1 px-2 py-1 bg-white/20 rounded text-xs">')
+                .append($('<svg class="w-3.5 h-3.5 flex-shrink-0" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path d="M3 3.5A1.5 1.5 0 0 1 4.5 2h6.879a1.5 1.5 0 0 1 1.06.44l4.122 4.12A1.5 1.5 0 0 1 17 7.622V16.5a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 3 16.5v-13Z"/></svg>'))
+                .append($('<span class="truncate">').text(info.filename));
+            $bubble.append($badge);
+        }
+        if (content) $bubble.append(document.createTextNode(content));
 
     } else if (isError) {
         const $icon = $('<svg class="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M18 10a8 8 0 1 1-16 0 8 8 0 0 1 16 0Zm-8-5a.75.75 0 0 1 .75.75v4.5a.75.75 0 0 1-1.5 0v-4.5A.75.75 0 0 1 10 5Zm0 10a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z" clip-rule="evenodd"/></svg>');
@@ -606,70 +657,6 @@ function buildMessageBubble(role, content, opts = {}, cfg = {}) {
     return $wrapper;
 }
 
-function buildAttachmentCard(info, role, content, cfg) {
-    const {
-        userAlign = 'right',
-        assistantAlign = 'left',
-        agentAvatarUrl = null,
-    } = cfg;
-
-    const isUser = role === 'user';
-    const isRight = isUser ? (userAlign === 'right') : (assistantAlign === 'right');
-    const alignClass = isRight
-        ? 'items-end md:items-start md:justify-end'
-        : 'items-start md:justify-start';
-
-    const avatarHtml = (!isUser && agentAvatarUrl)
-        ? '<img src="' + escape(agentAvatarUrl) + '" alt="" class="w-7 h-7 rounded-full object-cover flex-shrink-0 mt-1 bg-indigo-50 dark:bg-indigo-900/20" onerror="this.onerror=null;this.style.display=\'none\'">'
-        : '';
-
-    const $wrapper = $('<div>').addClass('flex flex-col md:flex-row').addClass(alignClass).attr('data-msg-role', role);
-    if (avatarHtml) $wrapper.addClass('items-start gap-2').append($(avatarHtml));
-
-    // Format file size
-    const bytes = info.size_bytes || 0;
-    let sizeStr = '';
-    if (bytes < 1024) {
-        sizeStr = bytes + ' B';
-    } else if (bytes < 1048576) {
-        sizeStr = (bytes / 1024).toFixed(1) + ' KB';
-    } else {
-        sizeStr = (bytes / 1048576).toFixed(1) + ' MB';
-    }
-
-    // Paperclip SVG icon
-    var paperclipSvg = '<svg class="w-4 h-4 flex-shrink-0 text-gray-400 dark:text-gray-500" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>';
-
-    // Download link SVG
-    var downloadSvg = '<svg class="w-4 h-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>';
-
-    // Has download? (attachment_id present)
-    var hasDownload = info.attachment_id != null;
-
-    // Build card HTML
-    var cardHtml = '<div class="rounded-2xl border px-4 py-2.5 text-sm flex items-center gap-2 bg-gray-100 dark:bg-gray-800 border-gray-200 dark:border-gray-700">';
-    cardHtml += paperclipSvg;
-    cardHtml += '<span class="truncate max-w-[200px] text-gray-800 dark:text-gray-200">' + escape(info.filename || 'file') + '</span>';
-    cardHtml += '<span class="text-gray-400 dark:text-gray-500 text-xs whitespace-nowrap">(' + sizeStr + ')</span>';
-    if (hasDownload) {
-        cardHtml += '<a href="/api/attachments/' + info.attachment_id + '/download" download="' + escape(info.filename || 'file') + '" class="text-indigo-500 hover:text-indigo-700 dark:text-indigo-400 dark:hover:text-indigo-300 ml-auto flex-shrink-0" title="Download">' + downloadSvg + '</a>';
-    } else {
-        cardHtml += '<span class="text-gray-400 dark:text-gray-500 text-xs ml-auto flex-shrink-0 italic">[File unavailable]</span>';
-    }
-    cardHtml += '</div>';
-
-    var $card = $(cardHtml);
-    var $inner = $('<div class="max-w-[80%] min-w-0">');
-    var fileMarker = /^\[File:\s*[^\]]+\]$/m;
-    var captionText = content ? content.replace(fileMarker, '').trim() : '';
-    if (captionText) {
-        $inner.append($('<div class="text-sm text-gray-700 dark:text-gray-300 mb-2 break-words">').text(captionText));
-    }
-    $inner.append($card);
-    $wrapper.append($inner);
-    return $wrapper;
-}
-
 // ── Default renderer registry ─────────────────────────────────────────────────
 
 const DEFAULT_RENDERERS = {
@@ -689,7 +676,12 @@ const SSE_EVENTS = [
     'turn_begin', 'turn_split', 'thinking', 'tool_call_started', 'tool_executed',
     'response_chunk', 'done', 'approval_required', 'approval_resolved', 'retry',
     'message_injected', 'message_injection_applied', 'session_clear',
+    'heartbeat',
 ];
+
+// If no event (including heartbeats) arrives within this window, the connection
+// is assumed dead and the adapter will force-reconnect.
+const LIVENESS_TIMEOUT_MS = 45_000;
 
 class SSEAdapter {
     
@@ -703,6 +695,8 @@ class SSEAdapter {
         this._fillingGap = false;
         this._pendingQueue = [];
         this._log = log('sse');
+        this._lastEventAt = 0;
+        this._livenessInterval = null;
     }
 
     start(handler) {
@@ -713,6 +707,10 @@ class SSEAdapter {
 
     stop() {
         this._intentionallyStopped = true;
+        if (this._livenessInterval) {
+            clearInterval(this._livenessInterval);
+            this._livenessInterval = null;
+        }
         if (this._es) {
             this._es.close();
             this._es = null;
@@ -723,12 +721,31 @@ class SSEAdapter {
         this._log.info('open', url);
         const es = new EventSource(url);
         this._es = es;
+        this._lastEventAt = Date.now();
+
+        // Clear any previous liveness interval before starting a new one
+        if (this._livenessInterval) clearInterval(this._livenessInterval);
+        this._livenessInterval = setInterval(() => {
+            if (this._intentionallyStopped) return;
+            const elapsed = Date.now() - this._lastEventAt;
+            if (elapsed > LIVENESS_TIMEOUT_MS) {
+                this._log.warn('liveness timeout — no event for', elapsed, 'ms, forcing reconnect');
+                console.warn('[sse] liveness timeout, elapsed=', elapsed, '_lastSeq=', this._lastSeq);
+                if (this._es) { this._es.close(); this._es = null; }
+                const u = new URL(url, window.location.origin);
+                if (this._lastSeq > 0) u.searchParams.set('after', this._lastSeq);
+                const resumeUrl = u.pathname + u.search;
+                this._connect(resumeUrl);
+            }
+        }, LIVENESS_TIMEOUT_MS);
 
         for (const evtName of SSE_EVENTS) {
             es.addEventListener(evtName, (e) => {
+                this._lastEventAt = Date.now();
                 let data;
                 try { data = JSON.parse(e.data); } catch (err) { data = {}; }
                 this._log.debug('event', evtName, 'seq', data.seq, 'size', e.data.length);
+                if (evtName === 'heartbeat') return;  // liveness only — don't process
                 this._handleRaw(evtName, data);
             });
         }
@@ -1041,6 +1058,7 @@ class Turn {
         this._startTime = Date.now();
         this._finalized = false;
         this._preApprovalPhase = 'thinking';
+        this._finalContent = null;  // stored from response_chunk (is_final), used for SSE→response bubble
 
         this._log = log('turn');
 
@@ -1222,6 +1240,7 @@ class Turn {
 
         if (evtName === 'response_chunk' && data.is_final && data.content) {
             this._addTimelineEntry({ type: 'response', content: data.content });
+            this._finalContent = data.content;  // stash for final-response bubble
             return;
         }
 
@@ -1244,6 +1263,15 @@ class Turn {
 
         if (evtName === 'done') {
             this._finalizeBubble(data.thinking_duration);
+            // Fire final:response so page-level code can render the response bubble
+            // synchronously — no dependency on pollForResponse JSONL poll.
+            if (this._finalContent) {
+                this._onTrigger('final:response', {
+                    turnId: this.id,
+                    content: this._finalContent,
+                    thinking_duration: data.thinking_duration,
+                });
+            }
             return;
         }
 
@@ -1666,7 +1694,7 @@ class ChatUI {
                 // agent-state bridge: fire document-level event for tool:executed
                 if (evtName === 'tool:executed') {
                     const toolName = data && data.tool;
-                    if (['save_plan', 'set_mode', 'update_tasks', 'state'].includes(toolName)) {
+                    if (['save_plan', 'set_mode', 'update_tasks', 'state', 'use_skill', 'unload_skill'].includes(toolName)) {
                         document.dispatchEvent(new CustomEvent('evonic:agent-state-changed', { detail: data }));
                     }
                 }
@@ -1966,6 +1994,17 @@ class ChatUI {
                 }
             };
             this.$bus.on('turn:disposed', doneHandler);
+        }
+        // Wire onFinalResponse: fires when SSE delivers response_chunk(is_final) → done
+        // so the page can render the final markdown bubble synchronously
+        if (opts.onFinalResponse) {
+            const finalHandler = (e, payload) => {
+                if (payload && payload.turnId === turn.id) {
+                    this.$bus.off('final:response', finalHandler);
+                    opts.onFinalResponse(payload.content, payload.thinking_duration);
+                }
+            };
+            this.$bus.on('final:response', finalHandler);
         }
 
         return adapter;

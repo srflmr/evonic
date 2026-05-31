@@ -116,6 +116,7 @@ export class Turn {
         this._startTime = Date.now();
         this._finalized = false;
         this._preApprovalPhase = 'thinking';
+        this._finalContent = null;  // stored from response_chunk (is_final), used for SSE→response bubble
 
         this._log = log('turn');
 
@@ -300,6 +301,7 @@ export class Turn {
 
         if (evtName === 'response_chunk' && data.is_final && data.content) {
             this._addTimelineEntry({ type: 'response', content: data.content });
+            this._finalContent = data.content;  // stash for final-response bubble
             return;
         }
 
@@ -322,6 +324,15 @@ export class Turn {
 
         if (evtName === 'done') {
             this._finalizeBubble(data.thinking_duration);
+            // Fire final:response so page-level code can render the response bubble
+            // synchronously — no dependency on pollForResponse JSONL poll.
+            if (this._finalContent) {
+                this._onTrigger('final:response', {
+                    turnId: this.id,
+                    content: this._finalContent,
+                    thinking_duration: data.thinking_duration,
+                });
+            }
             return;
         }
 

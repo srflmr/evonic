@@ -469,6 +469,17 @@ export class ChatUI {
             };
             this.$bus.on('turn:disposed', doneHandler);
         }
+        // Wire onFinalResponse: fires when SSE delivers response_chunk(is_final) → done
+        // so the page can render the final markdown bubble synchronously
+        if (opts.onFinalResponse) {
+            const finalHandler = (e, payload) => {
+                if (payload && payload.turnId === turn.id) {
+                    this.$bus.off('final:response', finalHandler);
+                    opts.onFinalResponse(payload.content, payload.thinking_duration);
+                }
+            };
+            this.$bus.on('final:response', finalHandler);
+        }
 
         return adapter;
     }
