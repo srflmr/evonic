@@ -283,10 +283,12 @@ def execute(agent, args: dict) -> dict:
             'created': not already_exists,
         }
 
-    # When sandbox is enabled, route file I/O through the execution backend
-    # (Docker container, SSH remote, etc.) instead of the host filesystem.
+    # When sandbox is enabled or the agent has a workplace, route file I/O
+    # through the execution backend (Docker container, SSH remote, etc.)
+    # instead of the host filesystem.
     sandbox_enabled = (agent or {}).get('sandbox_enabled', 1)
-    if sandbox_enabled:
+    has_workplace = bool((agent or {}).get('workplace_id'))
+    if sandbox_enabled or has_workplace:
         from backend.tools.lib.exec_backend import registry
         session_id = (agent or {}).get('session_id') or 'default'
         backend = registry.get_backend(session_id, agent)
