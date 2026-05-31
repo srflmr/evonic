@@ -650,7 +650,7 @@ html.dark #channel-detail-modal .hover\:bg-indigo-100:hover { background: #312e8
                         <textarea id="chat-input" placeholder="Type a message..." rows="1"
                             class="flex-1 p-2.5 border border-gray-300 rounded-md text-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/10 resize-none overflow-hidden disabled:opacity-50 disabled:cursor-not-allowed"
                             style="max-height: 150px;"
-                            onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendChat()}"
+                            onkeydown="chatInputKeydown(event)"
                             oninput="this.style.height='auto';this.style.height=Math.min(this.scrollHeight,150)+'px';this.style.overflowY=this.scrollHeight>150?'auto':'hidden'"></textarea>
                         <button onclick="handleChatBtn()" id="chat-send-btn" class="bg-indigo-500 hover:bg-indigo-600 text-white px-5 py-2 rounded-md text-sm transition-colors">Send</button>
                     </div>
@@ -2976,6 +2976,23 @@ function stopIdlePoll() {
         chatUI.removeThinkingIndicator(_pollThinkingId);
         _pollThinkingId = null;
     }
+}
+
+// Chat-input keydown handler: Enter submits on desktop, inserts newline on mobile.
+// Mobile = viewport < 1024px (matching enterChatFullscreen breakpoint).
+// Desktop = viewport >= 1024px: Enter without Shift submits, Shift+Enter inserts newline.
+// The check runs per-keypress so it reacts immediately to resize / rotation.
+const CHAT_DESKTOP_BREAKPOINT = 1024;
+function chatInputKeydown(event) {
+    if (event.key !== 'Enter') return;
+    const isDesktop = window.innerWidth >= CHAT_DESKTOP_BREAKPOINT;
+    if (isDesktop && !event.shiftKey) {
+        // Desktop: Enter alone submits the message
+        event.preventDefault();
+        sendChat();
+    }
+    // Mobile: Enter does nothing special — textarea handles newline natively.
+    // Shift+Enter on desktop: also falls through — textarea inserts newline natively.
 }
 
 function handleChatBtn() {
