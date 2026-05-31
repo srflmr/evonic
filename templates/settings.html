@@ -183,6 +183,25 @@ block content %}
                 onchange='toggleLongRunningGuard(this.checked)',
                 extra_class='flex-shrink-0 ml-4') }}
             </div>
+            <!-- Message Wrapper -->
+            <div
+                class="flex items-center justify-between p-4 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-600"
+            >
+                <div>
+                    <div class="font-medium text-gray-800 dark:text-gray-100">
+                        Message Wrapper
+                    </div>
+                    <div class="text-sm text-gray-500 mt-0.5">
+                        Prepend a capture prefix to every user message,
+                        prompting agents to scan for and store user preferences,
+                        instructions, and personal facts. Disable per-agent in
+                        the agent's Advanced Settings.
+                    </div>
+                </div>
+                {{ toggle(id='message-wrapper-toggle',
+                onchange='toggleMessageWrapper(this.checked)',
+                extra_class='flex-shrink-0 ml-4') }}
+            </div>
             <!-- Max Tool Iterations -->
             <div
                 class="flex items-center justify-between p-4 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-600"
@@ -1561,6 +1580,7 @@ block content %}
         }
         document.getElementById("public-history-toggle").checked = s.public_history;
         document.getElementById("long-running-guard-toggle").checked = s.long_running_guard_enabled;
+        document.getElementById("message-wrapper-toggle").checked = s.message_wrapper_enabled;
         document.getElementById("agent-timeout-retries-input").value = s.agent_timeout_retries;
         document.getElementById("llm-max-retries-input").value = s.llm_max_retries;
         document.getElementById("max-concurrent-per-agent-input").value = s.max_concurrent_llm_per_agent;
@@ -1578,6 +1598,10 @@ block content %}
 
     async function toggleLongRunningGuard(enabled) {
         await apiPut("/api/settings/long-running-guard", { enabled });
+    }
+
+    async function toggleMessageWrapper(enabled) {
+        await apiPut("/api/settings/message-wrapper", { enabled });
     }
 
     function updateThemeButtons(theme) {

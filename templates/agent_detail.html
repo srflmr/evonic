@@ -423,6 +423,16 @@ html.dark #channel-detail-modal .hover\:bg-indigo-100:hover { background: #312e8
                     </div>
 
                     <div>
+                        <label class="flex items-center gap-3 cursor-pointer select-none">
+                            {{ toggle_widget(id='agent-message-wrapper', checked=(agent.message_wrapper_enabled is none or agent.message_wrapper_enabled)) }}
+                            <div>
+                                <span class="text-gray-600 dark:text-gray-300 text-sm font-medium">Message Wrapper</span>
+                                <p class="text-xs text-gray-400 mt-0.5">Prepend a capture prefix to every user message, prompting this agent to scan for and store user preferences, instructions, and personal facts. Overrides the global setting.</p>
+                            </div>
+                        </label>
+                    </div>
+
+                    <div>
                         <label class="block mb-1 text-gray-600 dark:text-gray-300 text-sm font-medium">Summarize Prompt</label>
                         <textarea id="agent-summarize-prompt" rows="10" class="w-full p-2.5 border border-gray-300 rounded-md text-sm font-mono focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/10">{{ agent.summarize_prompt or DEFAULT_SUMMARIZE_PROMPT }}</textarea>
                         <p class="text-xs text-gray-400 mt-1">Custom prompt for summarization. Use <code>{existing_summary_section}</code> and <code>{messages_text}</code> as placeholders.</p>
@@ -1592,6 +1602,7 @@ async function saveAdvanced() {
             agent_messaging_enabled: document.getElementById('agent-messaging-enabled').checked ? 1 : 0,
             artifacts_enabled: document.getElementById('agent-artifacts').checked ? 1 : 0,
             safety_checker_enabled: document.getElementById('agent-safety-checker').checked ? 1 : 0,
+            message_wrapper_enabled: document.getElementById('agent-message-wrapper').checked ? 1 : 0,
         })
     });
     const data = await res.json();

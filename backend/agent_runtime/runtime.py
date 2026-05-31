@@ -61,6 +61,50 @@ def _llm_log_path(agent_id: str) -> str:
     return os.path.join(_LOGS_DIR, 'agents', agent_id, 'llm.log')
 
 
+# Message wrapper prefix prepended to user messages when enabled.
+# Always in English regardless of user language, max 60 tokens.
+WRAPPER_PREFIX = (
+        """[Pre-response check: Before you answer or reply to the user's request, first verify the following:
+
+1. Does the message contain explicit or implicit information—such as instructions, or shared personal details, facts, preferences, phone numbers, secret keys, addresses, PINs, etc.? If yes, save it to memory using the `remember()` tool. If the message contains style notes, rules, or procedures that don't always need to be applied, record them in the `notes.md` knowledge base. If the message contains a request to change style or rules that is highly critical and must be applied on every turn, write it to `SYSTEM.md`.
+2. Does the message relate to a specific project or task? If so, read the relevant knowledge base files first—there may be an existing KB containing per-item/per-project procedures.
+3. Only after completing these steps, reply to the user naturally.]
+
+The following is the message from the user:\n
+----begin-user-message----\n"""
+)
+
+
+def _should_wrap_user_message(agent: dict) -> bool:
+    """Check if message wrapper is enabled for this agent.
+
+    Priority: per-agent setting > global setting > default (True).
+    """
+    per_agent = agent.get('message_wrapper_enabled')
+    if per_agent is not None:
+        return bool(per_agent)
+    from models.db import db as _db
+    global_val = _db.get_setting('message_wrapper_enabled', '1')
+    return global_val != '0'
+
+
+def _apply_wrapper_prefix(messages: list, enabled: bool) -> None:
+    """Apply message wrapper prefix to user messages in-place.
+
+    Wraps: (a) the LAST (current) user message always,
+           (b) historical messages explicitly marked with _wrapped=True.
+    Cleans up the _wrapped key after use.
+    """
+    if not enabled or not messages:
+        return
+    for i, msg in enumerate(messages):
+        if msg.get('role') == 'user':
+            _wrapped = msg.pop('_wrapped', None)
+            is_current = (i == len(messages) - 1)
+            if is_current or _wrapped:
+                msg['content'] = WRAPPER_PREFIX + msg['content']
+
+
 def _db_retry(
     fn: Callable[..., T],
     *args: Any,
@@ -857,6 +901,9 @@ class AgentRuntime:
         meta = {"image_url": image_url} if image_url else {}
         if metadata:
             meta.update(metadata)
+        # Flag user message as wrapped if preference wrapper is enabled for this agent
+        if _should_wrap_user_message(agent):
+            meta['wrapped'] = True
         # Enrich metadata for agent-originated messages
         if external_user_id.startswith("__agent__") and not meta.get('agent_message'):
             sender_id = external_user_id[len("__agent__"):]
@@ -1277,6 +1324,9 @@ class AgentRuntime:
             meta = msg.get('metadata') or {}
             return bool(meta.get('slash_command'))
 
+        # _should_wrap_user_message is defined at module level (also used by handle_message).
+        # Keep this alias so the rest of _do_process_inner reads naturally.
+
         def _apply_vision(msg: dict) -> dict:
             """Apply vision formatting for user messages with image_url if agent supports it."""
             if msg.get('role') != 'user' or not agent.get('vision_enabled'):
@@ -1565,6 +1615,9 @@ class AgentRuntime:
                         # instead of being stuck in a stale plan from a previous task.
                         ms = AgentState()
             agent_context['agent_state'] = ms
+
+        # Apply preference wrapper prefix to user messages if enabled
+        _apply_wrapper_prefix(messages, _should_wrap_user_message(agent))
 
         # Call LLM with tool loop
         _inner_turn_start = time.time()

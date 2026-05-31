@@ -501,6 +501,9 @@ def _reconstruct_llm_messages(entries: List[dict]) -> List[Dict[str, Any]]:
             img = (entry.get('metadata') or {}).get('image_url')
             if img:
                 msg['_image_url'] = img  # caller handles vision formatting
+            wrapped = (entry.get('metadata') or {}).get('wrapped')
+            if wrapped:
+                msg['_wrapped'] = True
             messages.append(msg)
             i += 1
 

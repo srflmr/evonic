@@ -441,6 +441,14 @@ class SchemaMixin:
             # Backfill existing agents: NULL -> 1 (compression enabled by default)
             cursor.execute("UPDATE agents SET tool_compression_enabled = 1 WHERE tool_compression_enabled IS NULL")
 
+            # Migration: add message_wrapper_enabled for per-agent wrapper toggle (default ON)
+            try:
+                cursor.execute("ALTER TABLE agents ADD COLUMN message_wrapper_enabled BOOLEAN DEFAULT 1")
+            except sqlite3.OperationalError:
+                pass
+            # Backfill existing agents: NULL -> 1 (wrapper enabled by default)
+            cursor.execute("UPDATE agents SET message_wrapper_enabled = 1 WHERE message_wrapper_enabled IS NULL")
+
             # Migration: enable inject_agent_id and inject_datetime for all existing agents
             cursor.execute("UPDATE agents SET inject_agent_id = 1 WHERE inject_agent_id = 0 OR inject_agent_id IS NULL")
             cursor.execute("UPDATE agents SET inject_datetime = 1 WHERE inject_datetime = 0 OR inject_datetime IS NULL")

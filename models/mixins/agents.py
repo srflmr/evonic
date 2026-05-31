@@ -40,8 +40,8 @@ class AgentMixin:
                 INSERT INTO agents (id, name, description, system_prompt, model, is_super, enabled,
                     vision_enabled, inject_agent_id, inject_datetime, send_intermediate_responses, enable_agent_state,
                     workspace, agent_messaging_enabled, sandbox_enabled, summarize_tail, artifacts_enabled,
-                    fallback_model_id)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    message_wrapper_enabled, fallback_model_id)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 agent['id'], agent.get('name', agent['id']),
                 agent.get('description', ''), agent.get('system_prompt', ''),
@@ -58,6 +58,7 @@ class AgentMixin:
                 1 if agent.get('sandbox_enabled') else 0,
                 agent.get('summarize_tail', 5),
                 1 if agent.get('artifacts_enabled') is not False else 0,
+                1 if agent.get('message_wrapper_enabled') is not False else 0,
                 agent.get('fallback_model_id'),
             ))
             conn.commit()
@@ -67,7 +68,7 @@ class AgentMixin:
         allowed = {'name', 'description', 'model', 'vision_enabled',
                    'summarize_threshold', 'summarize_tail', 'summarize_prompt',
                    'message_buffer_seconds', 'inject_agent_id', 'inject_datetime',
-                   'send_intermediate_responses', 'outbound_buffer_seconds', 'enable_agent_state', 'workspace',
+                   'send_intermediate_responses', 'outbound_buffer_seconds', 'message_wrapper_enabled', 'enable_agent_state', 'workspace',
                    'enabled', 'is_super', 'sandbox_enabled', 'safety_checker_enabled', 'primary_channel_id',
                    'avatar_path', 'disable_parallel_tool_execution', 'disable_turn_prefetch',
                    'agent_messaging_enabled', 'workplace_id',

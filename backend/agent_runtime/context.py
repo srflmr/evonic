@@ -235,6 +235,23 @@ def _build_static_prompt(agent: Dict[str, Any]) -> str:
                 parts.append("- Update immediately when the user communicates a new preference")
                 parts.append("- Prioritize notes.md over `remember` for non-factual preference information")
 
+    # Message Wrapper Protocol
+    parts.append("")
+    parts.append("## Message Wrapper Protocol")
+    parts.append(
+        "After EVERY user message, before your main response, you MUST:"
+    )
+    parts.append(
+        "1. Scan the message for any new preference, instruction, rule, or personal fact."
+    )
+    parts.append(
+        "2. If found: store it immediately via remember() (factual data), "
+        "update notes.md (tastes/preferences/style), or update SYSTEM.md (critical rules)."
+    )
+    parts.append(
+        "3. This applies to BOTH explicit and implicit cues. Even casual mentions count."
+    )
+
     # List available skills with SYSTEM.md so the agent knows what it can load
     skills_mgr = SkillsManager()
     _allowed_skills = None if agent.get('is_super') else set(db.get_agent_skills(eid))
