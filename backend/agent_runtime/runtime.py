@@ -91,7 +91,7 @@ def _should_wrap_user_message(agent: dict) -> bool:
 def _apply_wrapper_prefix(messages: list, enabled: bool) -> None:
     """Apply message wrapper prefix to user messages in-place.
 
-    Wraps: (a) the LAST (current) user message always,
+    Wraps: (a) the LAST (current) user message when it has >= 4 words,
            (b) historical messages explicitly marked with _wrapped=True.
     Cleans up the _wrapped key after use.
     """
@@ -102,6 +102,12 @@ def _apply_wrapper_prefix(messages: list, enabled: bool) -> None:
             _wrapped = msg.pop('_wrapped', None)
             is_current = (i == len(messages) - 1)
             if is_current or _wrapped:
+                # Skip wrapper injection for short current-turn messages
+                # (fewer than 4 words).  Messages like "ok", "thanks", "yes"
+                # contain no implicit preferences worth scanning for, so the
+                # wrapper would waste tokens.
+                if is_current and len(msg['content'].split()) < 4:
+                    continue
                 msg['content'] = WRAPPER_PREFIX + msg['content']
 
 
