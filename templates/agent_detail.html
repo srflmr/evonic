@@ -3466,7 +3466,7 @@ async function refreshSessionState() {
             headerHtml += `<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${modeColor}">${esc(stateData.mode)}</span> `;
         }
         if (stateData.plan_file) {
-            headerHtml += `<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300 ml-1">📋 ${esc(stateData.plan_file)}</span> `;
+            headerHtml += `<button class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300 ml-1 cursor-pointer hover:underline hover:bg-purple-200 dark:hover:bg-purple-800 transition-colors border-0" onclick="openPlanModal('${esc(stateData.plan_file)}')" title="Click to edit plan">📋 ${esc(stateData.plan_file)}</button> `;
         }
         if (stateData.tasks && stateData.tasks.length > 0) {
             const icons = {pending: '\u2610', in_progress: '\u27f3', done: '\u2713'};
@@ -4420,4 +4420,177 @@ $(function () {
     showTab(window._tabInitHash || 'chat');
 });
 </script>
+
+<!-- ==================== Plan File Editor Modal ==================== -->
+<script>
+let _planEditorFetchedFor = null;
+let _planEditorOriginal = null;
+
+function openPlanModal(planFile) {
+    const backdrop = document.getElementById('plan-editor-backdrop');
+    const modal = document.getElementById('plan-editor-modal');
+    const title = document.getElementById('plan-editor-title');
+    const textarea = document.getElementById('plan-editor-textarea');
+    const saveBtn = document.getElementById('plan-editor-save-btn');
+    const cancelBtn = document.getElementById('plan-editor-cancel-btn');
+
+    // Show modal immediately with loading state
+    backdrop.classList.remove('hidden');
+    modal.classList.remove('hidden');
+    title.textContent = '📋 ' + (planFile || 'Plan File');
+    textarea.value = '';
+    textarea.disabled = true;
+    textarea.classList.add('opacity-50');
+    saveBtn.disabled = true;
+    saveBtn.classList.add('opacity-50');
+
+    // Focus the textarea after transition
+    setTimeout(function() { textarea.focus(); }, 100);
+
+    // Fetch plan file content from API (cache per file to avoid re-fetch)
+    if (_planEditorFetchedFor === planFile) {
+        textarea.value = _planEditorOriginal || '';
+        textarea.disabled = false;
+        textarea.classList.remove('opacity-50');
+        saveBtn.disabled = false;
+        saveBtn.classList.remove('opacity-50');
+        return;
+    }
+
+    var sid = _chatSessionId ? '&session_id=' + encodeURIComponent(_chatSessionId) : '';
+    var url = '/api/agents/' + encodeURIComponent(AGENT_ID) + '/plan-file?session_id=' + encodeURIComponent(_chatSessionId);
+    fetch(url)
+        .then(function(res) {
+            if (!res.ok) throw new Error('Failed to load plan file');
+            return res.json();
+        })
+        .then(function(data) {
+            if (!data.content) {
+                textarea.value = '';
+                textarea.placeholder = 'Plan file is empty. Start typing...';
+            } else {
+                textarea.value = data.content;
+            }
+            _planEditorFetchedFor = planFile;
+            _planEditorOriginal = data.content || '';
+            textarea.disabled = false;
+            textarea.classList.remove('opacity-50');
+            saveBtn.disabled = false;
+            saveBtn.classList.remove('opacity-50');
+            textarea.focus();
+        })
+        .catch(function(err) {
+            textarea.value = '';
+            textarea.placeholder = '⚠️ Failed to load plan file: ' + (err.message || 'Unknown error');
+            _planEditorFetchedFor = null;
+            _planEditorOriginal = null;
+        });
+}
+
+function closePlanModal() {
+    document.getElementById('plan-editor-backdrop').classList.add('hidden');
+    document.getElementById('plan-editor-modal').classList.add('hidden');
+}
+
+function savePlanFile() {
+    var textarea = document.getElementById('plan-editor-textarea');
+    var saveBtn = document.getElementById('plan-editor-save-btn');
+    var newContent = textarea.value;
+
+    // Show saving state
+    var originalText = saveBtn.textContent;
+    saveBtn.textContent = 'Saving...';
+    saveBtn.disabled = true;
+
+    var url = '/api/agents/' + encodeURIComponent(AGENT_ID) + '/plan-file?session_id=' + encodeURIComponent(_chatSessionId);
+    fetch(url, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: newContent })
+    })
+        .then(function(res) {
+            if (!res.ok) return res.json().then(function(err) { throw new Error(err.error || 'Save failed'); });
+            return res.json();
+        })
+        .then(function() {
+            _planEditorOriginal = newContent;
+            saveBtn.textContent = '✓ Saved';
+            saveBtn.classList.add('bg-green-500', 'text-white');
+            saveBtn.classList.remove('bg-indigo-600', 'hover:bg-indigo-700');
+            setTimeout(function() {
+                saveBtn.textContent = 'Save';
+                saveBtn.disabled = false;
+                saveBtn.classList.remove('bg-green-500', 'text-white');
+                saveBtn.classList.add('bg-indigo-600', 'hover:bg-indigo-700');
+            }, 1500);
+            // Refresh session state to reflect changes
+            refreshSessionState();
+        })
+        .catch(function(err) {
+            saveBtn.textContent = originalText;
+            saveBtn.disabled = false;
+            alert('Failed to save plan: ' + (err.message || 'Unknown error'));
+        });
+}
+
+// Click-outside on backdrop closes modal
+document.getElementById('plan-editor-backdrop').addEventListener('click', function(e) {
+    if (e.target === this) closePlanModal();
+});
+
+// Escape key to close modal
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') {
+        var backdrop = document.getElementById('plan-editor-backdrop');
+        if (backdrop && !backdrop.classList.contains('hidden')) {
+            closePlanModal();
+        }
+    }
+});
+
+// Ctrl+S / Cmd+S to save
+document.addEventListener('keydown', function(e) {
+    if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+        var backdrop = document.getElementById('plan-editor-backdrop');
+        if (backdrop && !backdrop.classList.contains('hidden')) {
+            e.preventDefault();
+            savePlanFile();
+        }
+    }
+});
+</script>
+
+<!-- Plan File Editor Modal -->
+<div id="plan-editor-backdrop" class="hidden fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-[200]" role="presentation">
+    <div id="plan-editor-modal" class="hidden bg-white dark:bg-gray-800 rounded-xl shadow-2xl w-full max-w-3xl max-h-[90vh] flex flex-col overflow-hidden" role="dialog" aria-modal="true" aria-label="Plan file editor" onclick="event.stopPropagation()">
+        <!-- Header -->
+        <div class="flex items-center justify-between px-5 py-3 border-b border-gray-200 dark:border-gray-700 flex-shrink-0">
+            <h3 id="plan-editor-title" class="text-sm font-semibold text-gray-800 dark:text-gray-200 truncate">📋 Plan File</h3>
+            <button onclick="closePlanModal()" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700" aria-label="Close plan editor" title="Close (Esc)">
+                <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+            </button>
+        </div>
+        <!-- Editor Body -->
+        <div class="flex-1 overflow-hidden p-5">
+            <textarea id="plan-editor-textarea"
+                class="w-full h-full min-h-[350px] p-4 text-sm font-mono text-gray-800 dark:text-gray-200 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-600 rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:focus:ring-indigo-400 focus:border-transparent transition-colors"
+                placeholder="Loading plan..."
+                spellcheck="false"></textarea>
+        </div>
+        <!-- Footer -->
+        <div class="px-5 py-3 border-t border-gray-200 dark:border-gray-700 flex items-center justify-between flex-shrink-0">
+            <span class="text-xs text-gray-400">Ctrl+S to save</span>
+            <div class="flex gap-2">
+                <button onclick="closePlanModal()" id="plan-editor-cancel-btn"
+                    class="px-4 py-1.5 text-xs font-medium text-gray-600 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-lg transition-colors">
+                    Cancel
+                </button>
+                <button onclick="savePlanFile()" id="plan-editor-save-btn"
+                    class="px-4 py-1.5 text-xs font-medium text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 rounded-lg transition-colors">
+                    Save
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
 {% endblock %}

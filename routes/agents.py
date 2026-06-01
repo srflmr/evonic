@@ -1362,6 +1362,78 @@ def api_agent_plan_file(agent_id):
     return jsonify({'plan_file': plan_file, 'content': content})
 
 
+@agents_bp.route('/api/agents/<agent_id>/plan-file', methods=['PUT'])
+def api_agent_plan_file_update(agent_id):
+    """Save edited plan file content back to disk.
+
+    Reads plan_file path from session state (query param ?session_id=)
+    and writes the provided content to the file on disk.
+    """
+    import json as _json
+    import os as _os
+
+    session_id = request.args.get('session_id', '').strip()
+    if not session_id:
+        return jsonify({'error': 'session_id required'}), 400
+
+    data = request.get_json(silent=True) or {}
+    new_content = data.get('content')
+    if new_content is None:
+        return jsonify({'error': 'content field is required'}), 400
+
+    session_content = db.get_session_state(session_id, agent_id=agent_id)
+    session_data = _json.loads(session_content) if session_content else {}
+    plan_file = session_data.get('plan_file')
+
+    if not plan_file:
+        return jsonify({'error': 'No plan file set', 'plan_file': None}), 404
+
+    # Resolve the file path (same logic as _read_plan_file)
+    project_root = _os.path.join(_os.path.dirname(__file__), '..')
+    project_root = _os.path.realpath(project_root)
+
+    candidates = []
+    agents_dir = _os.path.join(project_root, 'agents')
+    agent_plan = _os.path.normpath(
+        _os.path.join(agents_dir, agent_id, plan_file)
+    )
+    agent_root = _os.path.realpath(_os.path.join(agents_dir, agent_id))
+    if _os.path.realpath(agent_plan).startswith(agent_root + _os.sep):
+        candidates.append(agent_plan)
+
+    legacy_path = _os.path.normpath(_os.path.join(project_root, plan_file))
+    if legacy_path.startswith(project_root):
+        candidates.append(legacy_path)
+
+    if not candidates:
+        return jsonify({'error': 'Plan file path rejected: outside allowed directories'}), 403
+
+    # Write to the first existing candidate, or the first one if none exist
+    written = False
+    last_error = None
+    for path in candidates:
+        try:
+            # Create parent directories if needed
+            parent = _os.path.dirname(path)
+            if parent:
+                _os.makedirs(parent, exist_ok=True)
+            # Write only text content (not full Markdown/HTML rendered version)
+            # Ensure content is a plain string
+            text_content = str(new_content) if not isinstance(new_content, str) else new_content
+            with open(path, 'w', encoding='utf-8') as f:
+                f.write(text_content)
+            written = True
+            break
+        except Exception as e:
+            last_error = str(e)
+            # Try next candidate
+
+    if not written:
+        return jsonify({'error': f'Failed to write plan file: {last_error}'}), 500
+
+    return jsonify({'success': True, 'plan_file': plan_file})
+
+
 @agents_bp.route('/api/agents/<agent_id>/chat/clear', methods=['POST'])
 def api_chat_clear(agent_id):
     agent = db.get_agent(agent_id)
