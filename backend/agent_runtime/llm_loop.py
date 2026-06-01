@@ -259,7 +259,10 @@ def run_tool_loop(agent: Dict[str, Any],
     agent_model_config = None
     _active_fallback_model_name = None  # for system message injection
 
-    # Step 1: Check agent_state for persisted fallback model (cross-session)
+    # Step 1: Check agent_state for persisted fallback model (cross-session).
+    # If a fallback was persisted from a prior session, PROBE the primary model
+    # first.  If it recovered, clear the flag and use it.  Otherwise fall through
+    # to the persisted fallback.  Self-healing -- no config, no manual intervention.
     try:
         _as_raw = db.get_agent_state(agent_id)
         _as = json.loads(_as_raw) if _as_raw else {}
@@ -267,18 +270,65 @@ def run_tool_loop(agent: Dict[str, Any],
         if _fb_id:
             _fb_model = db.get_model_by_id(_fb_id)
             if _fb_model and _fb_model.get('enabled', True):
-                agent_model_config = _build_model_config(_fb_model)
-                _active_fallback_model_name = _fb_model.get('name') or _fb_model.get('model_name')
-                _logger.info(
-                    "%s using persisted fallback model: %s (%s) [id=%s]",
-                    agent_id, _fb_model.get('name'), _fb_model.get('model_name'), _fb_id)
+                # Resolve the primary model config so we can probe it
+                _primary_config = None
+                try:
+                    _pm = db.get_agent_default_model(agent_id)
+                    if _pm:
+                        _primary_config = _build_model_config(_pm)
+                    elif agent.get('model'):
+                        # agent.model string fallback (same as Step 3 below)
+                        _dm = db.get_default_model()
+                        _primary_config = {
+                            'base_url': _dm.get('base_url') if _dm else None,
+                            'api_key': _dm.get('api_key') if _dm else None,
+                            'model_name': agent['model'],
+                            'timeout': _dm.get('timeout') if _dm else None,
+                            'thinking': False, 'thinking_budget': 0,
+                        }
+                except Exception:
+                    pass
+
+                _primary_ok = False
+                if _primary_config:
+                    try:
+                        _probe_llm = LLMClient(model_config=_primary_config)
+                        with llm_lock:
+                            _probe = _probe_llm.chat_completion(
+                                messages=[{'role': 'user', 'content': 'Ping'}],
+                                tools=None, temperature=0.0,
+                                enable_thinking=False, max_tokens=10,
+                            )
+                        if _probe.get('success'):
+                            # Primary is healthy -- clear flag, use primary
+                            _primary_ok = True
+                            _as.pop('active_fallback_model_id', None)
+                            db.upsert_agent_state(
+                                json.dumps(_as), agent_id=agent_id)
+                            agent_model_config = _primary_config
+                            _logger.info(
+                                "%s primary model recovered -- cleared fallback flag",
+                                agent_id)
+                    except Exception:
+                        pass
+
+                if not _primary_ok:
+                    # Primary still failing -- use persisted fallback
+                    agent_model_config = _build_model_config(_fb_model)
+                    _active_fallback_model_name = (
+                        _fb_model.get('name') or _fb_model.get('model_name'))
+                    _logger.info(
+                        "%s using persisted fallback model: %s (%s) [id=%s]",
+                        agent_id, _fb_model.get('name'),
+                        _fb_model.get('model_name'), _fb_id)
             else:
                 # Fallback model is invalid (deleted/disabled) — clear flag, use default
                 _logger.warning(
                     "Persisted fallback model %s for agent %s is invalid — clearing",
                     _fb_id, agent_id)
                 _as.pop('active_fallback_model_id', None)
-                db.upsert_agent_state(json.dumps(_as), agent_id=agent_id)
+                db.upsert_agent_state(
+                    json.dumps(_as), agent_id=agent_id)
     except Exception as e:
         _logger.warning("Failed to read agent_state for fallback check: %s", e)
 
@@ -664,6 +714,24 @@ def run_tool_loop(agent: Dict[str, Any],
                 })
                 continue
 
+            # llm_error / unknown_error get zero retries inside the LLM client
+            # (non-transient classification).  But providers occasionally return
+            # atypical error codes that the client misclassifies.  One server-side
+            # retry with a 2-second pause catches these false negatives without
+            # adding meaningful latency to genuinely terminal errors.
+            if error_type in ('llm_error', 'unknown_error') and timeout_retries < 1:
+                timeout_retries += 1
+                _logger.warning(
+                    "%s -- single retry for llm/unknown error before fallback", error_type)
+                event_stream.emit('llm_retry', {
+                    'agent_id': agent_id, 'session_id': session_id,
+                    'external_user_id': external_user_id, 'channel_id': channel_id,
+                    'retry_count': timeout_retries, 'max_retries': 1,
+                    'error_type': error_type,
+                })
+                time.sleep(2)
+                continue
+
             _resp_val = result.get('response', 'Unknown error')
             if isinstance(_resp_val, dict):
                 _resp_val = _resp_val.get('error') or str(_resp_val)
@@ -675,7 +743,6 @@ def run_tool_loop(agent: Dict[str, Any],
             _is_context_exceeded = (
                 'context length' in _err_lower or 'context size' in _err_lower
                 or 'exceed_context' in _err_lower or 'exceeds the available context' in _err_lower
-                or 'too long' in _err_lower
             )
             if _is_context_exceeded and not _compaction_attempted:
                 _compaction_attempted = True
@@ -704,7 +771,28 @@ def run_tool_loop(agent: Dict[str, Any],
                         'user_message': 'Summary complete, resuming...',
                     })
                     continue
-                # Compaction failed — fall through to error
+                # Compaction failed — try a simple truncation as a
+                # last-ditch attempt.  Keep system messages + last N
+                # conversation messages.  Better than losing the entire
+                # session context.
+                _sys_msgs = [m for m in messages if m.get('role') == 'system']
+                _conv_msgs = [m for m in messages if m.get('role') != 'system']
+                _keep_n = 6
+                if len(_conv_msgs) > _keep_n:
+                    _truncated = _sys_msgs + _conv_msgs[-_keep_n:]
+                    _trunc_note = (
+                        "[SYSTEM] The conversation was truncated because it grew "
+                        "too large for the model's context window.  The most recent "
+                        "messages have been preserved.  Please continue."
+                    )
+                    _truncated.append({'role': 'system', 'content': _trunc_note})
+                    messages[:] = _truncated
+                    _logger.warning(
+                        "Emergency dumb-truncation applied for session %s: "
+                        "%d -> %d messages", session_id,
+                        len(_sys_msgs) + len(_conv_msgs), len(_truncated))
+                    continue
+                # Dumb truncation was a no-op (too few messages) — fall through
 
             # ── Per-agent model fallback ──────────────────────────────────
             # After all retries to the primary model fail, attempt the

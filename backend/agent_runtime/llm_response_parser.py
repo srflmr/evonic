@@ -39,7 +39,7 @@ def _humanize_llm_error(raw: str) -> str:
         return "API rate limit reached. Please wait a moment and try again."
     if 'unauthorized' in text or 'invalid api key' in text or re.search(r'\b401\b', text):
         return "API authentication failed. Check your API key configuration."
-    if ('context length' in text or 'max_tokens' in text or 'too long' in text
+    if ('context length' in text or 'max_tokens' in text
             or 'context size' in text or 'exceed_context' in text or 'exceeds the available context' in text):
         return "Conversation is too long for this model. Try starting a new session (/new)."
 
