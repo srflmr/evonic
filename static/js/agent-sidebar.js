@@ -150,7 +150,155 @@ function hideTooltip() {
     }
 }
 
-/** Subscribe to SSE for real-time busy state updates */
+/** Active bubble popup map: agentId -> { element, timer } */
+var _activeBubbles = {};
+
+/** Maximum characters to show in the bubble preview */
+var _BUBBLE_MAX_CHARS = 140;
+
+/** Auto-dismiss timeout in milliseconds */
+var _BUBBLE_TIMEOUT = 7000;
+
+/**
+ * Truncate text to a maximum length at a word boundary.
+ * Returns the truncated text with ellipsis if shortened.
+ */
+function _truncatePreview(text, maxLen) {
+    if (!text) return '';
+    text = text.trim();
+    if (text.length <= maxLen) return text;
+
+    // Try to break at the last space within the limit
+    var truncated = text.substring(0, maxLen);
+    var lastSpace = truncated.lastIndexOf(' ');
+    if (lastSpace > maxLen * 0.6) {
+        truncated = truncated.substring(0, lastSpace);
+    }
+    // Remove trailing punctuation before ellipsis
+    truncated = truncated.replace(/[,;:.!?\\-]+$/, '');
+    return truncated + '…';
+}
+
+/**
+ * Dismiss a bubble popup for the given agent ID.
+ * If no agentId is given, dismiss all bubbles.
+ */
+function dismissBubble(agentId) {
+    if (agentId) {
+        var entry = _activeBubbles[agentId];
+        if (entry) {
+            clearTimeout(entry.timer);
+            entry.element.remove();
+            delete _activeBubbles[agentId];
+        }
+    } else {
+        Object.keys(_activeBubbles).forEach(function (id) {
+            dismissBubble(id);
+        });
+    }
+}
+
+/**
+ * Show a bubble popup next to an agent's avatar in the sidebar.
+ * The bubble displays a truncated preview of the agent's final response.
+ * Clicking the bubble navigates to the agent detail chat tab.
+ */
+function showBubblePopup(agentId, agentName, response) {
+    var avatar = document.querySelector(
+        '#agent-sidebar .agent-avatar[data-agent-id="' + CSS.escape(agentId) + '"]'
+    );
+    if (!avatar) return;
+
+    // Dismiss any existing bubble for this agent
+    dismissBubble(agentId);
+
+    var preview = _truncatePreview(response, _BUBBLE_MAX_CHARS);
+    if (!preview) return;
+
+    var bubble = document.createElement('div');
+    bubble.className = 'agent-bubble-popup';
+
+    // Arrow pointing left toward the avatar
+    var arrow = document.createElement('div');
+    arrow.className = 'agent-bubble-arrow';
+
+    // Header with agent name
+    var header = document.createElement('div');
+    header.className = 'agent-bubble-header';
+    header.textContent = agentName || agentId;
+
+    // Body with truncated response
+    var body = document.createElement('div');
+    body.className = 'agent-bubble-body';
+    body.textContent = preview;
+
+    // Close button
+    var closeBtn = document.createElement('button');
+    closeBtn.className = 'agent-bubble-close';
+    closeBtn.innerHTML = '×';
+    closeBtn.setAttribute('aria-label', 'Dismiss');
+    closeBtn.addEventListener('click', function (e) {
+        e.stopPropagation();
+        dismissBubble(agentId);
+    });
+
+    bubble.appendChild(arrow);
+    bubble.appendChild(header);
+    bubble.appendChild(body);
+    bubble.appendChild(closeBtn);
+
+    // Click on bubble (not on close button) navigates to agent chat
+    bubble.addEventListener('click', function (e) {
+        if (e.target === closeBtn) return;
+        dismissBubble(agentId);
+        window.location = '/agents/' + encodeURIComponent(agentId) + '#chat';
+    });
+
+    document.body.appendChild(bubble);
+
+    // Position the bubble to the right of the avatar
+    var avatarRect = avatar.getBoundingClientRect();
+    var bubbleLeft = avatarRect.right + 12;
+    var bubbleTop = avatarRect.top + avatarRect.height / 2 - 30;
+
+    // Keep within viewport
+    if (bubbleLeft + 280 > window.innerWidth - 12) {
+        bubbleLeft = avatarRect.left - 280 - 12;
+        bubble.classList.add('bubble-left');
+    }
+    if (bubbleTop < 8) bubbleTop = 8;
+    if (bubbleTop + 80 > window.innerHeight - 8) {
+        bubbleTop = window.innerHeight - 88;
+    }
+
+    bubble.style.left = bubbleLeft + 'px';
+    bubble.style.top = bubbleTop + 'px';
+
+    // Fade in
+    requestAnimationFrame(function () {
+        bubble.classList.add('bubble-visible');
+    });
+
+    // Auto-dismiss timer
+    var timer = setTimeout(function () {
+        dismissBubble(agentId);
+    }, _BUBBLE_TIMEOUT);
+
+    _activeBubbles[agentId] = { element: bubble, timer: timer };
+}
+
+/**
+ * Global click handler: dismiss any visible bubble when user clicks outside it.
+ */
+document.addEventListener('click', function (e) {
+    var clickedOnBubble = e.target.closest('.agent-bubble-popup');
+    var clickedOnAvatar = e.target.closest('#agent-sidebar .agent-avatar');
+    if (!clickedOnBubble && !clickedOnAvatar) {
+        dismissBubble();
+    }
+});
+
+/** Subscribe to SSE for real-time busy state updates and turn-complete notifications */
 function subscribeBusySSE() {
     try {
         var es = new EventSource('/api/agents/status/stream');
@@ -163,6 +311,12 @@ function subscribeBusySSE() {
                 if (avatar) {
                     avatar.setAttribute('data-busy', payload.busy ? 'true' : 'false');
                 }
+            } catch (_) {}
+        });
+        es.addEventListener('agent_turn_complete', function (e) {
+            try {
+                var payload = JSON.parse(e.data);
+                showBubblePopup(payload.agent_id, payload.agent_name, payload.response);
             } catch (_) {}
         });
         es.addEventListener('error', function () {

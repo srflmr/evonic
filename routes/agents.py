@@ -1833,47 +1833,66 @@ def api_agent_busy(agent_id):
 
 @agents_bp.route('/api/agents/status/stream', methods=['GET'])
 def api_agents_status_stream():
-    """SSE endpoint — pushes real-time agent busy/idle status changes.
-
-    Subscribes to the 'agent_busy_changed' event (emitted by AgentRuntime
-    when an agent starts or finishes an LLM turn) and forwards changes as
-    SSE events to every connected client.  No session filtering — the
-    browser-side JS decides which agent card to update.
+    """SSE endpoint — pushes real-time agent busy/idle status changes and
+    turn-complete notifications to every connected client. No session filtering —
+    the browser-side JS decides which agent to update.
 
     Events:
         event: agent_busy_changed
         data: {"agent_id": "...", "busy": true|false, "session_id": "..."}
+
+        event: agent_turn_complete
+        data: {"agent_id": "...", "agent_name": "...", "response": "..."}
     """
     import queue as _queue
     from backend.event_stream import event_stream
 
     q = _queue.Queue(maxsize=200)
 
-    def handler(data):
+    def busy_handler(data):
         try:
             payload = {
                 'agent_id': data.get('agent_id', ''),
                 'busy': data.get('busy', False),
                 'session_id': data.get('session_id', ''),
             }
-            q.put_nowait(payload)
+            q.put_nowait(('busy', payload))
         except _queue.Full:
             pass
 
-    event_stream.on('agent_busy_changed', handler)
+    def turn_handler(data):
+        try:
+            response = data.get('response', '')
+            if not response or data.get('is_error'):
+                return
+            payload = {
+                'agent_id': data.get('agent_id', ''),
+                'agent_name': data.get('agent_name', ''),
+                'response': response,
+                'session_id': data.get('session_id', ''),
+            }
+            q.put_nowait(('turn', payload))
+        except _queue.Full:
+            pass
+
+    event_stream.on('agent_busy_changed', busy_handler)
+    event_stream.on('turn_complete', turn_handler)
 
     def generate():
         try:
             while True:
                 try:
-                    payload = q.get(timeout=30)
+                    kind, payload = q.get(timeout=30)
                 except _queue.Empty:
-                    # Heartbeat to keep the connection alive through proxies
                     yield 'event: heartbeat\ndata: {}\n\n'
                     continue
-                yield f'event: agent_busy_changed\ndata: {json.dumps(payload)}\n\n'
+                if kind == 'busy':
+                    yield f'event: agent_busy_changed\ndata: {json.dumps(payload)}\n\n'
+                elif kind == 'turn':
+                    yield f'event: agent_turn_complete\ndata: {json.dumps(payload)}\n\n'
         finally:
-            event_stream.off('agent_busy_changed', handler)
+            event_stream.off('agent_busy_changed', busy_handler)
+            event_stream.off('turn_complete', turn_handler)
 
     return Response(
         stream_with_context(generate()),

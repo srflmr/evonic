@@ -217,3 +217,101 @@ html.dark .sidebar-toggle-btn:hover {
 }
 
 /* ── Responsive: no special mobile rules; collapse is handled via JS + localStorage ── */
+
+/* ── Bubble Popup (turn-complete notification) ── */
+.agent-bubble-popup {
+    position: fixed;
+    z-index: 10000;
+    background: var(--sidebar-tooltip-bg);
+    color: var(--sidebar-text);
+    border: 1px solid var(--sidebar-tooltip-border);
+    border-radius: 12px;
+    padding: 0;
+    width: 260px;
+    max-width: calc(100vw - 100px);
+    box-shadow: 0 6px 24px var(--sidebar-tooltip-shadow);
+    opacity: 0;
+    transform: translateY(6px);
+    transition: opacity 0.25s ease, transform 0.25s ease;
+    cursor: pointer;
+    overflow: hidden;
+    user-select: none;
+}
+
+.agent-bubble-popup.bubble-visible {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+.agent-bubble-popup .agent-bubble-arrow {
+    position: absolute;
+    left: -6px;
+    top: 24px;
+    width: 12px;
+    height: 12px;
+    background: var(--sidebar-tooltip-bg);
+    border-left: 1px solid var(--sidebar-tooltip-border);
+    border-bottom: 1px solid var(--sidebar-tooltip-border);
+    transform: rotate(45deg);
+}
+
+.agent-bubble-popup.bubble-left .agent-bubble-arrow {
+    left: auto;
+    right: -6px;
+    border-left: none;
+    border-bottom: none;
+    border-right: 1px solid var(--sidebar-tooltip-border);
+    border-top: 1px solid var(--sidebar-tooltip-border);
+    transform: rotate(45deg);
+}
+
+.agent-bubble-popup .agent-bubble-header {
+    padding: 10px 34px 6px 14px;
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--text-heading, #1e293b);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+html.dark .agent-bubble-popup .agent-bubble-header {
+    color: #e2e8f0;
+}
+
+.agent-bubble-popup .agent-bubble-body {
+    padding: 0 14px 12px 14px;
+    font-size: 13px;
+    line-height: 1.45;
+    color: var(--sidebar-text-muted);
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    word-break: break-word;
+}
+
+.agent-bubble-popup .agent-bubble-close {
+    position: absolute;
+    top: 6px;
+    right: 8px;
+    width: 24px;
+    height: 24px;
+    border: none;
+    background: transparent;
+    color: var(--sidebar-text-muted);
+    font-size: 20px;
+    line-height: 1;
+    cursor: pointer;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    transition: background 0.15s ease, color 0.15s ease;
+}
+
+.agent-bubble-popup .agent-bubble-close:hover {
+    background: var(--sidebar-hover);
+    color: var(--sidebar-text);
+}
