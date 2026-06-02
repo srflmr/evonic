@@ -288,6 +288,17 @@ def _build_static_prompt(agent: Dict[str, Any]) -> str:
             for brief in skill_briefs:
                 parts.append(f"\n{brief}")
 
+    # Skill cleanup rule: remind agents to unload unused lazy-loaded skills.
+    # This is a platform-level instruction injected into all agents by default,
+    # so users don't have to manually add it to SYSTEM.md.
+    parts.append("\n## Skill Cleanup Rule")
+    parts.append(
+        "After completing a task that required loading a lazy-loaded skill, "
+        "immediately review loaded skills and unload any that are no longer "
+        "needed. Do not keep unused skills in context; they waste tokens by "
+        "adding stale tool definitions."
+    )
+
     # Inform all agents about /_self/ access to their local config directory
     parts.append("\n## Agent Home Directory")
     parts.append(
