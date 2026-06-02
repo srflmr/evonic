@@ -2876,6 +2876,7 @@ async function restoreActiveReasoning() {
               onFinalResponse: (content) => {
                   if (_currentTurn) _currentTurn._finalRendered = true;
                   chatUI.appendMessage('assistant', content, { metadata: {} });
+                  chatUI.scrollToBottom();
               }
             }
         );
@@ -3114,6 +3115,7 @@ async function sendChat() {
                 onFinalResponse: (content) => {
                     if (_currentTurn) _currentTurn._finalRendered = true;
                     chatUI.appendMessage('assistant', content, { metadata: {} });
+                    chatUI.scrollToBottom();
                 },
             }
         );
@@ -4561,8 +4563,8 @@ document.addEventListener('keydown', function(e) {
 </script>
 
 <!-- Plan File Editor Modal -->
-<div id="plan-editor-backdrop" class="hidden fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-[200]" role="presentation">
-    <div id="plan-editor-modal" class="hidden bg-white dark:bg-gray-800 rounded-xl shadow-2xl w-full max-w-3xl max-h-[90vh] flex flex-col overflow-hidden" role="dialog" aria-modal="true" aria-label="Plan file editor" onclick="event.stopPropagation()">
+<div id="plan-editor-backdrop" class="hidden fixed inset-0 bg-black/50 flex items-start justify-center p-4 z-[200]" role="presentation">
+    <div id="plan-editor-modal" class="hidden bg-white dark:bg-gray-800 rounded-xl shadow-2xl w-full max-w-3xl h-[calc(100vh-2rem)] flex flex-col overflow-hidden" role="dialog" aria-modal="true" aria-label="Plan file editor" onclick="event.stopPropagation()">
         <!-- Header -->
         <div class="flex items-center justify-between px-5 py-3 border-b border-gray-200 dark:border-gray-700 flex-shrink-0">
             <h3 id="plan-editor-title" class="text-sm font-semibold text-gray-800 dark:text-gray-200 truncate">📋 Plan File</h3>
