@@ -4536,28 +4536,23 @@ function savePlanFile() {
 }
 
 // Click-outside on backdrop closes modal
-document.getElementById('plan-editor-backdrop').addEventListener('click', function(e) {
-    if (e.target === this) closePlanModal();
+document.addEventListener('DOMContentLoaded', function() {
+    var backdrop = document.getElementById('plan-editor-backdrop');
+    if (!backdrop) return;
+    backdrop.addEventListener('click', function(e) {
+        if (e.target === backdrop) closePlanModal();
+    });
 });
 
-// Escape key to close modal
+// Escape to close, Ctrl+S / Cmd+S to save
 document.addEventListener('keydown', function(e) {
+    var backdrop = document.getElementById('plan-editor-backdrop');
+    if (!backdrop || backdrop.classList.contains('hidden')) return;
     if (e.key === 'Escape') {
-        var backdrop = document.getElementById('plan-editor-backdrop');
-        if (backdrop && !backdrop.classList.contains('hidden')) {
-            closePlanModal();
-        }
-    }
-});
-
-// Ctrl+S / Cmd+S to save
-document.addEventListener('keydown', function(e) {
-    if ((e.ctrlKey || e.metaKey) && e.key === 's') {
-        var backdrop = document.getElementById('plan-editor-backdrop');
-        if (backdrop && !backdrop.classList.contains('hidden')) {
-            e.preventDefault();
-            savePlanFile();
-        }
+        closePlanModal();
+    } else if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+        e.preventDefault();
+        savePlanFile();
     }
 });
 </script>
