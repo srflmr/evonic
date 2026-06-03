@@ -29,6 +29,22 @@ def execute(agent: dict, args: dict) -> dict:
     if action_type in ('static_message', 'agent_message', 'session_prompt') and 'agent_id' not in action_config:
         action_config['agent_id'] = agent_id
 
+    # Resolve and embed routing info (channel_id, external_user_id) at creation
+    # time so scheduled messages can be delivered directly without fragile
+    # reverse-engineering via get_latest_human_session at fire time.
+    if action_type in ('static_message', 'agent_message', 'session_prompt'):
+        if 'channel_id' not in action_config or 'external_user_id' not in action_config:
+            try:
+                from models.db import db as main_db
+                human_session = main_db.get_latest_human_session(agent_id)
+                if human_session:
+                    if 'channel_id' not in action_config:
+                        action_config['channel_id'] = human_session.get('channel_id')
+                    if 'external_user_id' not in action_config:
+                        action_config['external_user_id'] = human_session.get('external_user_id')
+            except Exception:
+                pass  # Non-fatal — routing will be resolved at fire time
+
     # Check for bare (no timezone) run_date in date triggers before calling scheduler
     _warning = None
     if args.get('trigger_type') == 'date':

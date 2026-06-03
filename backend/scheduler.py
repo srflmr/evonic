@@ -430,7 +430,9 @@ class Scheduler:
             main_db.add_chat_message(
                 session_id, 'assistant', message, agent_id=agent_id)
 
-            # Push via channel (Telegram, etc.) so the user sees it immediately
+            # Push via channel (Telegram, etc.) so the user sees it immediately.
+            # Only return on successful delivery — if the channel is down or
+            # send_message raises, fall through to handle_message as safety net.
             instance = channel_manager._active.get(channel_id)
             if instance and instance.is_running:
                 try:
@@ -439,12 +441,19 @@ class Scheduler:
                         "Delivered static_message directly: agent=%s user=%s "
                         "session=%s", agent_id, external_user_id, session_id,
                     )
+                    return  # Success — delivered, nothing more to do
                 except Exception as e:
                     log.error(
-                        "Failed to send static_message via channel %s: %s",
+                        "Failed to send static_message via channel %s: %s; "
+                        "falling through to handle_message",
                         channel_id, e,
                     )
-            return
+            else:
+                log.warning(
+                    "Channel %s not available/running for static_message; "
+                    "falling through to handle_message",
+                    channel_id,
+                )
 
         # Fallback: no real user/channel resolved — use the old LLM path.
         # The agent will process the message in a __scheduler__ session, but
