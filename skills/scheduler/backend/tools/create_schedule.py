@@ -29,6 +29,18 @@ def execute(agent: dict, args: dict) -> dict:
     if action_type in ('static_message', 'agent_message', 'session_prompt') and 'agent_id' not in action_config:
         action_config['agent_id'] = agent_id
 
+    # Check for bare (no timezone) run_date in date triggers before calling scheduler
+    _warning = None
+    if args.get('trigger_type') == 'date':
+        run_date = trigger_config.get('run_date', '')
+        if run_date and isinstance(run_date, str):
+            try:
+                from datetime import datetime
+                if datetime.fromisoformat(run_date).tzinfo is None:
+                    _warning = "run_date has no timezone info — treated as local time (WIB/UTC+7)"
+            except (ValueError, TypeError):
+                pass  # Malformed — let scheduler.create_schedule handle errors
+
     try:
         result = scheduler.create_schedule(
             name=args['name'],
@@ -40,12 +52,15 @@ def execute(agent: dict, args: dict) -> dict:
             action_config=action_config,
             max_runs=args.get('max_runs'),
         )
-        return {
+        response = {
             'status': 'success',
             'schedule_id': result['id'],
             'name': result['name'],
             'trigger_type': result['trigger_type'],
             'enabled': bool(result['enabled']),
         }
+        if _warning:
+            response['_warning'] = _warning
+        return response
     except Exception as e:
         return {'status': 'error', 'error': str(e)}
