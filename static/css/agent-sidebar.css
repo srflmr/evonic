@@ -216,7 +216,12 @@ html.dark .sidebar-toggle-btn:hover {
     transform: rotate(180deg);
 }
 
-/* ── Responsive: no special mobile rules; collapse is handled via JS + localStorage ── */
+/* ── Responsive: mobile (below lg breakpoint) ── */
+@media (max-width: 1023px) {
+    #agent-sidebar {
+        height: auto;
+    }
+}
 
 /* ── Bubble Popup (turn-complete notification) ── */
 .agent-bubble-popup {
