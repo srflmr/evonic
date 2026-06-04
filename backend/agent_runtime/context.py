@@ -371,6 +371,20 @@ def _build_static_prompt(agent: Dict[str, Any]) -> str:
             "— installed packages and written files survive between tool invocations."
         )
 
+    # List available agent variables (names only, never values) so the LLM
+    # knows to reference $VAR_NAME in bash/runpy instead of literal secrets.
+    agent_vars = db.get_agent_variables(eid)
+    if agent_vars:
+        parts.append("\n## Environment Variables")
+        parts.append(
+            "The following variables are automatically available as environment variables "
+            "in `bash` and `runpy` tools. Use `$VAR_NAME` in bash or `os.environ['VAR_NAME']` "
+            "in Python. NEVER output literal values of secret variables — they are injected automatically."
+        )
+        for var in agent_vars:
+            label = " (secret)" if var.get('is_secret') else ""
+            parts.append(f"- `${var['key']}`{label}")
+
     return "\n".join(parts) if parts else "You are a helpful assistant."
 
 
@@ -406,6 +420,12 @@ def _cache_key_valid(agent: Dict[str, Any], cache_entry: Dict[str, Any]) -> bool
     if agent.get('sandbox_enabled', 0) != cache_entry.get('sandbox_enabled', 0):
         return False
 
+    # Check agent variables hash (adding/removing/changing variables must invalidate)
+    current_vars = db.get_agent_variables(eid)
+    vars_key = str(sorted((v['key'], v.get('is_secret', False)) for v in current_vars))
+    if hashlib.sha256(vars_key.encode()).hexdigest() != cache_entry.get('vars_hash', ''):
+        return False
+
     return True
 
 
@@ -434,6 +454,11 @@ def build_system_prompt(agent: Dict[str, Any]) -> str:
 
         assigned_ids = frozenset(db.get_agent_tools(eid))
 
+        # Compute variables hash for cache invalidation
+        current_vars = db.get_agent_variables(eid)
+        vars_key = str(sorted((v['key'], v.get('is_secret', False)) for v in current_vars))
+        vars_hash = hashlib.sha256(vars_key.encode()).hexdigest()
+
         _system_prompt_cache[aid] = {
             'static_prompt': static_prompt,
             'sp_mtime': _get_mtime(sp_path),
@@ -442,6 +467,7 @@ def build_system_prompt(agent: Dict[str, Any]) -> str:
             'tools_hash': str(sorted(assigned_ids)),
             'ctx_mtime': _get_mtime(__file__),
             'sandbox_enabled': agent.get('sandbox_enabled', 0),
+            'vars_hash': vars_hash,
         }
 
     prompt = static_prompt

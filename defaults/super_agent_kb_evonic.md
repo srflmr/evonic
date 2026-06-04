@@ -204,6 +204,8 @@ Every agent is configured through a set of properties stored in the `agents` dat
 
 Agents can have **key-value variables** stored in `agent_variables`. These are used by tools and skills for configuration (e.g., SSH credentials, API keys). Variables can be marked as `is_secret` to prevent them from appearing in logs.
 
+All agent variables are automatically injected as environment variables when `bash` and `runpy` tools execute. Agents should reference them using `$VAR_NAME` in bash or `os.environ['VAR_NAME']` in Python — never output literal secret values.
+
 ### Agent-Tool & Agent-Skill Assignment
 
 - **Tools**: assigned via the `agent_tools` table. The `assign_tools` function replaces an agent's entire tool set.

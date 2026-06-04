@@ -93,6 +93,17 @@ def execute(agent_context: dict, args: dict) -> dict:
     env = args.get('env') or {}
     if not isinstance(env, dict):
         return {'error': "'env' must be an object (dict) of string key-value pairs."}
+
+    # Auto-inject agent variables as environment variables (base layer).
+    # LLM-specified env takes priority over agent variables.
+    agent_vars = (agent_context or {}).get('variables') or {}
+    if agent_vars:
+        import re
+        _valid_key = re.compile(r'^[A-Za-z_][A-Za-z0-9_]*$')
+        base = {k: str(v) for k, v in agent_vars.items() if _valid_key.match(k)}
+        base.update(env)
+        env = base
+
     env, err = validate_env_keys(env)
     if err:
         return {'error': err}
