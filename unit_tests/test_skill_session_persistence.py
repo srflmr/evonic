@@ -126,6 +126,7 @@ def rt():
 
         _db.get_setting.side_effect = lambda key, default=None: default or '0'
         _db.add_chat_message.return_value = None
+        _db.get_agent_model.return_value = None  # no agent model → use mocked llm_client
         _db.get_agent_default_model.return_value = None  # no custom model → use llm_client mock
         _tr.get_builtin_tools.return_value = []
         _tr.get_all_tool_defs.return_value = []

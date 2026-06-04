@@ -385,7 +385,9 @@ def _builtin_read_factory(agent_context: dict):
         # LLM naturally passes /_self/kb/notes.md here.  Handle it like the other
         # file tools (read_file, write_file, etc.) do.
         from backend.tools._workspace import is_self_path, resolve_self_path
-        _agent_id = agent_context.get('id', '')
+        # Sub-agents inherit their parent's directory — use effective agent ID.
+        _agent_id = (agent_context.get("parent_id") if agent_context.get("is_subagent")
+                     else agent_context.get("id", ""))
         if _agent_id and is_self_path(filename):
             resolved = resolve_self_path(_agent_id, filename)
             if not resolved:

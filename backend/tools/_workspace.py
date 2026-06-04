@@ -11,6 +11,19 @@ _SHARED_AGENTS_DIR = os.path.join(_BASE_DIR, 'shared', 'agents')
 _SELF_PREFIX = '/_self/'
 
 
+def effective_agent_id(agent: dict) -> str:
+    """Return the effective agent ID for /_self/ path resolution.
+
+    Sub-agents don't have their own directory under agents/ — they inherit
+    their parent's SYSTEM.md, KB files, tool assignments, and skill
+    assignments.  This mirrors context.py:_effective_id().
+    """
+    agent_id = (agent or {}).get('id', '')
+    if (agent or {}).get('is_subagent'):
+        return (agent or {}).get('parent_id', agent_id)
+    return agent_id
+
+
 def is_self_path(file_path: str) -> bool:
     """Return True if file_path uses the /_self/ virtual prefix."""
     return bool(file_path) and (file_path.startswith(_SELF_PREFIX) or file_path == '/_self')

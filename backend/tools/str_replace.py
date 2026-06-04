@@ -180,8 +180,10 @@ def execute(agent, args: dict) -> dict:
     new_str = normalize_code_quotes(new_str)
 
     # /_self/ path: always route to the agent's local directory on the evonic server.
+    # Sub-agents inherit their parent's directory — use effective agent ID.
     from backend.tools._workspace import is_self_path, resolve_self_path
-    agent_id = (agent or {}).get('id')
+    agent_id = ((agent or {}).get("parent_id") if (agent or {}).get("is_subagent")
+                else (agent or {}).get("id", ""))
     if agent_id and is_self_path(file_path):
         local_path = resolve_self_path(agent_id, file_path)
         if not local_path:

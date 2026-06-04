@@ -166,6 +166,13 @@ import os as _os
 _reloader_active = _os.environ.get('WERKZEUG_RUN_MAIN') is not None
 _is_reloader_child = _os.environ.get('WERKZEUG_RUN_MAIN') == 'true'
 if not _reloader_active or _is_reloader_child:
+    # Run SYSTEM.md migration eagerly (not lazily on first GET /api/agents).
+    # Agents that predate the on-disk SYSTEM.md feature need their file written
+    # before they start processing messages — otherwise read_file("/_self/SYSTEM.md")
+    # returns "File not found".
+    from routes.agents import _migrate_system_prompts
+    _migrate_system_prompts()
+
     from backend.channels.registry import channel_manager
     channel_manager.start_all_enabled()
 
