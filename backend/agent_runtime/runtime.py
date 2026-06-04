@@ -102,13 +102,28 @@ def _apply_wrapper_prefix(messages: list, enabled: bool) -> None:
             _wrapped = msg.pop('_wrapped', None)
             is_current = (i == len(messages) - 1)
             if is_current or _wrapped:
-                # Skip wrapper injection for short current-turn messages
-                # (fewer than 4 words).  Messages like "ok", "thanks", "yes"
-                # contain no implicit preferences worth scanning for, so the
-                # wrapper would waste tokens.
-                if is_current and len(msg['content'].split()) < 4:
-                    continue
-                msg['content'] = WRAPPER_PREFIX + msg['content']
+                content = msg['content']
+                # Handle multimodal content (list of parts) where the text
+                # lives inside a part dict instead of as a plain string.
+                if isinstance(content, list):
+                    _text_part_idx = next(
+                        (j for j, p in enumerate(content)
+                         if isinstance(p, dict) and p.get('type') == 'text'), None)
+                    _text = content[_text_part_idx]['text'] if _text_part_idx is not None else ''
+                    # Skip wrapper injection for short current-turn messages
+                    if is_current and len(_text.split()) < 4:
+                        continue
+                    if _text_part_idx is not None:
+                        content[_text_part_idx]['text'] = WRAPPER_PREFIX + _text
+                else:
+                    # Plain string content
+                    # Skip wrapper injection for short current-turn messages
+                    # (fewer than 4 words).  Messages like "ok", "thanks", "yes"
+                    # contain no implicit preferences worth scanning for, so the
+                    # wrapper would waste tokens.
+                    if is_current and len(content.split()) < 4:
+                        continue
+                    msg['content'] = WRAPPER_PREFIX + content
 
 
 def _db_retry(
