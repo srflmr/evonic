@@ -66,6 +66,11 @@ When suspicious activity is detected, the system escalates to a human operator r
 | **Scheduler** | Cron-based triggers, recurring tasks, and reminders for agents |
 | **Channels** | Connect agents to Telegram, WhatsApp, Discord, Slack, and custom interfaces |
 | **Evaluation Engine** | Automated LLM evaluation with customizable regex and heuristic evaluators |
+| **Token Compressor** | RTK-based token compression that cuts LLM costs by reducing context without losing meaning |
+| **Agent Artifacts** | Persistent files and outputs agents produce, stored and retrievable across sessions |
+| **Injection Guard** | Multi-layer prompt injection detection that blocks manipulation and unauthorized override attempts |
+| **Supervisor Daemon** | Background supervisor that monitors agent health, restarts on failure, and tracks uptime |
+| **Backup & Restore** | Full backup and restore of all agent configurations, knowledge bases, and data |
 
 ---
 
@@ -73,7 +78,7 @@ When suspicious activity is detected, the system escalates to a human operator r
 
 ### Prerequisites
 
-- **Python 3.8+**
+- **Python 3.10+**
 - **LLM endpoint** — any OpenAI-compatible API (local or cloud)
 
 ### Installation
@@ -91,6 +96,8 @@ This clones the repository, sets up a virtual environment, installs dependencies
 ```bash
 git clone https://github.com/anvie/evonic
 cd evonic
+python3 -m venv .venv
+source .venv/bin/activate
 pip install -r requirements.txt
 chmod +x ./evonic
 ```
@@ -131,9 +138,12 @@ Each agent is designed from the ground up with six configurable dimensions:
 Create and manage agents via the web UI (`/agents`) or CLI:
 
 ```bash
+./evonic agent list
+./evonic agent get my_bot
 ./evonic agent add my_bot --name "My Bot"
 ./evonic agent add dev_bot --name "Dev Bot" --skillset coder
 ./evonic agent enable my_bot
+./evonic agent disable my_bot
 ./evonic agent remove my_bot
 ```
 
@@ -157,10 +167,10 @@ Connect your agents to the platforms your users already use:
 Skills extend agents with new capabilities. Install via CLI:
 
 ```bash
-./evonic skill install path/to/skill.zip
+./evonic skill add path/to/skill.zip
 ./evonic skill list
-./evonic skill enable math
-./evonic skill uninstall math
+./evonic skill get math
+./evonic skill rm math
 ```
 
 Skills follow a **load → context → execute** lifecycle, keeping the agent's system prompt lean and modular.
@@ -188,6 +198,32 @@ Manage LLM configurations:
 ./evonic model list
 ./evonic model rm gpt4o
 ```
+
+---
+
+## CLI Quick Reference
+
+| Command | Description |
+|---------|-------------|
+| `start` | Start the Flask server |
+| `stop` | Stop the running server |
+| `restart` | Restart the server in daemon mode |
+| `status` | Check if the server is running |
+| `setup` | Interactive first-time setup wizard |
+| `reconfigure` | Reconfigure an existing Evonic setup |
+| `pass` | Set or change the admin dashboard password |
+| `doctor` | Run system diagnostics and health checks |
+| `update` | Check for and apply self-updates |
+| `backup` | Create a full Evonic backup archive |
+| `restore` | Restore Evonic from a backup archive |
+| `clear-sandbox` | Destroy all running sandbox containers |
+| `agent list/get/add/enable/disable/remove` | Manage agents |
+| `model list/get/add/rm` | Manage LLM models |
+| `skill list/add/get/rm` | Manage skills |
+| `skillset list/get/apply` | Manage skillset templates |
+| `plugin install/uninstall/list/enable/disable` | Manage plugins |
+| `channel approve` | Approve pending channel pairings |
+| `kanban add/rm/update` | Manage kanban tasks |
 
 ---
 
@@ -249,14 +285,34 @@ User Message
     ↓
 Channel (Telegram, Web, WhatsApp, etc.)
     ↓
-Agent Runtime
-    ├── Load agent config (system prompt, model, tools)
-    ├── Load/create session (per-user persistence)
-    ├── Build messages (system prompt + history + new message)
-    ├── Call LLM
-    ├── Execute tool calls (if any)
-    ├── Heuristic safety check on every action
-    └── Loop until final response
+┌──────────────────────────────────────────┐
+│           Injection Guard                │
+│  (prompt injection & manipulation check) │
+└──────────────────────────────────────────┘
+    ↓
+┌──────────────────────────────────────────┐
+│           Agent Runtime                  │
+│  ├─ Load agent config (system prompt,    │
+│  │   model, tools, knowledge base)       │
+│  ├─ Load/create session (per-user)       │
+│  ├─ Build messages + apply token         │
+│  │   compression (RTK)                   │
+│  ├─ Call LLM                             │
+│  ├─ Execute tool calls (sandboxed)       │
+│  ├─ Heuristic safety check on actions    │
+│  ├─ Store artifacts from tool output     │
+│  └─ Loop until final response            │
+└──────────────────────────────────────────┘
+    ↓
+┌──────────────────────────────────────────┐
+│         Evaluation Engine                │
+│  (optional: regex / heuristic / LLM eval)│
+└──────────────────────────────────────────┘
+    ↓
+┌──────────────────────────────────────────┐
+│         Supervisor Daemon                │
+│  (health checks, auto-restart, uptime)   │
+└──────────────────────────────────────────┘
     ↓
 Response → Channel → User
 ```
