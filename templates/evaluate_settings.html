@@ -1,0 +1,119 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="settings-container">
+    {% include "partials/evaluate_subnav.html" %}
+
+    <div class="settings-header">
+        <h2>Evaluation Settings</h2>
+    </div>
+
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div
+            class="flex items-center justify-between p-4 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-600"
+        >
+            <div>
+                <div class="font-medium text-gray-800 dark:text-gray-100">
+                    Parallel Workers
+                </div>
+                <div class="text-sm text-gray-500 mt-0.5">
+                    Number of domains to evaluate concurrently.
+                    Higher values run faster but consume more system resources.
+                    Range: 1&ndash;16.
+                </div>
+            </div>
+            <input
+                type="number"
+                id="evaluator-workers-input"
+                min="1"
+                max="16"
+                value="4"
+                oninput="markDirty()"
+                class="ml-4 w-16 border border-gray-300 rounded-md px-2 py-1 text-sm text-center focus:outline-none focus:ring-2 focus:ring-indigo-400"
+            />
+        </div>
+
+        <div class="md:col-span-2 flex justify-end pt-2">
+            <button
+                id="save-btn"
+                onclick="saveSettings()"
+                disabled
+                class="btn-primary px-6 py-2 text-sm opacity-50 cursor-not-allowed"
+            >
+                Save Changes
+            </button>
+        </div>
+    </div>
+
+    <div id="feedback" class="mt-4 text-sm hidden"></div>
+</div>
+
+<script>
+let currentValue = 4;
+
+function markDirty() {
+    const input = document.getElementById('evaluator-workers-input');
+    const btn = document.getElementById('save-btn');
+    const changed = parseInt(input.value) !== currentValue;
+    if (changed) {
+        btn.disabled = false;
+        btn.classList.remove('opacity-50', 'cursor-not-allowed');
+    } else {
+        btn.disabled = true;
+        btn.classList.add('opacity-50', 'cursor-not-allowed');
+    }
+}
+
+async function loadSettings() {
+    try {
+        const res = await fetch('/api/eval-settings');
+        const data = await res.json();
+        currentValue = data.evaluator_workers;
+        document.getElementById('evaluator-workers-input').value = currentValue;
+    } catch (err) {
+        showFeedback('Failed to load settings: ' + err.message, false);
+    }
+}
+
+async function saveSettings() {
+    const input = document.getElementById('evaluator-workers-input');
+    const value = parseInt(input.value);
+    const btn = document.getElementById('save-btn');
+
+    btn.disabled = true;
+    btn.classList.add('opacity-50', 'cursor-not-allowed');
+
+    try {
+        const res = await fetch('/api/eval-settings', {
+            method: 'PUT',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({key: 'evaluator_workers', value: String(value)})
+        });
+        const data = await res.json();
+        if (data.success) {
+            currentValue = data.value;
+            input.value = currentValue;
+            showFeedback('Saved. Parallel workers set to ' + currentValue + '.', true);
+        } else {
+            showFeedback('Error: ' + (data.error || 'Save failed'), false);
+            btn.disabled = false;
+            btn.classList.remove('opacity-50', 'cursor-not-allowed');
+        }
+    } catch (err) {
+        showFeedback('Failed to save: ' + err.message, false);
+        btn.disabled = false;
+        btn.classList.remove('opacity-50', 'cursor-not-allowed');
+    }
+}
+
+function showFeedback(message, success) {
+    const el = document.getElementById('feedback');
+    el.textContent = message;
+    el.classList.remove('hidden', 'text-green-600', 'text-red-600');
+    el.classList.add(success ? 'text-green-600' : 'text-red-600');
+    setTimeout(() => el.classList.add('hidden'), 4000);
+}
+
+loadSettings();
+</script>
+{% endblock %}

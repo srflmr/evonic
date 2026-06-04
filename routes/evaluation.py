@@ -24,6 +24,39 @@ def evaluate_evaluators():
     return render_template('evaluate_evaluators.html')
 
 
+@evaluation_bp.route('/evaluate/settings')
+def evaluate_settings():
+    """Evaluation settings page"""
+    return render_template('evaluate_settings.html')
+
+
+@evaluation_bp.route('/api/eval-settings', methods=['GET', 'PUT'])
+def api_eval_settings():
+    """Get or set evaluation settings."""
+    from models.db import db
+    if request.method == 'PUT':
+        data = request.get_json()
+        key = data.get('key')
+        value = data.get('value')
+        if key == 'evaluator_workers':
+            raw_value = int(value)
+            capped = max(1, min(16, raw_value))
+            db.set_setting('evaluator_workers', str(capped))
+            return jsonify({'success': True, 'value': capped})
+        return jsonify({'success': False, 'error': f'Unknown setting: {key}'}), 400
+    # GET
+    evaluator_workers = os.environ.get('EVALUATOR_WORKERS', '4')
+    try:
+        val = db.get_setting('evaluator_workers')
+        if val is not None:
+            evaluator_workers = val
+    except Exception:
+        pass
+    return jsonify({
+        'evaluator_workers': int(evaluator_workers)
+    })
+
+
 @evaluation_bp.route('/evaluate/docs/two-pass')
 def evaluate_two_pass_docs():
     """Serve two-pass evaluation documentation (markdown source)."""

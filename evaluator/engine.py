@@ -1642,15 +1642,26 @@ class EvaluationEngine:
             self._log(f'[ERROR] Traceback: {traceback.format_exc()[-300:]}')
             return {"domain": domain_id, "level": level, "error": str(e)}
     
+    def _get_evaluator_workers(self):
+        """Resolve evaluator worker count: DB setting -> env var -> default 4."""
+        try:
+            from models.db import db
+            val = db.get_setting('evaluator_workers')
+            if val is not None:
+                return int(val)
+        except Exception:
+            pass
+        return int(os.environ.get('EVALUATOR_WORKERS', '4'))
+
     def _run_all_domains_at_level(self, run_id: int, model_name: str,
                                    domains: list, level: int, run_llm_client=None) -> list:
         """Run all domains at a given level in parallel using ThreadPoolExecutor.
         
-        Max workers is configurable via EVALUATOR_WORKERS env var (default 4).
+        Max workers is resolved via DB setting -> EVALUATOR_WORKERS env var -> default 4.
         Results are collected in the same format as the sequential loop.
         An exception in one domain does not crash other domains.
         """
-        max_workers = int(os.environ.get('EVALUATOR_WORKERS', '4'))
+        max_workers = self._get_evaluator_workers()
         results = []
         
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
