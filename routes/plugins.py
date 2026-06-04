@@ -189,3 +189,22 @@ def api_delete_plugin(plugin_id):
     if 'error' in result:
         return jsonify(result), 400
     return jsonify(result)
+
+
+# ── Per-Agent Plugin Settings ──
+
+@plugins_bp.route('/api/agents/<agent_id>/plugin-settings')
+def api_agent_plugin_settings(agent_id):
+    """Get all per-agent plugin settings for an agent."""
+    settings = plugin_manager.get_all_agent_plugin_settings(agent_id)
+    return jsonify({'plugin_settings': settings})
+
+
+@plugins_bp.route('/api/agents/<agent_id>/plugin-settings/<plugin_id>', methods=['PUT'])
+def api_set_agent_plugin_settings(agent_id, plugin_id):
+    """Save per-agent settings for a specific plugin."""
+    data = request.get_json(force=True) or {}
+    result = plugin_manager.set_agent_plugin_settings(plugin_id, agent_id, data)
+    if 'error' in result:
+        return jsonify(result), 400
+    return jsonify(result)

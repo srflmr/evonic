@@ -36,14 +36,21 @@ def _get_owner_name():
 
 
 def _is_autopilot(agent_id: str) -> bool:
-    """Check autopilot for an agent via settings table (kanban plugin-owned)."""
+    """Check autopilot for an agent via plugin agent settings (default: ON)."""
     try:
         from models.db import db as _db2
-        if _db2.get_setting(f'autopilot:{agent_id}', '0') == '1':
-            return True
+        # New pattern (plugin per-agent settings)
+        val = _db2.get_setting(f'plugin_agent_setting:kanban:{agent_id}:autopilot')
+        if val is not None:
+            return val == '1'
+        # Legacy fallback
+        legacy = _db2.get_setting(f'autopilot:{agent_id}')
+        if legacy is not None:
+            return legacy == '1'
+        # Default: ON
+        return True
     except Exception:
-        pass
-    return False
+        return True
 
 
 # ─── Shared workflow state ─────────────────────────────────────────────────────
@@ -1108,7 +1115,7 @@ def _autopilot_handler(
     if arg not in ("on", "off"):
         return "Usage: `/autopilot on` or `/autopilot off`"
 
-    db.set_setting(f'autopilot:{agent_id}', '1' if arg == 'on' else '0')
+    db.set_setting(f'plugin_agent_setting:kanban:{agent_id}:autopilot', '1' if arg == 'on' else '0')
     status = "enabled" if arg == "on" else "disabled"
     agent_name = agent_id
     try:

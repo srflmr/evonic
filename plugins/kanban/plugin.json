@@ -142,5 +142,14 @@
       "default": false,
       "description": "Record the full agent execution process (thinking steps, tool calls, final response) when a task finishes. Viewable in the Process tab of task detail."
     }
+  ],
+  "agent_settings": [
+    {
+      "name": "autopilot",
+      "label": "Autopilot",
+      "type": "boolean",
+      "default": true,
+      "description": "Automatically start assigned tasks without waiting for user approval."
+    }
   ]
 }

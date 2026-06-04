@@ -467,6 +467,12 @@ html.dark #channel-detail-modal .hover\:bg-indigo-100:hover { background: #312e8
                 <div id="agent-variables-list" class="space-y-2 mb-3"></div>
                 <button type="button" onclick="addVariableRow()" class="text-sm text-indigo-500 hover:text-indigo-700 transition-colors">+ Add Variable</button>
             </div>
+            <!-- Plugin Settings Card (dynamic, hidden if no plugin declares agent_settings) -->
+            <div id="plugin-settings-card" class="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-600 p-6 hidden">
+                <h3 class="text-sm font-semibold text-gray-800 dark:text-gray-100 mb-1">Plugin Settings</h3>
+                <p class="text-xs text-gray-400 mb-4">Per-agent settings from active plugins.</p>
+                <div id="plugin-settings-container" class="space-y-4"></div>
+            </div>
         </div>
         </div><!-- /grid -->
     </div>
@@ -1669,6 +1675,74 @@ async function saveAdvanced() {
     showToast("Advanced settings saved!", "success");
     } finally {
         setSaveLoading(btnId, false);
+    }
+}
+
+// ==================== Plugin Settings (per-agent) ====================
+async function loadPluginSettings() {
+    try {
+        const res = await fetch(`/api/agents/${AGENT_ID}/plugin-settings`);
+        const data = await res.json();
+        const plugins = data.plugin_settings || [];
+        const container = document.getElementById('plugin-settings-container');
+        const card = document.getElementById('plugin-settings-card');
+        if (!plugins.length) { card.classList.add('hidden'); return; }
+        card.classList.remove('hidden');
+        container.innerHTML = '';
+        for (const plugin of plugins) {
+            for (const s of plugin.settings) {
+                const id = `plugin-setting-${plugin.plugin_id}-${s.name}`;
+                if (s.type === 'boolean') {
+                    container.innerHTML += `
+                    <div>
+                        <label class="flex items-center gap-3 cursor-pointer select-none">
+                            <span class="relative inline-flex items-center">
+                                <input type="checkbox" id="${id}" ${s.value ? 'checked' : ''}
+                                       class="sr-only peer"
+                                       onchange="savePluginSetting('${plugin.plugin_id}', '${s.name}', this.checked)">
+                                <span class="dyn-toggle"></span>
+                            </span>
+                            <div>
+                                <span class="text-gray-600 dark:text-gray-300 text-sm font-medium">${s.label}</span>
+                                <span class="text-xs text-gray-400 ml-1">(${plugin.plugin_name})</span>
+                                <p class="text-xs text-gray-400 mt-0.5">${s.description || ''}</p>
+                            </div>
+                        </label>
+                    </div>`;
+                } else {
+                    container.innerHTML += `
+                    <div>
+                        <label class="block mb-1 text-gray-600 dark:text-gray-300 text-sm font-medium">${s.label} <span class="text-xs text-gray-400">(${plugin.plugin_name})</span></label>
+                        <input type="${s.type === 'number' ? 'number' : 'text'}" id="${id}" value="${s.value ?? ''}"
+                               class="w-full p-2.5 border border-gray-300 rounded-md text-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/10"
+                               onchange="savePluginSetting('${plugin.plugin_id}', '${s.name}', this.value)">
+                        <p class="text-xs text-gray-400 mt-1">${s.description || ''}</p>
+                    </div>`;
+                }
+            }
+        }
+    } catch (e) {
+        console.error('Failed to load plugin settings:', e);
+    }
+}
+
+async function savePluginSetting(pluginId, name, value) {
+    try {
+        const body = {};
+        body[name] = value;
+        const res = await fetch(`/api/agents/${AGENT_ID}/plugin-settings/${pluginId}`, {
+            method: 'PUT',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(body)
+        });
+        const data = await res.json();
+        if (data.success) {
+            showToast('Plugin setting saved.', 'success');
+        } else {
+            showToast(data.error || 'Failed to save.', 'error');
+        }
+    } catch (e) {
+        showToast('Failed to save plugin setting.', 'error');
     }
 }
 
@@ -3683,6 +3757,7 @@ async function loadAgentModelSelector() {
 }
 loadAgentModelSelector();
 loadVariables();
+loadPluginSettings();
 loadInjectionGuardState();
 loadAgentSafetyRules();
 

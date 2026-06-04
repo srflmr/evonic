@@ -642,6 +642,81 @@ class PluginManager:
         self.reload_plugin(plugin_id)
         return {'success': True, 'config': self.get_plugin_config(plugin_id)}
 
+    # ── Per-Agent Plugin Settings ──
+
+    def get_agent_settings_schema(self, plugin_id: str) -> List[Dict[str, Any]]:
+        """Read the agent_settings schema from plugin.json."""
+        manifest = self._read_manifest(plugin_id)
+        if not manifest:
+            return []
+        return manifest.get('agent_settings', [])
+
+    def get_agent_plugin_settings(self, plugin_id: str, agent_id: str) -> Dict[str, Any]:
+        """Load per-agent settings from DB merged with defaults from schema."""
+        schema = self.get_agent_settings_schema(plugin_id)
+        if not schema:
+            return {}
+        from models.db import db
+        result = {}
+        for s in schema:
+            name = s['name']
+            default = s.get('default', '')
+            key = f'plugin_agent_setting:{plugin_id}:{agent_id}:{name}'
+            stored = db.get_setting(key)
+            if stored is None:
+                result[name] = default
+            else:
+                var_type = s.get('type', 'string')
+                if var_type == 'boolean':
+                    result[name] = stored in ('1', 'true', 'True')
+                elif var_type == 'number':
+                    try:
+                        result[name] = float(stored) if '.' in stored else int(stored)
+                    except ValueError:
+                        result[name] = default
+                else:
+                    result[name] = stored
+        return result
+
+    def set_agent_plugin_settings(self, plugin_id: str, agent_id: str, values: Dict[str, Any]) -> Dict[str, Any]:
+        """Validate and save per-agent plugin settings to DB."""
+        schema = self.get_agent_settings_schema(plugin_id)
+        if not schema:
+            return {'error': f'No agent_settings defined for plugin {plugin_id}'}
+        var_map = {s['name']: s for s in schema}
+        from models.db import db
+        for name, val in values.items():
+            if name not in var_map:
+                continue
+            var_def = var_map[name]
+            var_type = var_def.get('type', 'string')
+            key = f'plugin_agent_setting:{plugin_id}:{agent_id}:{name}'
+            if var_type == 'boolean':
+                db.set_setting(key, '1' if val else '0')
+            else:
+                db.set_setting(key, str(val))
+        return {'success': True}
+
+    def get_all_agent_plugin_settings(self, agent_id: str) -> List[Dict[str, Any]]:
+        """Collect per-agent settings from all enabled plugins that declare agent_settings."""
+        result = []
+        for plugin_id, info in self._plugins.items():
+            schema = self.get_agent_settings_schema(plugin_id)
+            if not schema:
+                continue
+            values = self.get_agent_plugin_settings(plugin_id, agent_id)
+            settings = []
+            for s in schema:
+                entry = dict(s)
+                entry['value'] = values.get(s['name'], s.get('default', ''))
+                settings.append(entry)
+            result.append({
+                'plugin_id': plugin_id,
+                'plugin_name': info.get('name', plugin_id),
+                'settings': settings,
+            })
+        return result
+
     # ── Helpers ──
 
     def _find_manifest(self, directory: str) -> Optional[str]:
