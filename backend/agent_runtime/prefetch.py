@@ -98,7 +98,7 @@ class TurnPrefetcher:
                 'id': agent_id,
                 'name': agent.get('name', ''),
                 'agent_name': agent.get('name', ''),
-                'agent_model': agent.get('model'),
+                'agent_model': None,
                 'user_id': ctx.external_user_id,
                 'channel_id': ctx.channel_id,
                 'session_id': session_id,

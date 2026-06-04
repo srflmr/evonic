@@ -3553,7 +3553,7 @@ async function loadAgentModelSelector() {
         ]);
         const modelsData = await modelsRes.json();
         const agentModelData = await agentModelRes.json();
-        const currentModelId = agentModelData.default_model_id || '';
+        const currentModelId = agentModelData.model_id || '';
         const currentFallbackModelId = agentModelData.fallback_model_id || '';
 
         const sel = document.getElementById('agent-model-select');

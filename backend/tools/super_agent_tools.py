@@ -108,9 +108,9 @@ _TOOL_DEFS = [
                         "type": "string",
                         "description": "System prompt / persona for the agent"
                     },
-                    "model": {
+                    "model_id": {
                         "type": "string",
-                        "description": "Optional model override (leave empty to use platform default)"
+                        "description": "Optional model ID to assign (leave empty to use platform default)"
                     }
                 },
                 "required": ["id", "name"]
@@ -131,7 +131,7 @@ _TOOL_DEFS = [
                     },
                     "name": {"type": "string"},
                     "description": {"type": "string"},
-                    "model": {"type": "string"},
+                    "model_id": {"type": "string"},
                     "system_prompt": {"type": "string"},
                     "enabled": {
                         "type": "boolean",
@@ -285,9 +285,9 @@ _TOOL_DEFS = [
                         "type": "string",
                         "description": "Description for the new agent (optional, uses skillset default)"
                     },
-                    "model": {
+                    "model_id": {
                         "type": "string",
-                        "description": "Optional model override (optional, uses skillset default)"
+                        "description": "Optional model ID to assign (optional, uses skillset default)"
                     }
                 },
                 "required": ["skill_id", "agent_id"]
@@ -383,7 +383,7 @@ def _exec_list_agents(args: dict) -> dict:
             'description': a.get('description', ''),
             'enabled': bool(a.get('enabled', True)),
             'is_super': bool(a.get('is_super', False)),
-            'model': a.get('model'),
+            'model_id': a.get('model_id'),
             'tool_count': tool_count,
             'channel_count': len(channels),
             'created_at': a.get('created_at', ''),
@@ -410,7 +410,7 @@ def _exec_create_agent(args: dict) -> dict:
             'name': name,
             'description': args.get('description', ''),
             'system_prompt': args.get('system_prompt', ''),
-            'model': args.get('model') or None,
+            'model_id': args.get('model_id') or None,
             'workspace': workspace,
         })
         _write_system_prompt(agent_id, args.get('system_prompt', ''))
@@ -557,7 +557,7 @@ def _exec_apply_skillset(args: dict) -> dict:
         'id': agent_id,
         'name': args.get('name', ''),
         'description': args.get('description', ''),
-        'model': args.get('model', ''),
+        'model_id': args.get('model_id', ''),
     }
 
     result = apply_ss(skill_id, agent_data)
@@ -583,7 +583,7 @@ def _exec_apply_skillset(args: dict) -> dict:
             'name': result.get('name', ''),
             'description': result.get('description', ''),
             'system_prompt': result.get('system_prompt', ''),
-            'model': result.get('model'),
+            'model_id': result.get('model'),
             'workspace': workspace_dir,
         })
 

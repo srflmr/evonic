@@ -1098,7 +1098,7 @@ class AgentRuntime:
         db_agent_id = agent.get('_db_agent_id', agent_id)
         AgentRuntime._touch_session(ctx.session_id)
         try:
-            model = db.get_agent_default_model(db_agent_id)
+            model = db.get_agent_model(db_agent_id)
             model_id = model.get('id') if model else None
         except Exception as e:
             _logger.warning("Failed to get default model for agent %s, proceeding without model gating: %s", agent_id, e)
@@ -1538,7 +1538,7 @@ class AgentRuntime:
                 'id': agent_id,
                 'name': agent.get('name', ''),
                 'agent_name': agent.get('name', ''),
-                'agent_model': agent.get('model'),
+                'agent_model': None,
                 'user_id': ctx.external_user_id,
                 'channel_id': ctx.channel_id,
                 'session_id': ctx.session_id,

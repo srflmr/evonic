@@ -1047,7 +1047,7 @@ def skillset_apply(skillset_id, agent_id, name=None, description=None, model=Non
     if description:
         agent_data["description"] = description
     if model:
-        agent_data["model"] = model
+        agent_data["model_id"] = model
 
     # Resolve the skillset to get actual tool IDs
     resolved = mod.resolve_skillset(skillset_id)
@@ -1078,7 +1078,7 @@ def skillset_apply(skillset_id, agent_id, name=None, description=None, model=Non
             "system_prompt": merged.get("system_prompt", ""),
         }
         if merged.get("model"):
-            payload["model"] = merged["model"]
+            payload["model_id"] = merged["model"]
 
         resp = requests.post(
             f"{base_url}/api/agent/create",
@@ -1193,7 +1193,7 @@ def agent_get(agent_id):
     print(f"Description: {agent.get('description', 'N/A')}")
     print(f"Status:      {'enabled' if agent.get('enabled', True) else 'disabled'}")
     print(f"Super:       {'yes' if agent.get('is_super', False) else 'no'}")
-    model = agent.get("model") or "(default)"
+    model = agent.get("model_id") or "(default)"
     print(f"Model:       {model}")
 
     # System prompt (truncated)
@@ -1303,7 +1303,7 @@ def agent_add(agent_id, name, description=None, model=None, skillset=None):
                 "name": name,
                 "description": description or "",
                 "system_prompt": system_prompt,
-                "model": model or None,
+                "model_id": model or None,
                 "workspace": workspace_dir,
             }
         )
@@ -2983,7 +2983,7 @@ def doctor_command(quick=False):
                 skills = (
                     db.get_agent_skills(aid) if hasattr(db, "get_agent_skills") else []
                 )
-                model_id = a.get("default_model_id") or a.get("model") or "none"
+                model_id = a.get("model_id") or "none"
                 has_model = "✓" if model_id and model_id != "none" else "✗"
                 _info(
                     f"    {sicon} {aname} ({aid}) — model:{has_model} tools:{len(tools)} skills:{len(skills)}"

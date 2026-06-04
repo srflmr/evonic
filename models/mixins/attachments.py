@@ -249,7 +249,7 @@ class AttachmentsMixin:
         """Resolve the effective attachment configuration for an agent.
 
         Returns dict: {enabled: bool, max_size_mb: int, supported: bool, model_id: Optional[str]}.
-        Resolves model via agents.default_model_id, falling back to the global default model.
+        Resolves model via agents.model_id, falling back to the global default model.
         """
         result = {
             'enabled': False,
@@ -261,7 +261,7 @@ class AttachmentsMixin:
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
             cursor.execute(
-                "SELECT attachments_enabled, attachment_max_size_mb, default_model_id "
+                "SELECT attachments_enabled, attachment_max_size_mb, model_id "
                 "FROM agents WHERE id = ?",
                 (agent_id,),
             )
@@ -277,7 +277,7 @@ class AttachmentsMixin:
             if result['max_size_mb'] > 20:
                 result['max_size_mb'] = 20
 
-            model_id = agent_row['default_model_id']
+            model_id = agent_row['model_id']
             model_row = None
             if model_id:
                 cursor.execute(

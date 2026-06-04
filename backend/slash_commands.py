@@ -556,11 +556,8 @@ def _register_builtins():
             lines.append(f"**Status \u2014 {agent.get('name', agent_id)}**")
             lines.append(f"Session: {session_id}")
 
-        # Model — resolve the same way the runtime does:
-        # 1. Agent's default_model_id → llm_models table (agent-specific model config)
-        # 2. Fallback: agent.model raw string (General Settings override)
-        # 3. Otherwise: unknown
-        model = db.get_agent_default_model(agent_id)
+        # Model — resolved via model_id column → llm_models table
+        model = db.get_agent_model(agent_id)
         if model:
             model_name = model.get("name", "unknown")
             model_id = model.get("model_name", "")
@@ -568,8 +565,6 @@ def _register_builtins():
                 lines.append(f"Model: {model_name} ({model_id})")
             else:
                 lines.append(f"Model: {model_name}")
-        elif agent.get("model"):
-            lines.append(f"Model: {agent['model']} (string override)")
         else:
             lines.append("Model: unknown")
 
@@ -614,7 +609,7 @@ def _register_builtins():
                         lines.append(f"Active Model: {_fb_active_id} (fallback, unknown)")
                 else:
                     # Show primary
-                    _prim_name = model.get('name', model.get('model_name', 'unknown')) if model else (agent.get('model', 'unknown'))
+                    _prim_name = model.get('name', model.get('model_name', 'unknown')) if model else 'unknown'
                     lines.append(f"Active Model: {_prim_name} (primary)")
             except Exception:
                 pass
@@ -713,7 +708,7 @@ def _register_builtins():
 
         if not args or not args.strip():
             # No args — show current model
-            model = db.get_agent_default_model(agent_id)
+            model = db.get_agent_model(agent_id)
             if model:
                 model_name = model.get("name", "unknown")
                 model_id = model.get("model_name", "")
@@ -746,8 +741,8 @@ def _register_builtins():
             else:
                 return f"Model '{new_model_id}' not found and no models are configured."
 
-        # Set the agent's default model
-        success = db.set_agent_default_model(agent_id, model["id"])
+        # Set the agent's model
+        success = db.set_agent_model(agent_id, model["id"])
         if not success:
             return f"Failed to set model to '{new_model_id}'."
 

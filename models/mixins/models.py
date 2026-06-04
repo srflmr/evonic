@@ -83,16 +83,16 @@ class ModelsMixin:
             row = cursor.fetchone()
             return dict(row) if row else None
 
-    def get_agent_default_model(self, agent_id: str) -> Optional[Dict[str, Any]]:
-        """Return agent's default model or global default or None."""
+    def get_agent_model(self, agent_id: str) -> Optional[Dict[str, Any]]:
+        """Return agent's primary model (model_id) or global default or None."""
         with self._connect() as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
             # First try agent-specific model
-            cursor.execute("SELECT default_model_id FROM agents WHERE id = ?", (agent_id,))
+            cursor.execute("SELECT model_id FROM agents WHERE id = ?", (agent_id,))
             row = cursor.fetchone()
-            if row and row['default_model_id']:
-                cursor.execute("SELECT * FROM llm_models WHERE id = ?", (row['default_model_id'],))
+            if row and row['model_id']:
+                cursor.execute("SELECT * FROM llm_models WHERE id = ?", (row['model_id'],))
                 model_row = cursor.fetchone()
                 if model_row:
                     return dict(model_row)
@@ -101,8 +101,12 @@ class ModelsMixin:
             row = cursor.fetchone()
             return dict(row) if row else None
 
-    def set_agent_default_model(self, agent_id: str, model_id: Optional[str]) -> bool:
-        """Set agent's default model. model_id can be None to clear."""
+    def get_agent_default_model(self, agent_id: str) -> Optional[Dict[str, Any]]:
+        """Deprecated alias — use get_agent_model()."""
+        return self.get_agent_model(agent_id)
+
+    def set_agent_model(self, agent_id: str, model_id: Optional[str]) -> bool:
+        """Set agent's primary model. model_id can be None to clear."""
         with self._connect() as conn:
             cursor = conn.cursor()
             if model_id:
@@ -111,11 +115,15 @@ class ModelsMixin:
                 if not cursor.fetchone():
                     return False
             cursor.execute(
-                "UPDATE agents SET default_model_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+                "UPDATE agents SET model_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
                 (model_id, agent_id)
             )
             conn.commit()
             return cursor.rowcount > 0
+
+    def set_agent_default_model(self, agent_id: str, model_id: Optional[str]) -> bool:
+        """Deprecated alias — use set_agent_model()."""
+        return self.set_agent_model(agent_id, model_id)
 
     def get_agent_fallback_model(self, agent_id: str) -> Optional[Dict[str, Any]]:
         """Return agent's fallback model or None.

@@ -334,7 +334,6 @@ class SchemaMixin:
                     name TEXT NOT NULL,
                     description TEXT,
                     system_prompt TEXT,
-                    model TEXT,
                     vision_enabled BOOLEAN DEFAULT 0,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -430,6 +429,17 @@ class SchemaMixin:
             # Migration: add fallback_model_id for per-agent model fallback
             try:
                 cursor.execute("ALTER TABLE agents ADD COLUMN fallback_model_id TEXT")
+            except sqlite3.OperationalError:
+                pass
+
+            # Migration: add model_id (renamed from default_model_id for clarity)
+            try:
+                cursor.execute("ALTER TABLE agents ADD COLUMN model_id TEXT")
+            except sqlite3.OperationalError:
+                pass
+            # Migrate data: copy default_model_id → model_id if column exists
+            try:
+                cursor.execute("UPDATE agents SET model_id = default_model_id WHERE model_id IS NULL AND default_model_id IS NOT NULL")
             except sqlite3.OperationalError:
                 pass
 

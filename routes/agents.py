@@ -1288,7 +1288,7 @@ def api_chat_agent_state(agent_id):
                 }
         else:
             # Show primary model
-            prim_model = db.get_agent_default_model(agent_id)
+            prim_model = db.get_agent_model(agent_id)
             if prim_model:
                 active_model = {
                     'name': prim_model.get('name', 'unknown'),

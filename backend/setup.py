@@ -422,7 +422,6 @@ def run_setup(
                 "name": agent_name.strip(),
                 "description": "Evonic Super Agent",
                 "system_prompt": system_prompt,
-                "model": None,
                 "is_super": True,
                 "workspace": config.BASE_DIR,
                 "sandbox_enabled": 1 if sandbox_enabled else 0,

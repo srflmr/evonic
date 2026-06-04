@@ -273,19 +273,9 @@ def run_tool_loop(agent: Dict[str, Any],
                 # Resolve the primary model config so we can probe it
                 _primary_config = None
                 try:
-                    _pm = db.get_agent_default_model(agent_id)
+                    _pm = db.get_agent_model(agent_id)
                     if _pm:
                         _primary_config = _build_model_config(_pm)
-                    elif agent.get('model'):
-                        # agent.model string fallback (same as Step 3 below)
-                        _dm = db.get_default_model()
-                        _primary_config = {
-                            'base_url': _dm.get('base_url') if _dm else None,
-                            'api_key': _dm.get('api_key') if _dm else None,
-                            'model_name': agent['model'],
-                            'timeout': _dm.get('timeout') if _dm else None,
-                            'thinking': False, 'thinking_budget': 0,
-                        }
                 except Exception:
                     pass
 
@@ -335,7 +325,7 @@ def run_tool_loop(agent: Dict[str, Any],
     # Step 2: If no fallback from state, resolve normal default model
     if not agent_model_config:
         try:
-            model = db.get_agent_default_model(agent_id)
+            model = db.get_agent_model(agent_id)
             if model:
                 agent_model_config = _build_model_config(model)
                 _logger.info("%s using model: %s (%s)", agent_id, model.get('name'), model.get('model_name'))
@@ -343,29 +333,6 @@ def run_tool_loop(agent: Dict[str, Any],
                 _logger.info("No model configured for agent %s, using config.py defaults", agent_id)
         except Exception as e:
             _logger.warning("Failed to resolve model for agent %s: %s", agent_id, e)
-
-    # Step 3: Fallback: agent.model string override (from agent General Settings)
-    if not agent_model_config and agent.get('model'):
-        import config as _config
-        try:
-            from models.db import db as _db
-            _dm = _db.get_default_model()
-            _base_url = _dm.get('base_url') if _dm else None
-            _api_key = _dm.get('api_key') if _dm else None
-            _timeout = _dm.get('timeout') if _dm else None
-        except Exception:
-            _base_url = None
-            _api_key = None
-            _timeout = None
-        agent_model_config = {
-            'base_url': _base_url,
-            'api_key': _api_key,
-            'model_name': agent['model'],
-            'timeout': _timeout,
-            'thinking': False,
-            'thinking_budget': 0,
-        }
-        _logger.info("Using agent model string override: %s", agent['model'])
 
     # Create LLMClient with resolved model config
     llm = LLMClient(model_config=agent_model_config) if agent_model_config else llm_client

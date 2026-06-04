@@ -267,7 +267,7 @@ def api_get_agent_model(agent_id):
     if not agent:
         return jsonify({"error": "Agent not found"}), 404
 
-    model = db.get_agent_default_model(agent_id)
+    model = db.get_agent_model(agent_id)
     if model:
         _sanitize_model(model)
     fallback_model = db.get_agent_fallback_model(agent_id)
@@ -276,7 +276,7 @@ def api_get_agent_model(agent_id):
     return jsonify(
         {
             "agent_id": agent_id,
-            "default_model_id": agent.get("default_model_id"),
+            "model_id": agent.get("model_id"),
             "model": model,
             "fallback_model_id": agent.get("fallback_model_id"),
             "fallback_model": fallback_model,
@@ -296,7 +296,7 @@ def api_set_agent_model(agent_id):
     fallback_model_id = data.get("fallback_model_id") if data else None
 
     # Set primary model (None means "clear" → use global default)
-    success = db.set_agent_default_model(agent_id, model_id)
+    success = db.set_agent_model(agent_id, model_id)
     if not success and model_id:
         return jsonify({"success": False, "error": "Failed to set primary model"}), 400
 
