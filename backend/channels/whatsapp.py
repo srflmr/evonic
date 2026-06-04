@@ -259,6 +259,8 @@ class WhatsAppChannel(BaseChannel):
             self._jid_map[sender] = jid
         text = strip_system_tags(payload.get('text', ''))
         image_data = payload.get('image')
+        audio_data = payload.get('audio')
+        video_data = payload.get('video')
         quoted_text = payload.get('quoted_text')
 
         # Allowlist check with pairing-code auto-approve for WhatsApp.
@@ -322,9 +324,12 @@ class WhatsAppChannel(BaseChannel):
                 return
 
         image_url = None
+        audio_url = None
+        video_url = None
+
+        agent = db.get_agent(self.agent_id)
 
         if image_data:
-            agent = db.get_agent(self.agent_id)
             if agent and agent.get('vision_enabled'):
                 try:
                     raw = base64.b64decode(image_data['base64'])
@@ -342,7 +347,31 @@ class WhatsAppChannel(BaseChannel):
             elif not text:
                 return
 
-        if not text and not image_url:
+        if audio_data:
+            if agent and agent.get('audio_enabled'):
+                try:
+                    raw = base64.b64decode(audio_data['base64'])
+                    mime = audio_data.get('mimetype', 'audio/ogg')
+                    b64 = base64.b64encode(raw).decode('utf-8')
+                    audio_url = f"data:{mime};base64,{b64}"
+                except Exception as e:
+                    _logger.error("WhatsApp audio conversion failed: %s", e)
+            elif not text:
+                text = '[Audio]'
+
+        if video_data:
+            if agent and agent.get('video_enabled'):
+                try:
+                    raw = base64.b64decode(video_data['base64'])
+                    mime = video_data.get('mimetype', 'video/mp4')
+                    b64 = base64.b64encode(raw).decode('utf-8')
+                    video_url = f"data:{mime};base64,{b64}"
+                except Exception as e:
+                    _logger.error("WhatsApp video conversion failed: %s", e)
+            elif not text:
+                text = '[Video]'
+
+        if not text and not image_url and not audio_url and not video_url:
             return
 
         # Prepend reply context
@@ -357,7 +386,8 @@ class WhatsAppChannel(BaseChannel):
 
         _logger.info("WhatsApp message received from %s (channel %s)", sender, self.channel_id)
         result = agent_runtime.handle_message(
-            self.agent_id, sender, final_text, self.channel_id, image_url=image_url
+            self.agent_id, sender, final_text, self.channel_id,
+            image_url=image_url, audio_url=audio_url, video_url=video_url,
         )
         if result.get('buffered'):
             return

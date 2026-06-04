@@ -773,16 +773,34 @@ def command_hint_from_content(content: str) -> str:
 def build_message_entry(msg: dict, agent: dict) -> dict:
     """Convert a DB message row into an LLM message dict."""
     entry = {"role": msg['role']}
-    msg_image = None
-    if msg.get('metadata') and isinstance(msg['metadata'], dict):
-        msg_image = msg['metadata'].get('image_url')
-    if msg_image and agent.get('vision_enabled'):
+    _msg_meta = msg.get('metadata') if isinstance(msg.get('metadata'), dict) else {}
+    msg_image = _msg_meta.get('image_url') if _msg_meta else None
+    msg_audio = _msg_meta.get('audio_url') if _msg_meta else None
+    msg_video = _msg_meta.get('video_url') if _msg_meta else None
+    has_image = msg_image and agent.get('vision_enabled')
+    has_audio = msg_audio and agent.get('audio_enabled')
+    has_video = msg_video and agent.get('video_enabled')
+    if has_image or has_audio or has_video:
         parts = []
-        if msg.get('content') and msg['content'] != '[Image]':
-            parts.append({"type": "text", "text": msg['content']})
-        parts.append({"type": "image_url", "image_url": {"url": msg_image}})
-        if not parts[0].get('text') if parts else True:
-            parts.insert(0, {"type": "text", "text": "What is in this image?"})
+        text_content = msg.get('content', '')
+        if text_content and text_content not in ('[Image]', '[Audio]', '[Video]'):
+            parts.append({"type": "text", "text": text_content})
+        if has_image:
+            parts.append({"type": "image_url", "image_url": {"url": msg_image}})
+        if has_audio:
+            if msg_audio.startswith("data:"):
+                try:
+                    header, b64data = msg_audio.split(",", 1)
+                    fmt = header.split(":")[1].split(";")[0].split("/")[1]
+                except (ValueError, IndexError):
+                    fmt, b64data = "wav", msg_audio
+                parts.append({"type": "input_audio", "input_audio": {"data": b64data, "format": fmt}})
+            else:
+                parts.append({"type": "input_audio", "input_audio": {"data": msg_audio, "format": "wav"}})
+        if has_video:
+            parts.append({"type": "video_url", "video_url": {"url": msg_video}})
+        if not parts or parts[0].get('type') != 'text':
+            parts.insert(0, {"type": "text", "text": "What is in this media?"})
         entry['content'] = parts
     elif msg.get('content'):
         content = msg['content']

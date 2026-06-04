@@ -498,10 +498,17 @@ def _reconstruct_llm_messages(entries: List[dict]) -> List[Dict[str, Any]]:
             _pending_reasoning = ''  # reasoning before a user message is irrelevant
             _pending_tool_ids = []
             msg: Dict[str, Any] = {'role': 'user', 'content': content}
-            img = (entry.get('metadata') or {}).get('image_url')
+            _meta = entry.get('metadata') or {}
+            img = _meta.get('image_url')
             if img:
-                msg['_image_url'] = img  # caller handles vision formatting
-            wrapped = (entry.get('metadata') or {}).get('wrapped')
+                msg['_image_url'] = img  # caller handles multimodal formatting
+            audio = _meta.get('audio_url')
+            if audio:
+                msg['_audio_url'] = audio
+            video = _meta.get('video_url')
+            if video:
+                msg['_video_url'] = video
+            wrapped = _meta.get('wrapped')
             if wrapped:
                 msg['_wrapped'] = True
             messages.append(msg)

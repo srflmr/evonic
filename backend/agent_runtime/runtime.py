@@ -822,6 +822,8 @@ class AgentRuntime:
     def handle_message(self, agent_id: str, external_user_id: str,
                        message: str, channel_id: Optional[str] = None,
                        image_url: Optional[str] = None,
+                       audio_url: Optional[str] = None,
+                       video_url: Optional[str] = None,
                        metadata: Optional[Dict[str, Any]] = None,
                        skip_buffer: bool = False) -> Dict[str, Any]:
         """Process an incoming user message. Always queued for processing.
@@ -831,6 +833,8 @@ class AgentRuntime:
 
         Args:
             image_url: Optional base64 data URL or http URL for vision-enabled agents.
+            audio_url: Optional base64 data URL for audio-enabled agents.
+            video_url: Optional base64 data URL for video-enabled agents.
             metadata: Optional extra metadata merged into the saved message record.
             skip_buffer: If True, bypass message buffering even if the agent has
                 message_buffer_seconds set. Used by API routes that need a synchronous
@@ -904,7 +908,13 @@ class AgentRuntime:
             # Unknown command — fall through to normal LLM processing
 
         # Save user message (store image reference and any extra metadata)
-        meta = {"image_url": image_url} if image_url else {}
+        meta = {}
+        if image_url:
+            meta["image_url"] = image_url
+        if audio_url:
+            meta["audio_url"] = audio_url
+        if video_url:
+            meta["video_url"] = video_url
         if metadata:
             meta.update(metadata)
         # Flag user message as wrapped if preference wrapper is enabled for this agent
@@ -939,6 +949,8 @@ class AgentRuntime:
             'channel_id': channel_id,
             'message': message,
             'image_url': image_url,
+            'audio_url': audio_url,
+            'video_url': video_url,
         })
 
         # Busy-ack: if the agent-level concurrency gate is saturated, send an
@@ -1333,19 +1345,38 @@ class AgentRuntime:
         # _should_wrap_user_message is defined at module level (also used by handle_message).
         # Keep this alias so the rest of _do_process_inner reads naturally.
 
-        def _apply_vision(msg: dict) -> dict:
-            """Apply vision formatting for user messages with image_url if agent supports it."""
-            if msg.get('role') != 'user' or not agent.get('vision_enabled'):
+        def _apply_multimodal(msg: dict) -> dict:
+            """Apply multimodal formatting for user messages with image/audio/video if agent supports it."""
+            if msg.get('role') != 'user':
                 return msg
-            img = msg.pop('_image_url', None)
-            if not img:
+            img = msg.pop('_image_url', None) if agent.get('vision_enabled') else msg.pop('_image_url', None) and None
+            audio = msg.pop('_audio_url', None) if agent.get('audio_enabled') else msg.pop('_audio_url', None) and None
+            video = msg.pop('_video_url', None) if agent.get('video_enabled') else msg.pop('_video_url', None) and None
+            if not img and not audio and not video:
                 return msg
             parts = []
-            if msg.get('content') and msg['content'] != '[Image]':
-                parts.append({"type": "text", "text": msg['content']})
-            parts.append({"type": "image_url", "image_url": {"url": img}})
+            text_content = msg.get('content', '')
+            if text_content and text_content not in ('[Image]', '[Audio]', '[Video]'):
+                parts.append({"type": "text", "text": text_content})
+            if img:
+                parts.append({"type": "image_url", "image_url": {"url": img}})
+            if audio:
+                # OpenAI-compatible input_audio format
+                # Extract base64 data and format from data URL
+                if audio.startswith("data:"):
+                    try:
+                        header, b64data = audio.split(",", 1)
+                        # e.g. data:audio/ogg;base64 → ogg
+                        fmt = header.split(":")[1].split(";")[0].split("/")[1]
+                    except (ValueError, IndexError):
+                        fmt, b64data = "wav", audio
+                    parts.append({"type": "input_audio", "input_audio": {"data": b64data, "format": fmt}})
+                else:
+                    parts.append({"type": "input_audio", "input_audio": {"data": audio, "format": "wav"}})
+            if video:
+                parts.append({"type": "video_url", "video_url": {"url": video}})
             if not parts or parts[0].get('type') != 'text':
-                parts.insert(0, {"type": "text", "text": "What is in this image?"})
+                parts.insert(0, {"type": "text", "text": "What is in this media?"})
             return {**msg, 'content': parts}
 
         summary_record = db.get_summary(ctx.session_id, agent_id=db_agent_id)
@@ -1363,10 +1394,17 @@ class AgentRuntime:
                 # was saved and already includes it as the last message.
                 if not messages or messages[-1].get('role') != 'user' or messages[-1].get('content') != _cur_content:
                     _cur_msg: Dict[str, Any] = {'role': 'user', 'content': _cur_content}
-                    _img = (_cur_user.get('metadata') or {}).get('image_url')
+                    _cur_meta = (_cur_user.get('metadata') or {})
+                    _img = _cur_meta.get('image_url')
                     if _img:
                         _cur_msg['_image_url'] = _img
-                    messages.append(_apply_vision(_cur_msg))
+                    _aud = _cur_meta.get('audio_url')
+                    if _aud:
+                        _cur_msg['_audio_url'] = _aud
+                    _vid = _cur_meta.get('video_url')
+                    if _vid:
+                        _cur_msg['_video_url'] = _vid
+                    messages.append(_apply_multimodal(_cur_msg))
         else:
             # Prefer JSONL-based context if the log has entries for this session
             _jsonl_entries = chatlog.get_entries_for_llm(
@@ -1410,7 +1448,7 @@ class AgentRuntime:
                         continue
                     if (msg.get('metadata') or {}).get('slash_command'):
                         continue
-                    messages.append(_apply_vision(msg))
+                    messages.append(_apply_multimodal(msg))
             else:
                 # Fall back to SQLite (pre-migration sessions with no JSONL data)
                 if summary_record:
@@ -1777,16 +1815,34 @@ class AgentRuntime:
         truncation, mirroring the logic in context.py._build_message_entry().
         """
         entry = {"role": msg["role"]}
-        msg_image = None
-        if msg.get("metadata") and isinstance(msg["metadata"], dict):
-            msg_image = msg["metadata"].get("image_url")
-        if msg_image and agent.get("vision_enabled"):
+        _msg_meta = msg.get("metadata") if isinstance(msg.get("metadata"), dict) else {}
+        msg_image = _msg_meta.get("image_url") if _msg_meta else None
+        msg_audio = _msg_meta.get("audio_url") if _msg_meta else None
+        msg_video = _msg_meta.get("video_url") if _msg_meta else None
+        has_image = msg_image and agent.get("vision_enabled")
+        has_audio = msg_audio and agent.get("audio_enabled")
+        has_video = msg_video and agent.get("video_enabled")
+        if has_image or has_audio or has_video:
             parts = []
-            if msg.get("content") and msg["content"] != "[Image]":
-                parts.append({"type": "text", "text": msg["content"]})
-            parts.append({"type": "image_url", "image_url": {"url": msg_image}})
-            if not parts[0].get("text") if parts else True:
-                parts.insert(0, {"type": "text", "text": "What is in this image?"})
+            text_content = msg.get("content", "")
+            if text_content and text_content not in ("[Image]", "[Audio]", "[Video]"):
+                parts.append({"type": "text", "text": text_content})
+            if has_image:
+                parts.append({"type": "image_url", "image_url": {"url": msg_image}})
+            if has_audio:
+                if msg_audio.startswith("data:"):
+                    try:
+                        header, b64data = msg_audio.split(",", 1)
+                        fmt = header.split(":")[1].split(";")[0].split("/")[1]
+                    except (ValueError, IndexError):
+                        fmt, b64data = "wav", msg_audio
+                    parts.append({"type": "input_audio", "input_audio": {"data": b64data, "format": fmt}})
+                else:
+                    parts.append({"type": "input_audio", "input_audio": {"data": msg_audio, "format": "wav"}})
+            if has_video:
+                parts.append({"type": "video_url", "video_url": {"url": msg_video}})
+            if not parts or parts[0].get("type") != "text":
+                parts.insert(0, {"type": "text", "text": "What is in this media?"})
             entry["content"] = parts
         elif msg.get("content"):
             content = msg["content"]
@@ -2048,6 +2104,8 @@ class AgentRuntime:
 
     def send_as_user(self, session_id: str, text: str,
                      image_url: str | None = None,
+                     audio_url: str | None = None,
+                     video_url: str | None = None,
                      metadata: dict | None = None) -> bool:
         """User perspective: save message as user and trigger agent processing."""
         session = db.get_session_with_details(session_id)
@@ -2104,6 +2162,10 @@ class AgentRuntime:
         meta = {'user_perspective': True}
         if image_url:
             meta['image_url'] = image_url
+        if audio_url:
+            meta['audio_url'] = audio_url
+        if video_url:
+            meta['video_url'] = video_url
         if metadata:
             meta.update(metadata)
         db.add_chat_message(session_id, 'user', text, agent_id=agent_id, metadata=meta)
@@ -2124,6 +2186,8 @@ class AgentRuntime:
             'channel_id': channel_id,
             'message': text,
             'image_url': image_url,
+            'audio_url': audio_url,
+            'video_url': video_url,
         })
 
         # Enqueue for agent processing (fire-and-forget)

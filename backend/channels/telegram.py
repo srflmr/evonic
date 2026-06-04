@@ -289,6 +289,93 @@ async def _ingest_photo(message, context, agent_id, session_id, user_id,
     return image_url, info_line
 
 
+async def _ingest_audio(message, context, agent_id, session_id, user_id,
+                        channel_id, db):
+    """Handle audio/voice messages: multimodal conversion when audio_enabled.
+
+    Returns ``(audio_url, info_line)``: either or both may be ``None``.
+    """
+    has_audio = bool(getattr(message, 'audio', None))
+    has_voice = bool(getattr(message, 'voice', None))
+    if not (has_audio or has_voice):
+        return None, None
+
+    if has_voice:
+        obj = message.voice
+        audio_mime = getattr(obj, 'mime_type', None) or 'audio/ogg'
+        audio_orig_name = 'voice.ogg'
+        audio_file_type = 'voice'
+    else:
+        obj = message.audio
+        audio_mime = getattr(obj, 'mime_type', None) or 'audio/mpeg'
+        audio_orig_name = getattr(obj, 'file_name', None) or 'audio.mp3'
+        audio_file_type = 'audio'
+
+    audio_file_id = obj.file_id
+    audio_size = getattr(obj, 'file_size', None)
+    audio_url = None
+
+    agent = db.get_agent(agent_id)
+    if agent and agent.get('audio_enabled'):
+        # Size guard: skip base64 for files > 10 MB
+        if not audio_size or audio_size <= 10 * 1024 * 1024:
+            try:
+                file = await context.bot.get_file(audio_file_id)
+                audio_bytes = await file.download_as_bytearray()
+                b64 = base64.b64encode(bytes(audio_bytes)).decode('utf-8')
+                audio_url = f"data:{audio_mime};base64,{b64}"
+            except Exception as e:
+                _logger.error(
+                    "Failed to convert audio to base64 for agent %s: %s",
+                    agent_id, e, exc_info=True,
+                )
+
+    # info_line is handled by _ingest_non_photo_attachment (audio is a non-photo type)
+    return audio_url, None
+
+
+async def _ingest_video(message, context, agent_id, session_id, user_id,
+                        channel_id, db):
+    """Handle video/video_note messages: multimodal conversion when video_enabled.
+
+    Returns ``(video_url, info_line)``: either or both may be ``None``.
+    """
+    has_video = bool(getattr(message, 'video', None))
+    has_video_note = bool(getattr(message, 'video_note', None))
+    if not (has_video or has_video_note):
+        return None, None
+
+    if has_video:
+        obj = message.video
+        video_mime = getattr(obj, 'mime_type', None) or 'video/mp4'
+        video_file_type = 'video'
+    else:
+        obj = message.video_note
+        video_mime = 'video/mp4'
+        video_file_type = 'video_note'
+
+    video_file_id = obj.file_id
+    video_size = getattr(obj, 'file_size', None)
+    video_url = None
+
+    agent = db.get_agent(agent_id)
+    if agent and agent.get('video_enabled'):
+        # Size guard: skip base64 for files > 20 MB
+        if not video_size or video_size <= 20 * 1024 * 1024:
+            try:
+                file = await context.bot.get_file(video_file_id)
+                video_bytes = await file.download_as_bytearray()
+                b64 = base64.b64encode(bytes(video_bytes)).decode('utf-8')
+                video_url = f"data:{video_mime};base64,{b64}"
+            except Exception as e:
+                _logger.error(
+                    "Failed to convert video to base64 for agent %s: %s",
+                    agent_id, e, exc_info=True,
+                )
+
+    return video_url, None
+
+
 def _extract_name(text: str) -> str:
     """Extract a proper name from a self-introduction phrase using LLM.
 
@@ -517,6 +604,16 @@ class TelegramChannel(BaseChannel):
                     user_id, channel_id, db,
                 )
 
+                # Audio/video multimodal ingestion
+                audio_url, _ = await _ingest_audio(
+                    update.message, context, agent_id, session_id,
+                    user_id, channel_id, db,
+                )
+                video_url, _ = await _ingest_video(
+                    update.message, context, agent_id, session_id,
+                    user_id, channel_id, db,
+                )
+
                 # Compose `info_line` once — the two helpers are mutually
                 # exclusive by message shape, so at most one is non-None.
                 info_line = non_photo_info or photo_info
@@ -524,9 +621,13 @@ class TelegramChannel(BaseChannel):
                     text = info_line + (f"\n{text}" if text else '')
 
                 # Drop empty updates per legacy behavior.
+                has_any_media = image_url or audio_url or video_url
                 if has_photo or has_image_doc:
                     if image_url is None and not text:
                         return
+                elif has_any_media:
+                    if not text:
+                        text = '[Audio]' if audio_url else '[Video]'
                 elif not text:
                     return
 
@@ -559,7 +660,8 @@ class TelegramChannel(BaseChannel):
                         pass  # Silently skip if we can't resolve the reply
 
                 result = agent_runtime.handle_message(
-                    agent_id, user_id, final_text, channel_id, image_url=image_url
+                    agent_id, user_id, final_text, channel_id,
+                    image_url=image_url, audio_url=audio_url, video_url=video_url,
                 )
                 if result.get('buffered'):
                     return  # message buffered, response will come from the first caller
