@@ -2171,7 +2171,7 @@ class AgentRuntime:
                         'agent_id': agent_id,
                     })
                 self._prefetcher.invalidate(session_id)
-                return True
+                return response  # return response text so caller can include it in API response
             # Unknown command — fall through to normal LLM processing
 
         meta = {'user_perspective': True}
