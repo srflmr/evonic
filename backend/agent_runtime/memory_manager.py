@@ -52,6 +52,82 @@ Rules:
 
 Return a JSON array with exactly one entry per new fact (same order as new facts):"""
 
+_DIMENSION_PROMPT = """Given this memory fact, assign a semantic dimension key.
+
+The dimension is a dot-separated path that uniquely identifies WHAT aspect of knowledge this fact describes.
+Examples:
+- "User prefers Javanese language" → "user.language_preference"
+- "User's phone number is 08123456" → "user.phone_number"
+- "User's name is Robin" → "user.name"
+- "User prefers dark mode" → "user.ui_preference.theme"
+- "Always respond in formal tone" → "instruction.tone"
+- "User decided to use PostgreSQL for the project" → "decision.database_choice"
+- "User works at Acme Corp" → "user.employer"
+
+Rules:
+- Use lowercase, dot-separated hierarchy
+- First segment is the category: user, preference, decision, context, instruction
+- Be specific enough to detect contradictions but general enough to group related facts
+- If the fact is too general/vague to assign a clear dimension, return null
+
+Fact: {content}
+Category: {category}
+
+Return only the dimension string (e.g. "user.language_preference") or null:"""
+
+
+def _extract_dimension(content: str, category: str,
+                       llm_lock: threading.Lock = None) -> Optional[str]:
+    """Use LLM to extract a semantic dimension key from a memory fact."""
+    prompt = _DIMENSION_PROMPT.format(content=content, category=category)
+    try:
+        call_kwargs = dict(
+            messages=[{"role": "user", "content": prompt}],
+            tools=None, temperature=0.0, enable_thinking=False, max_tokens=64,
+        )
+        if llm_lock:
+            with llm_lock:
+                result = llm_client.chat_completion(**call_kwargs)
+        else:
+            result = llm_client.chat_completion(**call_kwargs)
+
+        if not result.get('success'):
+            return None
+        raw = result['response']['choices'][0]['message']['content'].strip()
+        raw, _ = strip_thinking_tags(raw)
+        raw = raw.strip().strip('"').strip("'")
+        if raw.lower() == 'null' or not raw:
+            return None
+        if not all(c.isalnum() or c in '._' for c in raw):
+            return None
+        return raw
+    except Exception:
+        return None
+
+
+def _store_with_conflict_detection(agent_id: str, session_id: str, content: str,
+                                   category: str, llm_lock: threading.Lock = None,
+                                   dimension: str = None) -> dict:
+    """Store a memory with dimension extraction and conflict detection.
+
+    If dimension is not provided, extracts it via LLM.
+    If an existing active memory shares the same dimension, supersedes it.
+    """
+    if dimension is None:
+        dimension = _extract_dimension(content, category, llm_lock)
+
+    superseded_ids = []
+    if dimension:
+        existing = db.get_memories_by_dimension(agent_id, dimension)
+        superseded_ids = [m['id'] for m in existing]
+
+    memory_id = db.add_memory(agent_id, content, category, session_id, dimension)
+
+    for old_id in superseded_ids:
+        db.supersede_memory(agent_id, old_id, memory_id)
+
+    return {"id": memory_id, "dimension": dimension, "superseded": superseded_ids}
+
 
 def extract_and_store_memories(agent: dict, session_id: str, summary: str,
                                 llm_lock: threading.Lock) -> None:
@@ -132,19 +208,24 @@ def extract_and_store_memories(agent: dict, session_id: str, summary: str,
                                 continue
                             action = op.get('action')
                             if action == 'add' and op.get('content', '').strip():
-                                db.add_memory(agent_id, op['content'].strip(),
-                                              op.get('category', 'general'), session_id)
+                                _store_with_conflict_detection(
+                                    agent_id, session_id, op['content'].strip(),
+                                    op.get('category', 'general'), llm_lock)
                             elif action == 'update' and op.get('id') and op.get('content', '').strip():
+                                dim = _extract_dimension(op['content'].strip(),
+                                                         op.get('category', 'general'), llm_lock)
                                 db.update_memory(agent_id, int(op['id']),
-                                                 op['content'].strip(), op.get('category'))
+                                                 op['content'].strip(), op.get('category'),
+                                                 dimension=dim)
                         return  # dedup handled all facts
                 except (json.JSONDecodeError, KeyError, ValueError):
                     pass  # fall through to simple add
 
         # No existing memories or dedup failed: add all new facts directly
         for fact in facts:
-            db.add_memory(agent_id, fact['content'].strip(),
-                          fact.get('category', 'general'), session_id)
+            _store_with_conflict_detection(
+                agent_id, session_id, fact['content'].strip(),
+                fact.get('category', 'general'), llm_lock)
 
     except Exception as e:
         print(f"[MemoryManager] Extraction failed for agent {agent_id} (non-fatal): {e}")
@@ -190,14 +271,18 @@ def get_memories_for_context(agent_id: str, messages: list,
 
 def store_memory(agent_id: str, session_id: str, content: str,
                  category: str = 'general') -> dict:
-    """Directly store a memory. Used by the `remember` built-in tool."""
+    """Directly store a memory with conflict detection. Used by the `remember` built-in tool."""
     content = content.strip()
     if not content:
         return {"error": "Memory content cannot be empty."}
     try:
-        memory_id = db.add_memory(agent_id, content, category, session_id)
-        return {"result": "Memory stored.", "id": memory_id,
+        result = _store_with_conflict_detection(agent_id, session_id, content, category)
+        resp = {"result": "Memory stored.", "id": result['id'],
                 "content": content, "category": category}
+        if result['superseded']:
+            resp["superseded_ids"] = result['superseded']
+            resp["result"] = f"Memory stored (superseded {len(result['superseded'])} older memory/ies)."
+        return resp
     except Exception as e:
         return {"error": f"Failed to store memory: {e}"}
 

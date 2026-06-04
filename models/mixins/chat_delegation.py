@@ -420,12 +420,12 @@ class ChatDelegationMixin:
     # ---- Long-term Memory delegation ----
 
     def add_memory(self, agent_id: str, content: str, category: str = 'general',
-                   source_session_id: str = None) -> int:
-        return self._chat_db(agent_id).add_memory(content, category, source_session_id)
+                   source_session_id: str = None, dimension: str = None) -> int:
+        return self._chat_db(agent_id).add_memory(content, category, source_session_id, dimension)
 
     def update_memory(self, agent_id: str, memory_id: int, content: str,
-                      category: str = None):
-        self._chat_db(agent_id).update_memory(memory_id, content, category)
+                      category: str = None, dimension: str = None):
+        self._chat_db(agent_id).update_memory(memory_id, content, category, dimension)
 
     def search_memories(self, agent_id: str, query: str,
                         limit: int = 10) -> List[Dict[str, Any]]:
@@ -437,6 +437,12 @@ class ChatDelegationMixin:
 
     def get_recent_memories(self, agent_id: str, limit: int = 20) -> List[Dict[str, Any]]:
         return self._chat_db(agent_id).get_recent_memories(limit)
+
+    def get_memories_by_dimension(self, agent_id: str, dimension: str) -> List[Dict[str, Any]]:
+        return self._chat_db(agent_id).get_memories_by_dimension(dimension)
+
+    def supersede_memory(self, agent_id: str, old_memory_id: int, new_memory_id: int):
+        self._chat_db(agent_id).supersede_memory(old_memory_id, new_memory_id)
 
     def expire_memory(self, agent_id: str, memory_id: int):
         self._chat_db(agent_id).expire_memory(memory_id)

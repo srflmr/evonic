@@ -188,6 +188,17 @@ class AgentChatDB:
                     VALUES (new.id, new.content, new.category);
                 END
             """)
+            # Migration: add dimension column for semantic conflict detection
+            try:
+                cursor.execute("ALTER TABLE memories ADD COLUMN dimension TEXT")
+            except sqlite3.OperationalError:
+                pass
+            # Migration: add superseded_by column for temporal state tracking
+            try:
+                cursor.execute("ALTER TABLE memories ADD COLUMN superseded_by INTEGER REFERENCES memories(id)")
+            except sqlite3.OperationalError:
+                pass
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_memories_dimension ON memories(dimension)")
             conn.commit()
 
     def get_or_create_session(self, agent_id: str, external_user_id: str,
@@ -819,21 +830,30 @@ class AgentChatDB:
     # ---- Long-term Memory ----
 
     def add_memory(self, content: str, category: str = 'general',
-                   source_session_id: str = None) -> int:
+                   source_session_id: str = None, dimension: str = None) -> int:
         with self._connect() as conn:
             cursor = conn.cursor()
             cursor.execute(
-                "INSERT INTO memories (content, category, source_session_id) VALUES (?, ?, ?)",
-                (content, category, source_session_id))
+                "INSERT INTO memories (content, category, source_session_id, dimension) VALUES (?, ?, ?, ?)",
+                (content, category, source_session_id, dimension))
             conn.commit()
             return cursor.lastrowid
 
-    def update_memory(self, memory_id: int, content: str, category: str = None):
+    def update_memory(self, memory_id: int, content: str, category: str = None,
+                      dimension: str = None):
         with self._connect() as conn:
-            if category:
+            if category and dimension:
+                conn.execute(
+                    "UPDATE memories SET content=?, category=?, dimension=?, updated_at=CURRENT_TIMESTAMP WHERE id=?",
+                    (content, category, dimension, memory_id))
+            elif category:
                 conn.execute(
                     "UPDATE memories SET content=?, category=?, updated_at=CURRENT_TIMESTAMP WHERE id=?",
                     (content, category, memory_id))
+            elif dimension:
+                conn.execute(
+                    "UPDATE memories SET content=?, dimension=?, updated_at=CURRENT_TIMESTAMP WHERE id=?",
+                    (content, dimension, memory_id))
             else:
                 conn.execute(
                     "UPDATE memories SET content=?, updated_at=CURRENT_TIMESTAMP WHERE id=?",
@@ -841,7 +861,7 @@ class AgentChatDB:
             conn.commit()
 
     def search_memories(self, query: str, limit: int = 10) -> List[Dict[str, Any]]:
-        """FTS5 BM25 keyword search over non-expired memories."""
+        """FTS5 BM25 keyword search over non-expired, non-superseded memories."""
         with self._connect() as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
@@ -850,6 +870,7 @@ class AgentChatDB:
                 JOIN memories_fts ON memories_fts.rowid = m.id
                 WHERE memories_fts MATCH ?
                 AND m.expired = 0
+                AND m.superseded_by IS NULL
                 ORDER BY rank
                 LIMIT ?
             """, (query, limit))
@@ -870,9 +891,27 @@ class AgentChatDB:
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
             cursor.execute(
-                "SELECT * FROM memories WHERE expired=0 ORDER BY updated_at DESC LIMIT ?",
+                "SELECT * FROM memories WHERE expired=0 AND superseded_by IS NULL ORDER BY updated_at DESC LIMIT ?",
                 (limit,))
             return [dict(r) for r in cursor.fetchall()]
+
+    def get_memories_by_dimension(self, dimension: str) -> List[Dict[str, Any]]:
+        """Get all active, non-superseded memories with the given dimension."""
+        with self._connect() as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT * FROM memories WHERE dimension = ? AND expired = 0 AND superseded_by IS NULL ORDER BY updated_at DESC",
+                (dimension,))
+            return [dict(r) for r in cursor.fetchall()]
+
+    def supersede_memory(self, old_memory_id: int, new_memory_id: int):
+        """Mark old_memory_id as superseded by new_memory_id."""
+        with self._connect() as conn:
+            conn.execute(
+                "UPDATE memories SET superseded_by = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+                (new_memory_id, old_memory_id))
+            conn.commit()
 
     def expire_memory(self, memory_id: int):
         """Soft-delete a memory."""
