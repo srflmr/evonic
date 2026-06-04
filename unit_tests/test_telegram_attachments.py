@@ -75,7 +75,7 @@ def _make_agent(agent_id='tg_agent', enabled=1, max_mb=20, supported=1):
     with db._connect() as conn:
         conn.execute(
             "UPDATE agents SET attachments_enabled=?, attachment_max_size_mb=?, "
-            "default_model_id=? WHERE id=?",
+            "model_id=? WHERE id=?",
             (enabled, max_mb, model_id, agent_id),
         )
     return agent_id

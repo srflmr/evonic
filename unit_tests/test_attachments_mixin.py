@@ -18,7 +18,7 @@ def _make_agent(agent_id='att_agent', model_id=None,
     with db._connect() as conn:
         conn.execute(
             "UPDATE agents SET attachments_enabled = ?, attachment_max_size_mb = ?, "
-            "default_model_id = ? WHERE id = ?",
+            "model_id = ? WHERE id = ?",
             (attachments_enabled, max_size_mb, model_id, agent_id),
         )
     return agent_id
