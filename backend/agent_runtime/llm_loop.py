@@ -1092,14 +1092,16 @@ def run_tool_loop(agent: Dict[str, Any],
 
         if content:
             is_final = not bool(tool_calls)
-            event_stream.emit('llm_response_chunk', {
-                'agent_id': agent_id, 'session_id': session_id,
-                'external_user_id': external_user_id, 'channel_id': channel_id,
-                'content': content, 'is_final': is_final,
-                # Signal frontend to also render a standalone bubble for intermediate
-                # responses when send_intermediate_responses is enabled on the agent.
-                'send_as_message': is_final or bool(agent.get('send_intermediate_responses')),
-            })
+            # [DONE] is an internal nudge-response signal — never user-visible.
+            if content.strip() != "[DONE]":
+                event_stream.emit('llm_response_chunk', {
+                    'agent_id': agent_id, 'session_id': session_id,
+                    'external_user_id': external_user_id, 'channel_id': channel_id,
+                    'content': content, 'is_final': is_final,
+                    # Signal frontend to also render a standalone bubble for intermediate
+                    # responses when send_intermediate_responses is enabled on the agent.
+                    'send_as_message': is_final or bool(agent.get('send_intermediate_responses')),
+                })
 
         if not tool_calls:
             # Treat trivial single-character/punctuation-only responses (e.g. ">", "<")
