@@ -90,12 +90,18 @@ def strip_thinking_tags(content: str) -> Tuple[str, Optional[str]]:
     cleaned = re.sub(thinking_pattern, "", content, flags=re.DOTALL).strip()
     thinking_content = "\n".join(thinking_matches) if thinking_matches else None
 
+    # Gemma4-12B tokenizer produces "** text**" (space after opening **)
+    # for certain tokens, breaking markdown bold rendering.
+    # Collapse the space: "** text**" → "**text**"
+    _fix_bold = lambda s: re.sub(r'\*\* ', '**', s) if s else s
+    cleaned = _fix_bold(cleaned)
+
     # Edge case: model put the final response inside <think>...</think>, leaving cleaned empty.
     # Check if thinking_content itself has an embedded </think> that signals end-of-thinking.
     if not cleaned and thinking_content:
         actual_thinking, embedded_final = _split_trailing_think_close(thinking_content)
         if embedded_final:
-            return embedded_final, actual_thinking
+            return _fix_bold(embedded_final), actual_thinking
 
     # Fallback: handle missing opening <think> tag (common with vLLM)
     if not thinking_content and "</think>" in content:
@@ -103,8 +109,8 @@ def strip_thinking_tags(content: str) -> Tuple[str, Optional[str]]:
         thinking_text = parts[0].strip()
         cleaned_text = parts[1].strip() if len(parts) > 1 else ""
         if thinking_text:
-            return cleaned_text or "No content generated", thinking_text
-        return cleaned_text or content.replace("</think>", "").strip(), None
+            return _fix_bold(cleaned_text) or "No content generated", thinking_text
+        return _fix_bold(cleaned_text) or content.replace("</think>", "").strip(), None
 
     return cleaned, thinking_content
 

@@ -26,10 +26,10 @@ func TestResolvePath_AbsolutePathGetsJoined(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	// Absolute paths are joined to workDir, not returned raw.
-	want := "/home/user/etc/shadow"
+	// Absolute paths are returned raw, not joined to workDir.
+	want := "/etc/shadow"
 	if got != want {
-		t.Errorf("got %q, want %q (absolute path must be joined, not returned raw)", got, want)
+		t.Errorf("got %q, want %q (absolute path must be returned raw, not joined)", got, want)
 	}
 }
 
@@ -43,13 +43,12 @@ func TestResolvePath_TraversalEscape(t *testing.T) {
 
 func TestResolvePath_PartialPrefixMatch(t *testing.T) {
 	wd := filepath.Clean("/home/user") + string(os.PathSeparator)
-	// Absolute paths are joined to workDir, so /home/user2/secret becomes
-	// /home/user/home/user2/secret — safely inside workDir, no error expected.
+	// Absolute paths are returned raw; sandbox check is skipped for them.
 	got, err := resolvePath("/home/user2/secret", wd)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	want := "/home/user/home/user2/secret"
+	want := "/home/user2/secret"
 	if got != want {
 		t.Errorf("got %q, want %q", got, want)
 	}
@@ -61,8 +60,8 @@ func TestResolvePath_WorkDirExact(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	// Absolute paths are joined to workDir, so /home/user becomes /home/user/home/user.
-	want := "/home/user/home/user"
+	// Absolute paths are returned raw; /home/user stays /home/user.
+	want := "/home/user"
 	if got != want {
 		t.Errorf("got %q, want %q", got, want)
 	}

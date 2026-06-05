@@ -1592,7 +1592,11 @@ def api_chat_stream(agent_id):
             'is_final': d.get('is_final', False),
             'send_as_message': d.get('send_as_message', False),
         }),
-        'turn_complete':      ('done',             lambda d: {'thinking_duration': d.get('thinking_duration')}),
+        'turn_complete':      ('done',             lambda d: {
+            'thinking_duration': d.get('thinking_duration'),
+            'response': d.get('response', ''),
+            'slash_command': d.get('slash_command', False),
+        }),
         'approval_required':  ('approval_required', lambda d: {
             'approval_id': d.get('approval_id', ''),
             'agent_id': d.get('agent_id', ''),
@@ -1830,7 +1834,11 @@ def api_chat_events(agent_id):
         'tool_call_started': ('tool_call_started', lambda d: {'tool': d.get('tool_name', ''), 'args': d.get('tool_args', {}), 'param_types': d.get('param_types', {})}),
         'tool_executed':     ('tool_executed',    lambda d: {'tool': d.get('tool_name', ''), 'args': d.get('tool_args', {}), 'result': d.get('tool_result', {}), 'error': d.get('has_error', False)}),
         'llm_response_chunk':('response_chunk',  lambda d: {'content': d.get('content', ''), 'is_final': d.get('is_final', False), 'send_as_message': d.get('send_as_message', False)}),
-        'turn_complete':     ('done',             lambda d: {'thinking_duration': d.get('thinking_duration')}),
+        'turn_complete':     ('done',             lambda d: {
+            'thinking_duration': d.get('thinking_duration'),
+            'response': d.get('response', ''),
+            'slash_command': d.get('slash_command', False),
+        }),
         'approval_required': ('approval_required', lambda d: {'approval_id': d.get('approval_id', ''), 'agent_id': d.get('agent_id', ''), 'source_agent_id': d.get('source_agent_id', ''), 'source_agent_name': d.get('source_agent_name', ''), 'tool': d.get('tool_name', ''), 'args': d.get('tool_args', {}), 'approval_info': d.get('approval_info', {}), 'reasons': d.get('reasons', []), 'score': d.get('score')}),
         'approval_resolved': ('approval_resolved', lambda d: {'approval_id': d.get('approval_id', ''), 'decision': d.get('decision', ''), 'timed_out': d.get('timed_out', False)}),
         'llm_retry':         ('retry',             lambda d: {'retry_count': d.get('retry_count', 0), 'max_retries': d.get('max_retries', 0), 'error_type': d.get('error_type', ''), 'message': d.get('user_message', '')}),
