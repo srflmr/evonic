@@ -2212,3 +2212,16 @@ class AgentRuntime:
             self._message_queue.put(task)
 
         return True
+
+    def resume_session(self, agent: dict, session_id: str,
+                       external_user_id: str, channel_id: str | None = None) -> None:
+        """Re-enqueue a session for agent processing without saving a new message.
+
+        Used at startup to follow up on unreplied user messages that were left
+        pending after a server restart.
+        """
+        if not agent.get('enabled', True):
+            return
+        task = _QueueTask(agent, SessionContext(session_id, external_user_id, channel_id),
+                          send_via_channel=False)
+        self._message_queue.put(task)
