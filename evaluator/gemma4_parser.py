@@ -143,7 +143,7 @@ def extract_gemma4_content(text: str) -> str:
     # Gemma4-12B tokenizer produces "** text**" (space after opening **)
     # for certain tokens, breaking markdown bold rendering.
     # Post-process to collapse the space: "** text**" → "**text**"
-    content = re.sub(r'\*\* ', '**', content)
+    content = re.sub(r'(?<!\w)\*\* ', '**', content)
 
     return content
 
