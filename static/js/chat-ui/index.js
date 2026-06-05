@@ -81,7 +81,8 @@ export class ChatUI {
      * @returns {jQuery}  the wrapper div (anchor for Turn)
      */
     appendMessage(role, content, opts = {}) {
-        if (role !== 'error' && (!content || !content.trim())) {
+        const hasMeta = opts.metadata && (opts.metadata.image_url || opts.metadata.attachment_info);
+        if (role !== 'error' && (!content || !content.trim()) && !hasMeta) {
             this._log.warn('appendMessage SKIPPED empty/whitespace content', role);
             return $();
         }

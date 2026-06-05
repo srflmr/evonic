@@ -1172,7 +1172,7 @@ async function sendReply(e) {
     } else if (file) {
         optimisticMeta = {attachment_info: {filename: file.name, mime_type: file.type, is_image: false}};
     }
-    const displayText = text || (file ? (file.type.startsWith('image/') ? '' : `[File: ${file.name}]`) : '');
+    const displayText = text || (file ? (file.type.startsWith('image/') ? '[Image]' : `[File: ${file.name}]`) : '');
     const $msgEl = chatUI.appendMessage(outRole, displayText, {metadata: optimisticMeta});
     // If the agent is mid-turn, mark message as queued with clock indicator
     if (_sseThinkingId) chatUI.markLastUserBubbleQueued($msgEl);

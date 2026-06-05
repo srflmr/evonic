@@ -3205,7 +3205,7 @@ async function sendChat() {
     } else if (file) {
         optimisticMeta = {attachment_info: {filename: file.name, mime_type: file.type, is_image: false}};
     }
-    const displayText = msg || (file ? (file.type.startsWith('image/') ? '' : `[File: ${file.name}]`) : '');
+    const displayText = msg || (file ? (file.type.startsWith('image/') ? '[Image]' : `[File: ${file.name}]`) : '');
 
     const $msgEl = chatUI.appendMessage('user', displayText, {metadata: optimisticMeta});
     // Capture the user message wrapper for anchoring the thinking bubble
