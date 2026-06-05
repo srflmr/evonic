@@ -612,6 +612,8 @@ def _on_final_answer(data: dict) -> None:
                 'agent_reply': True,
                 'report_to_id': report_to_id,
                 'agent_message_depth': original_depth,
+                'reply_to_agent_id': agent_b_id,
+                'reply_to_session_id': session_id,
             },
         )
         if result.get('success'):
@@ -632,9 +634,120 @@ def _on_final_answer(data: dict) -> None:
         )
 
 
-# NOTE: _on_final_answer listener is registered in
+def _on_final_answer_reply_back(data: dict) -> None:
+    """Reply-back: when agent A responds in a human session to B's forwarded
+    reply, route A's answer back to B's inter-agent session so the
+    conversation continues."""
+    external_user_id = data.get('external_user_id', '')
+
+    # Only handle human sessions — inter-agent sessions are handled by _on_final_answer
+    if not external_user_id or external_user_id.startswith('__agent__'):
+        return
+
+    agent_a_id = data.get('agent_id', '')
+    session_id = data.get('session_id', '')
+    answer = data.get('answer', '')
+
+    if not agent_a_id or not session_id or not answer:
+        return
+
+    # Resolve DB agent ID (sub-agents use parent's DB)
+    _db_agent_id = agent_a_id
+    try:
+        from backend.subagent_manager import subagent_manager
+        _sub = subagent_manager.get(agent_a_id)
+        if _sub:
+            _db_agent_id = _sub.get('parent_id', agent_a_id)
+    except Exception:
+        pass
+
+    # Find the triggering user message with reply_to_agent_id metadata
+    try:
+        messages = db.get_session_messages(session_id, limit=10, agent_id=_db_agent_id)
+    except Exception:
+        return
+
+    reply_to_agent_id = None
+    reply_to_session_id = None
+    original_depth = 0
+    for msg in reversed(messages):
+        if msg.get('role') != 'user':
+            continue
+        meta = msg.get('metadata') or {}
+        if isinstance(meta, str):
+            try:
+                import json as _json
+                meta = _json.loads(meta)
+            except (ValueError, TypeError):
+                meta = {}
+        if meta.get('reply_to_agent_id'):
+            reply_to_agent_id = meta['reply_to_agent_id']
+            reply_to_session_id = meta.get('reply_to_session_id')
+            original_depth = meta.get('agent_message_depth', 0)
+            break
+        # Non-agent-reply user message — this turn was triggered by a human, not a forwarded reply
+        if not meta.get('agent_reply'):
+            return
+
+    if not reply_to_agent_id or not reply_to_session_id:
+        return
+
+    # Depth guard — prevent infinite reply-back loops
+    next_depth = original_depth + 1
+    if next_depth >= _MAX_DEPTH:
+        _logger.info(
+            "Reply-back skip: depth %d >= MAX_DEPTH %d for '%s' → '%s'.",
+            next_depth, _MAX_DEPTH, agent_a_id, reply_to_agent_id,
+        )
+        return
+
+    agent_a = db.get_agent(agent_a_id)
+    agent_a_name = agent_a.get('name', agent_a_id) if agent_a else agent_a_id
+
+    _logger.info(
+        "Reply-back: '%s' responded to forwarded reply from '%s'. "
+        "Routing back to session '%s' (depth=%d).",
+        agent_a_id, reply_to_agent_id, reply_to_session_id, next_depth,
+    )
+
+    try:
+        from backend.agent_runtime.notifier import notify_agent
+        result = notify_agent(
+            agent_id=reply_to_agent_id,
+            tag=f'AGENT/{agent_a_name}',
+            message=answer,
+            session_id=reply_to_session_id,
+            dedup=False,
+            trigger_llm=True,
+            metadata={
+                'agent_message': True,
+                'from_agent_id': agent_a_id,
+                'from_agent_name': agent_a_name,
+                'is_reply_back': True,
+                'agent_message_depth': next_depth,
+                'report_to_id': external_user_id,
+                'report_to_channel_id': data.get('channel_id') or None,
+            },
+        )
+        if result.get('success'):
+            _logger.info(
+                "Reply-back: '%s' answer forwarded to '%s' session '%s'.",
+                agent_a_id, reply_to_agent_id, reply_to_session_id,
+            )
+        else:
+            _logger.warning(
+                "Reply-back: notify_agent failed for '%s' → '%s': reason=%s.",
+                agent_a_id, reply_to_agent_id, result.get('reason'),
+            )
+    except Exception as e:
+        _logger.error(
+            "Reply-back failed for '%s' → '%s': %s", agent_a_id, reply_to_agent_id, e,
+        )
+
+
+# NOTE: _on_final_answer and _on_final_answer_reply_back listeners are registered in
 # backend/agent_runtime/__init__.py at startup, not here,
-# so it fires regardless of whether agent_messaging tools are loaded.
+# so they fire regardless of whether agent_messaging tools are loaded.
 
 
 # ==================== Registry-style access ====================
