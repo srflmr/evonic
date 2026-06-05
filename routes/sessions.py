@@ -231,17 +231,23 @@ def api_session_reply(session_id):
             text = '[Image]' if attachment_info.get('is_image') else f"[File: {attachment_info['filename']}]"
 
     if perspective == 'A':
-        ok = agent_runtime.send_as_user(session_id, text,
-                                        image_url=image_url, metadata=upload_meta)
+        result = agent_runtime.send_as_user(session_id, text,
+                                            image_url=image_url, metadata=upload_meta)
     else:
-        ok = agent_runtime.send_as_bot(session_id, text)
-    if not ok:
+        result = agent_runtime.send_as_bot(session_id, text)
+
+    if not result:
         return jsonify({'error': 'Session not found'}), 404
 
-    # Signal the frontend to clear the UI for /clear commands
-    is_clear = text.strip().startswith('/clear') if perspective == 'A' else False
+    # Build response — for slash commands, include the response text directly
     resp = {'success': True}
-    if is_clear:
+    if isinstance(result, str):
+        # send_as_user returned the slash command response text
+        resp['slash_command'] = True
+        resp['response'] = result
+        if text.strip().startswith('/clear'):
+            resp['clear_ui'] = True
+    elif text.strip().startswith('/clear'):
         resp['clear_ui'] = True
     if attachment_info:
         resp['attachment_info'] = attachment_info

@@ -316,6 +316,7 @@ if not _reloader_active or _is_reloader_child:
 
         _unreplied_count = 0
         _total_sessions = 0
+        _pending = []  # (agent_dict, session_id, external_user_id, channel_id)
 
         for _agent in _enabled:
             if _agent.get('is_subagent'):
@@ -360,12 +361,23 @@ if not _reloader_active or _is_reloader_child:
                     "Unreplied chat — agent=%s session=%s user_msg_at=%s preview=%r",
                     _agent_name, _session_id, _ts_str, _preview
                 )
+                _pending.append((_agent, _session_id, _sess.get('external_user_id', ''),
+                                 _sess.get('channel_id')))
 
         if _unreplied_count:
             _log.warning(
                 "Unreplied-chat scan complete: %d/%d human session(s) have no agent reply.",
                 _unreplied_count, _total_sessions,
             )
+            # Re-enqueue unreplied sessions so agents follow up
+            from backend.agent_runtime import agent_runtime
+            for _agent, _sid, _ext_uid, _ch_id in _pending:
+                try:
+                    agent_runtime.resume_session(_agent, _sid, _ext_uid, _ch_id)
+                    _log.info("Resumed unreplied session %s for agent %s",
+                              _sid, _agent.get('name', _agent['id']))
+                except Exception as _e:
+                    _log.error("Failed to resume session %s: %s", _sid, _e)
         else:
             _log.info(
                 "Unreplied-chat scan complete: all %d human session(s) have replies.",

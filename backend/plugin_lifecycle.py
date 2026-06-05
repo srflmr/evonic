@@ -700,7 +700,10 @@ class PluginManager:
     def get_all_agent_plugin_settings(self, agent_id: str) -> List[Dict[str, Any]]:
         """Collect per-agent settings from all enabled plugins that declare agent_settings."""
         result = []
-        for plugin_id, info in self._plugins.items():
+        for plugin in self.list_plugins():
+            plugin_id = plugin['id']
+            if not self._is_plugin_enabled(plugin_id):
+                continue
             schema = self.get_agent_settings_schema(plugin_id)
             if not schema:
                 continue
@@ -712,7 +715,7 @@ class PluginManager:
                 settings.append(entry)
             result.append({
                 'plugin_id': plugin_id,
-                'plugin_name': info.get('name', plugin_id),
+                'plugin_name': plugin.get('name', plugin_id),
                 'settings': settings,
             })
         return result

@@ -178,16 +178,25 @@ func (e *Executor) handleWriteFileB64(req Request) Response {
 // resolvePath joins the requested path with workDir, cleans the result,
 // and validates that the resolved path stays within workDir.
 func resolvePath(path, workDir string) (string, error) {
-	resolved := filepath.Join(workDir, path)
-	clean := filepath.Clean(resolved)
-	// Ensure trailing separator on workDir to prevent partial prefix match
-	// (e.g. /home/user must not match /home/user2).
-	prefix := workDir
-	if !strings.HasSuffix(prefix, string(os.PathSeparator)) {
-		prefix += string(os.PathSeparator)
+	var resolved string
+	if filepath.IsAbs(path) {
+		resolved = path
+	} else {
+		resolved = filepath.Join(workDir, path)
 	}
-	if !strings.HasPrefix(clean, prefix) && clean != workDir {
-		return "", fmt.Errorf("path escapes working directory: %s", path)
+	clean := filepath.Clean(resolved)
+	// Skip sandbox check for absolute paths — the agent may work on files
+	// outside workDir. Only sandbox relative paths.
+	if !filepath.IsAbs(path) {
+		// Ensure trailing separator on workDir to prevent partial prefix match
+		// (e.g. /home/user must not match /home/user2).
+		prefix := workDir
+		if !strings.HasSuffix(prefix, string(os.PathSeparator)) {
+			prefix += string(os.PathSeparator)
+		}
+		if !strings.HasPrefix(clean, prefix) && clean != workDir {
+			return "", fmt.Errorf("path escapes working directory: %s", path)
+		}
 	}
 	return clean, nil
 }
