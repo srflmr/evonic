@@ -2094,6 +2094,7 @@ class AgentRuntime:
             'mime_type': guessed_mime,
             'size_bytes': size_bytes,
             'is_image': is_image,
+            'file_path': file_path,
         }
 
         # 3. Write chat entry

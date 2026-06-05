@@ -86,6 +86,7 @@ def _process_upload(file_storage, agent_id: str, session_id: str,
         'is_image': is_image,
         'attachment_id': attachment_id,
         'size_bytes': size_bytes,
+        'file_path': target_path,
     }
 
     # --- Image: convert to JPEG base64 for LLM vision ---
