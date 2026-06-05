@@ -1357,6 +1357,7 @@ function toggleChatFullscreenMode() {
     const $header = $tab.closest('.flex-col').children('.flex-shrink-0');
 
     _chatFullscreenActive = !_chatFullscreenActive;
+    try { localStorage.setItem('evonic-chat-fullscreen', _chatFullscreenActive ? '1' : '0'); } catch(_) {}
 
     if (_chatFullscreenActive) {
         $tab.addClass('chat-fullscreen');
@@ -4617,6 +4618,11 @@ $(function () {
         agentId: '{{ agent.id }}',
     });
     showTab(window._tabInitHash || 'chat');
+    try {
+        if (localStorage.getItem('evonic-chat-fullscreen') === '1') {
+            toggleChatFullscreenMode();
+        }
+    } catch(_) {}
 });
 </script>
 
