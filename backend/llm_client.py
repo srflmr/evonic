@@ -18,15 +18,6 @@ from backend.normalizer import normalize_llm_text
 from evaluator.api_logger import log_api_call
 from evaluator.gemma4_parser import is_gemma4_format, strip_gemma4_thinking
 
-# GBNF grammar to prevent gemma4-12b from adding space after opening ** bold
-# markers. The model naturally outputs "** text**" instead of "**text**",
-# which breaks markdown rendering. This grammar forbids "** " (double-asterisk
-# followed by space) at the token level.
-_GBNF_BOLD_FIX = (
-    "root ::= (seq)*\n"
-    'seq ::= [^*] | "*" [^*] | "**" [^* ] | "***"'
-)
-
 # ── Centralized error formatting ──────────────────────────────────────────────
 
 _LLM_ERROR_MESSAGES = {
@@ -377,10 +368,6 @@ class LLMClient:
         is_claude = (self.model or "").lower().startswith("claude") or (
             self.base_url and "anthropic.com" in self.base_url
         )
-        # Detect llama.cpp backend: not Ollama-formatted, not Claude.
-        # The grammar parameter (GBNF) is only understood by llama.cpp;
-        # other backends (OpenAI, Anthropic) safely ignore unknown params.
-        _is_llama_cpp = not is_ollama_fmt and not is_claude
         url = (
             f"{self.base_url}/chat"
             if is_ollama_fmt
@@ -508,11 +495,6 @@ class LLMClient:
                     else max_tokens // 2
                 )
                 payload["thinking"] = {"type": "enabled", "budget_tokens": budget}
-            # Apply GBNF grammar constraint for gemma4 models to prevent
-            # "** text**" (space after opening bold marker) which breaks
-            # markdown rendering.
-            if is_gemma4 and _is_llama_cpp:
-                payload["grammar"] = _GBNF_BOLD_FIX
 
         headers = {"Content-Type": "application/json"}
         if self.api_key:
