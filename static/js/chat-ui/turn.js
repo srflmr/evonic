@@ -154,14 +154,19 @@ export class Turn {
         // Timeline panel container
         this.$panel = $(`<div class="flex ${alignClass}" data-turn-id="${this.id}">`);
         const $panelInner = $('<div class="ml-5 max-w-[80%]">');
-        this.$timeline = $('<div class="timeline-panel hidden space-y-0.5 py-0.5">');
+        this.$timeline = $('<div class="timeline-panel space-y-0.5 py-0.5">').hide();
         $panelInner.append(this.$timeline);
         this.$panel.append($panelInner);
 
-        // Click to expand/collapse timeline
+        // Click to expand/collapse timeline with smooth animation
         $inner.on('click', () => {
-            this.$timeline.toggleClass('hidden');
-            $inner.find('.tool-trace-chevron').toggleClass('rotated');
+            if (this.$timeline.is(':visible')) {
+                this.$timeline.slideUp(200);
+                $inner.find('.tool-trace-chevron').removeClass('rotated');
+            } else {
+                this.$timeline.slideDown(200);
+                $inner.find('.tool-trace-chevron').addClass('rotated');
+            }
         });
 
         // Always append at the end of the container. Inserting after $anchor would
@@ -169,6 +174,10 @@ export class Turn {
         // agent messages rendered after the user message (e.g. turn_split, replay).
         this._$container.append(this.$bubble);
         this.$bubble.after(this.$panel);
+
+        // Auto-expand timeline on creation so user sees thought process in real-time
+        this.$timeline.slideDown(200);
+        this.$bubble.find('.tool-trace-chevron').addClass('rotated');
     }
 
     _startTimer() {
@@ -368,7 +377,7 @@ export class Turn {
         if (!$entry) return;
 
         this.$timeline.append($entry);
-        this.$timeline.removeClass('hidden');
+        if (!this.$timeline.is(':visible')) this.$timeline.slideDown(200);
 
         // Update step count badge
         const toolCount = this.$timeline.find('.timeline-entry[data-tool-type="tool_call"]').length;
@@ -459,6 +468,12 @@ export class Turn {
         this.$timeline.find('.tl-thinking-pending').remove();
         this._deactivateEntry(this.$timeline.find('.timeline-entry:last-child'));
 
+        // Auto-collapse the timeline when turn completes, keeping UI clean
+        if (this.$timeline.is(':visible')) {
+            this.$timeline.slideUp(200);
+        }
+        this.$bubble.find('.tool-trace-chevron').removeClass('rotated');
+
         this.phase = 'done';
         this._onPhaseChange(this, 'final', 'done');
         this._log.info('finalized', this.id, 'duration=', duration);
@@ -542,7 +557,7 @@ export class Turn {
         });
 
         this.$timeline.append($card);
-        this.$timeline.removeClass('hidden');
+        if (!this.$timeline.is(':visible')) this.$timeline.slideDown(200);
         this._smartScroll();
     }
 
