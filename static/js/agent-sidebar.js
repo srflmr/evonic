@@ -203,7 +203,7 @@ function dismissBubble(agentId) {
  * The bubble displays a truncated preview of the agent's final response.
  * Clicking the bubble navigates to the agent detail chat tab.
  */
-function showBubblePopup(agentId, agentName, response) {
+function showBubblePopup(agentId, agentName, response, sessionId) {
     var avatar = document.querySelector(
         '#agent-sidebar .agent-avatar[data-agent-id="' + CSS.escape(agentId) + '"]'
     );
@@ -217,6 +217,7 @@ function showBubblePopup(agentId, agentName, response) {
 
     var bubble = document.createElement('div');
     bubble.className = 'agent-bubble-popup';
+    if (sessionId) bubble.setAttribute('data-session-id', sessionId);
 
     // Arrow pointing left toward the avatar
     var arrow = document.createElement('div');
@@ -251,7 +252,13 @@ function showBubblePopup(agentId, agentName, response) {
     bubble.addEventListener('click', function (e) {
         if (e.target === closeBtn) return;
         dismissBubble(agentId);
-        window.location = '/agents/' + encodeURIComponent(agentId) + '#chat';
+        var bubbleSessionId = bubble.getAttribute('data-session-id');
+        if (bubbleSessionId) {
+            sessionStorage.setItem('evonic_last_session', bubbleSessionId);
+            window.location = '/sessions';
+        } else {
+            window.location = '/agents/' + encodeURIComponent(agentId) + '#chat';
+        }
     });
 
     document.body.appendChild(bubble);
@@ -318,7 +325,7 @@ function subscribeBusySSE() {
                 var payload = JSON.parse(e.data);
                 // Don't show bubble if user is already viewing this agent's page
                 if (window.location.pathname === '/agents/' + payload.agent_id) return;
-                showBubblePopup(payload.agent_id, payload.agent_name, payload.response);
+                showBubblePopup(payload.agent_id, payload.agent_name, payload.response, payload.session_id);
             } catch (_) {}
         });
         es.addEventListener('error', function () {
