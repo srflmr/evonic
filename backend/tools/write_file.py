@@ -244,6 +244,9 @@ def execute(agent, args: dict) -> dict:
             return {'error': "Access denied — path escapes agent directory."}
         return write_file(local_path, content, overwrite=overwrite, create_dirs=create_dirs, edit_suggestion=edit_suggestion)
 
+    # Hint when path starts with _self/ but missing leading slash
+    if agent_id and file_path and (file_path.startswith('_self/') or file_path == '_self'):
+        return {"error": f"File not found: {file_path}. If you meant to access an agent directory, use the prefix `/_self/` (with a leading slash)."}
     # /_portal/ path: route through a virtual path mapping to local/SSH/evonet.
     from backend.tools._portal import is_portal_path, resolve_portal_path
     if agent_id and is_portal_path(file_path):
