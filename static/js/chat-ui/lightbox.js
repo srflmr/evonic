@@ -66,37 +66,69 @@ const Lightbox = (function() {
     }
 
     function _buildDOM() {
-        // Overlay backdrop
+        // Overlay backdrop — use inline CSS for z-index & bg opacity (Tailwind
+        // compiled CSS may not include arbitrary-value or opacity-modifier classes)
         _$overlay = $('<div>')
-            .addClass('ev-lightbox-overlay fixed inset-0 z-[9999] bg-black/90 hidden flex flex-col items-center justify-center');
+            .addClass('ev-lightbox-overlay fixed inset-0 hidden flex flex-col items-center justify-center')
+            .css({ zIndex: 9999, backgroundColor: 'rgba(0,0,0,0.9)' });
+
+        // Helper: build a nav button (close, prev, next) with inline styling
+        function _navBtn(cls, label, svgHtml, onClick) {
+            const sizes = {
+                close: { w: 48, h: 48, top: '16px', right: '16px', left: 'auto' },
+                prev:  { w: 40, h: 40, top: '50%', right: 'auto', left: '8px' },
+                next:  { w: 40, h: 40, top: '50%', right: '8px', left: 'auto' },
+            };
+            const s = sizes[cls] || sizes.close;
+            const $btn = $('<button>')
+                .addClass('ev-lightbox-' + cls + ' rounded-full text-white cursor-pointer duration-200')
+                .css({
+                    position: 'absolute',
+                    top: s.top,
+                    right: s.right,
+                    left: s.left,
+                    zIndex: 20,
+                    width: s.w + 'px',
+                    height: s.h + 'px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    backgroundColor: 'rgba(255,255,255,0.1)',
+                    border: 'none',
+                    transform: cls !== 'close' ? 'translateY(-50%)' : 'none',
+                    transition: 'background-color 200ms ease',
+                    outline: 'none',
+                })
+                .attr('aria-label', label)
+                .attr('type', 'button')
+                .html(svgHtml)
+                .on('click', onClick)
+                .on('mouseenter', function() { $(this).css('backgroundColor', 'rgba(255,255,255,0.2)'); })
+                .on('mouseleave', function() { $(this).css('backgroundColor', 'rgba(255,255,255,0.1)'); })
+                .on('focus', function() { $(this).css({ outline: '2px solid rgba(255,255,255,0.7)', outlineOffset: '2px' }); })
+                .on('blur', function() { $(this).css({ outline: 'none', outlineOffset: '0' }); });
+            return $btn;
+        }
 
         // Close button (X)
-        const $closeBtn = $('<button>')
-            .addClass('ev-lightbox-close absolute top-4 right-4 z-20 w-12 h-12 flex items-center justify-center rounded-full bg-white/10 hover:bg-white/20 text-white cursor-pointer transition-colors duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/70')
-            .attr('aria-label', 'Close lightbox')
-            .attr('type', 'button')
-            .html('<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>')
-            .on('click', function() { Lightbox.close(); });
+        const $closeBtn = _navBtn('close', 'Close lightbox',
+            '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>',
+            function() { Lightbox.close(); });
 
         // Previous button
-        _$prevBtn = $('<button>')
-            .addClass('ev-lightbox-prev absolute left-2 md:left-4 top-1/2 -translate-y-1/2 z-20 w-10 h-10 md:w-12 md:h-12 flex items-center justify-center rounded-full bg-white/10 hover:bg-white/20 text-white cursor-pointer transition-colors duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/70')
-            .attr('aria-label', 'Previous image')
-            .attr('type', 'button')
-            .html('<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>')
-            .on('click', function(e) { e.stopPropagation(); Lightbox._navigate(-1); });
+        _$prevBtn = _navBtn('prev', 'Previous image',
+            '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>',
+            function(e) { e.stopPropagation(); Lightbox._navigate(-1); });
 
         // Next button
-        _$nextBtn = $('<button>')
-            .addClass('ev-lightbox-next absolute right-2 md:right-4 top-1/2 -translate-y-1/2 z-20 w-10 h-10 md:w-12 md:h-12 flex items-center justify-center rounded-full bg-white/10 hover:bg-white/20 text-white cursor-pointer transition-colors duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/70')
-            .attr('aria-label', 'Next image')
-            .attr('type', 'button')
-            .html('<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>')
-            .on('click', function(e) { e.stopPropagation(); Lightbox._navigate(1); });
+        _$nextBtn = _navBtn('next', 'Next image',
+            '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>',
+            function(e) { e.stopPropagation(); Lightbox._navigate(1); });
 
         // Image element (lazy-loaded — src set when showing)
         _$img = $('<img>')
-            .addClass('ev-lightbox-img max-w-[90vw] max-h-[90vh] object-contain select-none')
+            .addClass('ev-lightbox-img max-h-[90vh] select-none')
+            .css({ maxWidth: '90vw', objectFit: 'contain' })
             .attr('draggable', 'false')
             .attr('alt', '')
             .on('load', function() {
@@ -104,9 +136,19 @@ const Lightbox = (function() {
                 $(this).css('opacity', '1');
             });
 
-        // Counter indicator
+        // Counter indicator — use inline CSS for fractional positioning & opacity
         _$counter = $('<span>')
-            .addClass('ev-lightbox-counter absolute bottom-4 left-1/2 -translate-x-1/2 z-20 text-white/80 text-sm font-mono bg-black/50 backdrop-blur-sm px-3 py-1 rounded-full');
+            .addClass('ev-lightbox-counter text-sm font-mono backdrop-blur-sm px-3 py-1 rounded-full')
+            .css({
+                position: 'absolute',
+                bottom: '16px',
+                left: '50%',
+                transform: 'translateX(-50%)',
+                zIndex: 20,
+                color: 'rgba(255,255,255,0.8)',
+                backgroundColor: 'rgba(0,0,0,0.5)',
+                whiteSpace: 'nowrap',
+            });
 
         // Hide counter if only 1 image
         _$counter.attr('data-count', '0');

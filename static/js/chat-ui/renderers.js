@@ -508,11 +508,35 @@ function _buildSysBalloon(tag, content, tagColorClass, fullColorClass, truncateL
 function _wrapImageWithDownload($img) {
     const imageUrl = $img.attr('src');
     if (!imageUrl) return;
-    // Thumbnail styling: constrained size, responsive, clickable
-    $img.addClass('max-w-[85vw] md:max-w-[400px] max-h-[250px] md:max-h-[300px] object-contain cursor-pointer rounded-lg');
-    // Ensure the image has no bottom margin that would shift the container bounds
-    $img.css('display', 'block');
-    const $container = $('<div>').addClass('relative group inline-block rounded-lg overflow-hidden');
+    // Thumbnail styling: constrained size via inline CSS (Tailwind compiled CSS
+    // may not include arbitrary-value classes like max-w-[85vw]).
+    $img.addClass('rounded-lg')
+        .css({
+            'max-width': '400px',
+            'max-height': '300px',
+            'object-fit': 'contain',
+            'cursor': 'pointer',
+            'display': 'block',
+        });
+    // Responsive: on mobile (<768px) use viewport-relative width
+    const _applyResponsiveWidth = function() {
+        $img.css('max-width', window.innerWidth < 768 ? '85vw' : '400px');
+    };
+    _applyResponsiveWidth();
+    $(window).on('resize.chatThumb', $.debounce ? undefined : _applyResponsiveWidth);
+    // Simple debounced resize handler
+    let _resizeTimer;
+    $(window).on('resize.chatThumb', function() {
+        clearTimeout(_resizeTimer);
+        _resizeTimer = setTimeout(_applyResponsiveWidth, 150);
+    });
+
+    const $container = $('<div>').css({
+        position: 'relative',
+        display: 'inline-block',
+        borderRadius: '0.5rem',
+        overflow: 'hidden',
+    });
     $img.wrap($container);
     const $wrapper = $img.parent();
 
@@ -524,7 +548,20 @@ function _wrapImageWithDownload($img) {
     });
 
     const $btn = $('<button>')
-        .addClass('absolute top-1.5 right-1.5 z-10 w-9 h-9 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-200 bg-black/40 hover:bg-black/60 rounded-md text-white cursor-pointer focus:opacity-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/70')
+        .addClass('w-9 h-9 rounded-md text-white cursor-pointer')
+        .css({
+            position: 'absolute',
+            top: '6px',
+            right: '6px',
+            zIndex: 10,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            opacity: 0,
+            transition: 'opacity 200ms ease',
+            backgroundColor: 'rgba(0,0,0,0.4)',
+            border: 'none',
+        })
         .attr('title', 'Download image')
         .attr('aria-label', 'Download image')
         .html('<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>')
@@ -547,6 +584,21 @@ function _wrapImageWithDownload($img) {
             }
         });
     $wrapper.append($btn);
+
+    // Hover: show button
+    $wrapper.on('mouseenter', function() { $btn.css('opacity', 1); });
+    $wrapper.on('mouseleave', function() { $btn.css('opacity', 0); });
+    // Button hover: darker background
+    $btn.on('mouseenter', function() { $(this).css('backgroundColor', 'rgba(0,0,0,0.6)'); });
+    $btn.on('mouseleave', function() { $(this).css('backgroundColor', 'rgba(0,0,0,0.4)'); });
+    // Focus: show button with ring
+    $btn.on('focus', function() {
+        $(this).css({ opacity: 1, outline: '2px solid rgba(255,255,255,0.7)', outlineOffset: '2px' });
+    });
+    $btn.on('blur', function() {
+        $(this).css({ outline: 'none', outlineOffset: '0' });
+        if (!$wrapper.is(':hover')) $btn.css('opacity', 0);
+    });
 }
 
 export function buildMessageBubble(role, content, opts = {}, cfg = {}) {
@@ -604,8 +656,7 @@ export function buildMessageBubble(role, content, opts = {}, cfg = {}) {
         // Render image attachment if present
         const meta = opts.metadata || {};
         if (meta.image_url) {
-            const $img = $('<img>').attr('src', meta.image_url)
-                .addClass('max-w-[85vw] md:max-w-[400px] max-h-[250px] md:max-h-[300px] block rounded-lg cursor-pointer object-contain');
+            const $img = $('<img>').attr('src', meta.image_url);
             $bubble.append($img);
             _wrapImageWithDownload($img);
         }
