@@ -7,7 +7,7 @@ GOFLAGS := -trimpath -ldflags="-s -w"
 GOFLAGS_WIN_GUI := -trimpath -ldflags="-s -w -H windowsgui"
 DIST    := dist
 
-.PHONY: build build-linux build-windows build-macos build-all \
+.PHONY: build build-linux build-linux-arm64 build-windows build-macos build-all \
         build-gui-windows build-gui-macos clean embed test
 
 ## Build for current platform (output: dist/evonet)
@@ -19,6 +19,13 @@ build:
 build-linux:
 	mkdir -p $(DIST)
 	GOOS=linux GOARCH=amd64 $(GO) build $(GOFLAGS) -o $(DIST)/$(BINARY)-linux-amd64 .
+
+## Build CLI binary for Linux (arm64) — headless / no GUI.
+## Uses -tags headless + CGO_ENABLED=0 because on arm64 the Fyne GUI is excluded
+## (build-tag constraint: (windows || darwin) && !headless), so only the stub is compiled.
+build-linux-arm64:
+	mkdir -p $(DIST)
+	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 $(GO) build $(GOFLAGS) -tags headless -o $(DIST)/$(BINARY)-linux-arm64 .
 
 ## Build CLI binary for macOS (arm64 + amd64) — headless / no GUI.
 ## Uses -tags headless so it compiles on Linux without macOS CGo/OpenGL headers.
@@ -37,7 +44,7 @@ build-windows:
 	CGO_ENABLED=0 GOOS=windows GOARCH=amd64 $(GO) build $(GOFLAGS) -tags headless -o $(DIST)/$(BINARY)-windows-amd64.exe .
 
 ## Build all platforms into dist/
-build-all: build-linux build-macos build-windows
+build-all: build-linux build-linux-arm64 build-macos build-windows
 
 ## Build GUI binary for Windows (hides console window; requires fyne-cross + Docker)
 ## Install fyne-cross: go install fyne.io/fyne/v2/cmd/fyne-cross@latest
