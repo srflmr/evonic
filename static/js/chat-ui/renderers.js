@@ -506,14 +506,16 @@ function _buildSysBalloon(tag, content, tagColorClass, fullColorClass, truncateL
 function _wrapImageWithDownload($img) {
     const imageUrl = $img.attr('src');
     if (!imageUrl) return;
-    const $container = $('<div class="relative group inline-block">');
+    // Ensure the image has no bottom margin that would shift the container bounds
+    $img.css('display', 'block');
+    const $container = $('<div>').addClass('relative group inline-block rounded-lg overflow-hidden');
     $img.wrap($container);
     const $wrapper = $img.parent();
     const $btn = $('<button>')
-        .addClass('absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200 bg-black/40 hover:bg-black/60 rounded-md p-1 text-white cursor-pointer')
+        .addClass('absolute top-1.5 right-1.5 z-10 w-9 h-9 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-200 bg-black/40 hover:bg-black/60 rounded-md text-white cursor-pointer focus:opacity-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/70')
         .attr('title', 'Download image')
         .attr('aria-label', 'Download image')
-        .html('<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>')
+        .html('<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>')
         .on('click', async function(e) {
             e.preventDefault();
             e.stopPropagation();
@@ -591,10 +593,9 @@ export function buildMessageBubble(role, content, opts = {}, cfg = {}) {
         const meta = opts.metadata || {};
         if (meta.image_url) {
             const $img = $('<img>').attr('src', meta.image_url)
-                .addClass('max-w-[240px] max-h-[240px] rounded-lg mb-1 cursor-pointer')
+                .addClass('max-w-[240px] max-h-[240px] block rounded-lg cursor-pointer')
                 .on('click', function() { window.open(meta.image_url, '_blank'); });
-            const $imgWrap = $('<div class="relative group inline-block">').append($img);
-            $bubble.append($imgWrap);
+            $bubble.append($img);
             _wrapImageWithDownload($img);
         }
         // Render non-image file badge
