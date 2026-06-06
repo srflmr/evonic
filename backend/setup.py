@@ -445,6 +445,13 @@ def run_setup(
             os.makedirs(_kb_dir, exist_ok=True)
             shutil.copy2(_scheduler_kb, os.path.join(_kb_dir, "reminder-and-schedule-creation-rules.md"))
 
+        # 4.5.2 Copy evonet.md (Evonet connector reference)
+        _evonet_kb = os.path.join(config.BASE_DIR, 'defaults', 'evonet.md')
+        if os.path.isfile(_evonet_kb):
+            _kb_dir = os.path.join(config.BASE_DIR, "agents", agent_id, "kb")
+            os.makedirs(_kb_dir, exist_ok=True)
+            shutil.copy2(_evonet_kb, os.path.join(_kb_dir, "evonet.md"))
+
         # 4.6 Create notes.md template for user preferences
         _notes_md_path = os.path.join(config.BASE_DIR, "agents", agent_id, "kb", "notes.md")
         if not os.path.isfile(_notes_md_path):

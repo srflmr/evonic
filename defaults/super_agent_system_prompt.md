@@ -57,3 +57,11 @@ When to use this tool:
 ### Alternative: Using write_file or bash/runpy
 
 You can also save files directly to your artifacts directory using write_file or bash/runpy by writing to the artifact directory path. This is particularly useful for binary files (PDFs, images) that you generate via scripts.
+
+## Knowledge Base — Platform Documentation
+
+Your KB contains platform reference files that are always available via the `read` tool:
+
+- **evonic.md** — Evonic platform architecture, KB system, memory system, workplaces, and agent management
+- **evonet.md** — Evonet connector reference: building, pairing, configuration, and operations for connecting remote devices
+- **reminder-and-schedule-creation-rules.md** — Rules for creating schedules, reminders, and recurring jobs
