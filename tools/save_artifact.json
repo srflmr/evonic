@@ -1,11 +1,11 @@
 {
   "id": "save_artifact",
   "name": "Save Artifact",
-  "description": "Save a file to this agent's artifacts directory. Use this after completing analysis, generating reports, creating images, building PDFs, or producing any output file. Files are stored under shared/agents/<agent-id>/artifacts/ and are accessible via the web UI.",
-  "system_prompt": "## Artifacts Feature\n\nYou have an **Artifacts** feature that allows you to save files you produce during your work. Files are stored in your dedicated artifacts directory and are accessible via the web UI.\n\nUse the **save_artifact** tool to save files:\n- `filename`: the name of the file (e.g. 'report.md', 'analysis.txt', 'output.json')\n- `content`: the text content of the file (or base64-encoded content for binary files)\n- `mime_type`: optional MIME type hint\n- `mode`: 'text' (default) or 'base64' (for binary files like PDFs, images)\n\nWhen to use this tool:\n- After completing analysis or research, save the findings as a report\n- After generating code, configuration, or any output, save it as an artifact\n- After creating images, PDFs, or markdown documents\n- Any time you produce a file that the user or other agents may want to reference later\n\nFor binary files (PDFs, images, etc.), set `mode: \"base64\"` and provide the content as base64-encoded data.\n\nThe files are stored in your dedicated artifacts directory and can be browsed and downloaded from the agent detail page in the Artifacts tab.\n\nYou can also save files directly to your artifacts directory using `write_file` with path `/workspace/shared/agents/<YOUR_AGENT_ID>/artifacts/<filename>` or via bash/runpy by writing to the same directory.",
+  "description": "Save a file to this agent's artifacts directory. Use this after completing analysis, generating reports, creating images, building PDFs, or producing any output file. Files are served at /api/agents/<agent-id>/artifacts/<filename> — images render inline in the browser and can be embedded directly in chat via <img> tags.",
+  "system_prompt": "## Artifacts Feature\n\nYou have an **Artifacts** feature that allows you to save files you produce during your work. Files are stored in your dedicated artifacts directory and are accessible via the web UI.\n\nUse the **save_artifact** tool to save files:\n- `filename`: the name of the file (e.g. 'report.md', 'analysis.txt', 'output.json')\n- `content`: the text content of the file (or base64-encoded content for binary files)\n- `mime_type`: optional MIME type hint\n- `mode`: 'text' (default) or 'base64' (for binary files like PDFs, images)\n\nWhen to use this tool:\n- After completing analysis or research, save the findings as a report\n- After generating code, configuration, or any output, save it as an artifact\n- After creating images, PDFs, or markdown documents\n- Any time you produce a file that the user or other agents may want to reference later\n\nFor binary files (PDFs, images, etc.), set `mode: \"base64\"` and provide the content as base64-encoded data.\n\n**Displaying images in chat**: Artifacts are served at `/api/agents/<YOUR_AGENT_ID>/artifacts/<filename>`. After saving an image via `save_artifact(mode=\"base64\")`, embed it in your markdown response with `<img src=\"/api/agents/<YOUR_AGENT_ID>/artifacts/filename.webp\" alt=\"...\">` — the image will render inline in the chat bubble.\n\nThe files are stored in your dedicated artifacts directory and can be browsed and downloaded from the agent detail page in the Artifacts tab.\n\nYou can also save files directly to your artifacts directory using `write_file` with path `/workspace/shared/agents/<YOUR_AGENT_ID>/artifacts/<filename>` or via bash/runpy by writing to the same directory. Note: `/_self/artifacts/` only works with file tools — NOT with bash/runpy. For binary files from scripts, always use `save_artifact(mode=\"base64\")`.",
   "function": {
     "name": "save_artifact",
-    "description": "Save a file to this agent's artifacts directory. Use this after completing analysis, generating reports, creating images, building PDFs, or producing any output file. Files are stored under shared/agents/<agent-id>/artifacts/ and are accessible via the web UI.",
+    "description": "Save a file to this agent's artifacts directory. Use this after completing analysis, generating reports, creating images, building PDFs, or producing any output file. Files are served at /api/agents/<agent-id>/artifacts/<filename> — images render inline in the browser and can be embedded directly in chat via <img> tags.",
     "parameters": {
       "type": "object",
       "properties": {
@@ -23,11 +23,17 @@
         },
         "mode": {
           "type": "string",
-          "enum": ["text", "base64"],
+          "enum": [
+            "text",
+            "base64"
+          ],
           "description": "Set to 'text' (default) for text files, or 'base64' for binary files (PDFs, images, etc.). When 'base64', content should be base64-encoded."
         }
       },
-      "required": ["filename", "content"]
+      "required": [
+        "filename",
+        "content"
+      ]
     }
   },
   "mock_response": {
@@ -38,5 +44,5 @@
   },
   "mock_response_type": "json",
   "created_at": "2026-05-16T20:08:05.000000",
-  "updated_at": "2026-05-16T20:08:05.000000"
+  "updated_at": "2026-06-06T18:30:00.000000"
 }

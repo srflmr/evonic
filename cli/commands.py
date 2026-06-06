@@ -1563,6 +1563,432 @@ def model_rm(model_id):
         sys.exit(1)
 
 
+# ─── Workplace Management ─────────────────────────────────────────────────────────────────────────────
+
+
+def workplace_list():
+    """List all workplaces in a table format."""
+    db = _get_db()
+    workplaces = db.get_workplaces()
+
+    if not workplaces:
+        print("No workplaces found.")
+        return
+
+    # Column widths
+    id_width = max(len("ID"), max((len(w.get("id", "")) for w in workplaces), default=2))
+    name_width = max(
+        len("Name"), max((len(w.get("name", "")) for w in workplaces), default=4)
+    )
+    type_width = max(
+        len("Type"), max((len(w.get("type", "")) for w in workplaces), default=4)
+    )
+    status_width = len("Status")
+
+    header = (
+        f"{'ID':<{id_width}}  {'Name':<{name_width}}  {'Type':<{type_width}}  "
+        f"{'Status':<{status_width}}"
+    )
+    sep = "-" * len(header)
+
+    print(header)
+    print(sep)
+
+    for w in workplaces:
+        wid = w.get("id", "")
+        wname = w.get("name", wid)
+        wtype = w.get("type", "-")
+        status = w.get("status", "disconnected")
+
+        print(
+            f"{wid:<{id_width}}  {wname:<{name_width}}  {wtype:<{type_width}}  "
+            f"{status:<{status_width}}"
+        )
+
+
+def workplace_get(workplace_id):
+    """Show details of a specific workplace."""
+    if not workplace_id:
+        print("Error: workplace_id is required.")
+        print("Usage: evonic workplace get <workplace_id>")
+        sys.exit(1)
+
+    db = _get_db()
+    workplace = db.get_workplace(workplace_id)
+
+    if workplace is None:
+        print(f"Error: Workplace not found: {workplace_id}")
+        sys.exit(1)
+
+    print(f"ID:         {workplace.get('id', '')}")
+    print(f"Name:       {workplace.get('name', '')}")
+    print(f"Type:       {workplace.get('type', '')}")
+    print(f"Status:     {workplace.get('status', 'disconnected')}")
+    print(f"Created:    {workplace.get('created_at', 'N/A')}")
+    print(f"Updated:    {workplace.get('updated_at', 'N/A')}")
+
+    last_conn = workplace.get("last_connected_at")
+    if last_conn:
+        print(f"Last Conn:  {last_conn}")
+
+    error_msg = workplace.get("error_msg")
+    if error_msg:
+        print(f"Error:      {error_msg}")
+
+    # Config
+    config = workplace.get("config")
+    if config:
+        import json
+        try:
+            cfg = json.loads(config) if isinstance(config, str) else config
+            if cfg:
+                print(f"\nConfig:")
+                for k, v in cfg.items():
+                    print(f"  {k}: {v}")
+        except (json.JSONDecodeError, TypeError):
+            pass
+
+    # Agents
+    agents = db.get_workplace_agents(workplace_id)
+    if agents:
+        print(f"\nAgents ({len(agents)}):")
+        for a in agents:
+            aname = a.get("name", a.get("id", ""))
+            print(f"  - {aname} ({a.get('id', '')})")
+    else:
+        print(f"\nAgents: none assigned")
+
+    # Connector (tunnel only)
+    if workplace.get("type") == "tunnel":
+        connector = db.get_connector_by_workplace(workplace_id)
+        if connector:
+            print(f"\nConnector:")
+            print(f"  Device:     {connector.get('device_name', 'N/A')}")
+            print(f"  Platform:   {connector.get('platform', 'N/A')}")
+            print(f"  Version:    {connector.get('version', 'N/A')}")
+            print(f"  Last Seen:  {connector.get('last_seen_at', 'N/A')}")
+            pairing = connector.get("pairing_code")
+            if pairing:
+                print(f"  Pair Code:  {pairing}")
+                print(f"  Expires:    {connector.get('pairing_expires_at', 'N/A')}")
+        else:
+            print(f"\nConnector: not paired")
+
+
+def workplace_create(name, workplace_type="local", config_str=None):
+    """Create a new workplace."""
+    if not name:
+        print("Error: --name is required.")
+        print("Usage: evonic workplace create --name <name> [--type <type>] [--config <json>]")
+        sys.exit(1)
+
+    if workplace_type not in ("local", "remote", "tunnel"):
+        print("Error: type must be local, remote, or tunnel.")
+        sys.exit(1)
+
+    config = {}
+    if config_str:
+        import json
+        try:
+            config = json.loads(config_str)
+        except json.JSONDecodeError as e:
+            print(f"Error: --config must be valid JSON: {e}")
+            sys.exit(1)
+
+    db = _get_db()
+    try:
+        workplace_id = db.create_workplace({"name": name, "type": workplace_type, "config": config})
+        print(f"Workplace created: {name} ({workplace_id})")
+    except Exception as e:
+        print(f"Error: {e}")
+        sys.exit(1)
+
+
+def workplace_update(workplace_id, name=None, config_str=None):
+    """Update a workplace name and/or config."""
+    if not workplace_id:
+        print("Error: workplace_id is required.")
+        print("Usage: evonic workplace update <workplace_id> [--name <name>] [--config <json>]")
+        sys.exit(1)
+
+    if not name and not config_str:
+        print("Error: At least one of --name or --config is required.")
+        sys.exit(1)
+
+    db = _get_db()
+    workplace = db.get_workplace(workplace_id)
+    if workplace is None:
+        print(f"Error: Workplace not found: {workplace_id}")
+        sys.exit(1)
+
+    updates = {}
+    if name:
+        updates["name"] = name.strip()
+
+    if config_str:
+        import json
+        try:
+            config = json.loads(config_str)
+        except json.JSONDecodeError as e:
+            print(f"Error: --config must be valid JSON: {e}")
+            sys.exit(1)
+        updates["config"] = config
+
+    try:
+        db.update_workplace(workplace_id, updates)
+        updated = db.get_workplace(workplace_id)
+        print(f"Workplace updated: {updated.get('name', workplace_id)} ({workplace_id})")
+    except Exception as e:
+        print(f"Error: {e}")
+        sys.exit(1)
+
+
+def workplace_status(workplace_id):
+    """Show connection status for a workplace."""
+    if not workplace_id:
+        print("Error: workplace_id is required.")
+        print("Usage: evonic workplace status <workplace_id>")
+        sys.exit(1)
+
+    db = _get_db()
+    workplace = db.get_workplace(workplace_id)
+
+    if workplace is None:
+        print(f"Error: Workplace not found: {workplace_id}")
+        sys.exit(1)
+
+    status = workplace.get("status", "disconnected")
+    print(f"Workplace: {workplace.get('name', workplace_id)} ({workplace_id})")
+    print(f"Type:      {workplace.get('type', '-')}")
+    print(f"Status:    {status}")
+
+    if workplace.get("error_msg"):
+        print(f"Error:     {workplace['error_msg']}")
+
+    last_conn = workplace.get("last_connected_at")
+    if last_conn:
+        print(f"Last Conn: {last_conn}")
+
+
+def _api_base_url():
+    """Build the base URL for the Evonic server API."""
+    import config
+    return f"http://{getattr(config, 'HOST', 'localhost')}:{getattr(config, 'PORT', 8080)}"
+
+
+def workplace_delete(workplace_id, force=False):
+    """Delete a workplace. Requires server to be running."""
+    if not workplace_id:
+        print("Error: workplace_id is required.")
+        print("Usage: evonic workplace delete <workplace_id> [--force]")
+        sys.exit(1)
+
+    # Check if workplace exists and has agents via DB first
+    db = _get_db()
+    workplace = db.get_workplace(workplace_id)
+    if workplace is None:
+        print(f"Error: Workplace not found: {workplace_id}")
+        sys.exit(1)
+
+    agents = db.get_workplace_agents(workplace_id)
+    if agents:
+        names = ", ".join(a["name"] for a in agents[:3])
+        extra = f" and {len(agents) - 3} more" if len(agents) > 3 else ""
+        print(f"Error: Workplace is still assigned to agent(s): {names}{extra}.")
+        print("Remove the workplace assignment from all agents first.")
+        sys.exit(1)
+
+    if not force:
+        try:
+            response = input(f"Delete workplace '{workplace.get('name', workplace_id)}'? [y/N]: ").strip().lower()
+        except (EOFError, KeyboardInterrupt):
+            print()
+            print("Aborted.")
+            sys.exit(1)
+        if response not in ("y", "yes"):
+            print("Aborted.")
+            sys.exit(0)
+
+    # Delete via API
+    try:
+        import requests
+        base_url = _api_base_url()
+        resp = requests.delete(
+            f"{base_url}/api/workplaces/{workplace_id}",
+            timeout=15,
+        )
+        resp.raise_for_status()
+        print(f"Workplace deleted: {workplace_id}")
+    except requests.exceptions.ConnectionError:
+        print("Error: Evonic server is not running. Start it with: evonic start")
+        sys.exit(1)
+    except Exception as e:
+        print(f"Error: {e}")
+        sys.exit(1)
+
+
+def workplace_pairing_code(workplace_id):
+    """Generate a pairing code for a tunnel workplace. Requires server to be running."""
+    if not workplace_id:
+        print("Error: workplace_id is required.")
+        print("Usage: evonic workplace pairing-code <workplace_id>")
+        sys.exit(1)
+
+    try:
+        import requests
+        base_url = _api_base_url()
+        resp = requests.post(
+            f"{base_url}/api/workplaces/{workplace_id}/pairing-code",
+            timeout=15,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+
+        print(f"Pairing code generated for workplace: {workplace_id}")
+        print(f"  Code:      {data.get('code', 'N/A')}")
+        print(f"  Expires:   {data.get('expires_at', 'N/A')}")
+        print(f"  TTL:       {data.get('ttl_seconds', 'N/A')} seconds")
+        print(f"  WS Port:   {data.get('ws_port', 'N/A')}")
+        print()
+        print(f"Run on the remote machine:")
+        print(f"  evonet pair --code {data.get('code', 'N/A')}")
+    except requests.exceptions.ConnectionError:
+        print("Error: Evonic server is not running. Start it with: evonic start")
+        sys.exit(1)
+    except Exception as e:
+        print(f"Error: {e}")
+        sys.exit(1)
+
+
+def workplace_unpair(workplace_id):
+    """Unpair the connector from a tunnel workplace. Requires server to be running."""
+    if not workplace_id:
+        print("Error: workplace_id is required.")
+        print("Usage: evonic workplace unpair <workplace_id>")
+        sys.exit(1)
+
+    try:
+        import requests
+        base_url = _api_base_url()
+        resp = requests.delete(
+            f"{base_url}/api/workplaces/{workplace_id}/connector",
+            timeout=15,
+        )
+        resp.raise_for_status()
+        print(f"Connector unpaired from workplace: {workplace_id}")
+    except requests.exceptions.ConnectionError:
+        print("Error: Evonic server is not running. Start it with: evonic start")
+        sys.exit(1)
+    except Exception as e:
+        print(f"Error: {e}")
+        sys.exit(1)
+
+
+def workplace_download_binary(workplace_id, platform="linux-amd64", output=None):
+    """Download a pre-configured evonet binary for a tunnel workplace. Requires server to be running."""
+    if not workplace_id:
+        print("Error: workplace_id is required.")
+        print("Usage: evonic workplace download-binary <workplace_id> [--platform <p>] [--output <file>]")
+        sys.exit(1)
+
+    try:
+        import requests
+        base_url = _api_base_url()
+        resp = requests.get(
+            f"{base_url}/api/workplaces/{workplace_id}/download-binary",
+            params={"platform": platform},
+            timeout=60,
+            stream=True,
+        )
+        resp.raise_for_status()
+
+        # Determine output filename
+        if not output:
+            ext = ".exe" if platform == "windows-amd64" else ""
+            output = f"evonet-{platform}{ext}"
+
+        total_size = int(resp.headers.get("Content-Length", 0))
+        downloaded = 0
+
+        with open(output, "wb") as f:
+            for chunk in resp.iter_content(chunk_size=8192):
+                f.write(chunk)
+                downloaded += len(chunk)
+                if total_size:
+                    pct = int(downloaded / total_size * 100)
+                    print(f"\r  Downloading... {pct}%", end="", flush=True)
+
+        print()  # newline after progress
+        print(f"Binary downloaded: {output}")
+        print(f"Size: {downloaded:,} bytes")
+
+        # Make executable on non-Windows
+        if platform != "windows-amd64":
+            import stat
+            os.chmod(output, os.stat(output).st_mode | stat.S_IEXEC | stat.S_IXGRP | stat.S_IXOTH)
+            print(f"Made executable: {output}")
+    except requests.exceptions.ConnectionError:
+        print("Error: Evonic server is not running. Start it with: evonic start")
+        sys.exit(1)
+    except Exception as e:
+        print(f"Error: {e}")
+        sys.exit(1)
+
+
+def workplace_connect(workplace_id):
+    """Connect a workplace (remote or tunnel). Requires server to be running."""
+    if not workplace_id:
+        print("Error: workplace_id is required.")
+        print("Usage: evonic workplace connect <workplace_id>")
+        sys.exit(1)
+
+    try:
+        import requests
+        base_url = _api_base_url()
+        resp = requests.post(
+            f"{base_url}/api/workplaces/{workplace_id}/connect",
+            timeout=15,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        print(f"Workplace connected: {workplace_id}")
+        if data.get("message"):
+            print(f"  {data['message']}")
+    except requests.exceptions.ConnectionError:
+        print("Error: Evonic server is not running. Start it with: evonic start")
+        sys.exit(1)
+    except Exception as e:
+        print(f"Error: {e}")
+        sys.exit(1)
+
+
+def workplace_disconnect(workplace_id):
+    """Disconnect a workplace. Requires server to be running."""
+    if not workplace_id:
+        print("Error: workplace_id is required.")
+        print("Usage: evonic workplace disconnect <workplace_id>")
+        sys.exit(1)
+
+    try:
+        import requests
+        base_url = _api_base_url()
+        resp = requests.post(
+            f"{base_url}/api/workplaces/{workplace_id}/disconnect",
+            timeout=15,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        print(f"Workplace disconnected: {workplace_id}")
+        if data.get("message"):
+            print(f"  {data['message']}")
+    except requests.exceptions.ConnectionError:
+        print("Error: Evonic server is not running. Start it with: evonic start")
+        sys.exit(1)
+    except Exception as e:
+        print(f"Error: {e}")
+        sys.exit(1)
+
+
 # ─── Setup Wizard ─────────────────────────────────────────────────────────────
 
 

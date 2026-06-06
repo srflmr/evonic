@@ -24,6 +24,9 @@ from cli.commands import (
     skill_list, skill_add, skill_get, skill_rm,
     skillset_list, skillset_get, skillset_apply,
     agent_list, agent_get, agent_add, agent_enable, agent_disable, agent_remove,
+    workplace_list, workplace_get, workplace_create, workplace_update, workplace_delete,
+    workplace_pairing_code, workplace_unpair, workplace_download_binary,
+    workplace_status, workplace_connect, workplace_disconnect,
     model_list, model_get, model_add, model_rm,
     channel_approve,
     clear_sandbox,
@@ -508,6 +511,172 @@ def main():
         help="Model ID to remove",
     )
 
+    # --- workplace ---
+    workplace_parser = subparsers.add_parser(
+        "workplace",
+        help="Manage workplaces (list, get, create, update, delete, status, connect, disconnect)",
+        description="Manage Evonic workplaces. Available subcommands: list, get, create, update, delete, pairing-code, unpair, download-binary, status, connect, disconnect.",
+    )
+    workplace_subparsers = workplace_parser.add_subparsers(
+        dest="workplace_command", help="Workplace management commands"
+    )
+
+    # workplace list
+    workplace_subparsers.add_parser(
+        "list",
+        help="List all workplaces",
+        description="Display a table of all workplaces with their ID, Name, Type, and Status.",
+    )
+
+    # workplace get
+    workplace_get_parser = workplace_subparsers.add_parser(
+        "get",
+        help="Show details of a specific workplace",
+        description="Display detailed information about a workplace including config, assigned agents, and connector.",
+    )
+    workplace_get_parser.add_argument(
+        "workplace_id",
+        help="Workplace ID to look up",
+    )
+
+    # workplace create
+    workplace_create_parser = workplace_subparsers.add_parser(
+        "create",
+        help="Create a new workplace",
+        description="Create a new workplace with the given name, type, and optional config.",
+    )
+    workplace_create_parser.add_argument(
+        "--name",
+        required=True,
+        help="Display name for the workplace",
+    )
+    workplace_create_parser.add_argument(
+        "--type",
+        default="local",
+        choices=["local", "remote", "tunnel"],
+        help="Workplace type: local, remote, or tunnel (default: local)",
+    )
+    workplace_create_parser.add_argument(
+        "--config",
+        default=None,
+        help="Workplace config as a JSON string (e.g. '{\"workspace_path\": \"/data\"}')",
+    )
+
+    # workplace update
+    workplace_update_parser = workplace_subparsers.add_parser(
+        "update",
+        help="Update a workplace name and/or config",
+        description="Update the name and/or config of an existing workplace.",
+    )
+    workplace_update_parser.add_argument(
+        "workplace_id",
+        help="Workplace ID to update",
+    )
+    workplace_update_parser.add_argument(
+        "--name",
+        default=None,
+        help="New display name for the workplace",
+    )
+    workplace_update_parser.add_argument(
+        "--config",
+        default=None,
+        help="New config as a JSON string",
+    )
+
+    # workplace delete
+    workplace_delete_parser = workplace_subparsers.add_parser(
+        "delete",
+        help="Delete a workplace",
+        description="Delete a workplace. Fails if agents are still assigned. Use --force to delete without being asked.",
+    )
+    workplace_delete_parser.add_argument(
+        "workplace_id",
+        help="Workplace ID to delete",
+    )
+    workplace_delete_parser.add_argument(
+        "--force",
+        action="store_true",
+        default=False,
+        help="Delete without interactive question",
+    )
+
+    # workplace pairing-code
+    workplace_pairing_code_parser = workplace_subparsers.add_parser(
+        "pairing-code",
+        help="Generate a pairing code for a tunnel workplace",
+        description="Generate a pairing code for a tunnel workplace and display it with expiry.",
+    )
+    workplace_pairing_code_parser.add_argument(
+        "workplace_id",
+        help="Workplace ID (must be tunnel type)",
+    )
+
+    # workplace unpair
+    workplace_unpair_parser = workplace_subparsers.add_parser(
+        "unpair",
+        help="Unpair the connector from a tunnel workplace",
+        description="Remove the connector pairing from a tunnel workplace.",
+    )
+    workplace_unpair_parser.add_argument(
+        "workplace_id",
+        help="Workplace ID (must be tunnel type)",
+    )
+
+    # workplace download-binary
+    workplace_download_binary_parser = workplace_subparsers.add_parser(
+        "download-binary",
+        help="Download a pre-configured evonet binary for a tunnel workplace",
+        description="Download a pre-built evonet binary with embedded workplace config for a tunnel workplace.",
+    )
+    workplace_download_binary_parser.add_argument(
+        "workplace_id",
+        help="Workplace ID (must be tunnel type)",
+    )
+    workplace_download_binary_parser.add_argument(
+        "--platform",
+        default="linux-amd64",
+        choices=["linux-amd64", "darwin-arm64", "darwin-amd64", "windows-amd64"],
+        help="Target platform (default: linux-amd64)",
+    )
+    workplace_download_binary_parser.add_argument(
+        "--output", "-o",
+        default=None,
+        help="Output file path (default: evonet-<platform> in current directory)",
+    )
+
+    # workplace status
+    workplace_status_parser = workplace_subparsers.add_parser(
+        "status",
+        help="Show connection status for a workplace",
+        description="Display the connection status of a workplace.",
+    )
+    workplace_status_parser.add_argument(
+        "workplace_id",
+        help="Workplace ID to check",
+    )
+
+    # workplace connect
+    workplace_connect_parser = workplace_subparsers.add_parser(
+        "connect",
+        help="Connect a workplace (remote or tunnel)",
+        description="Connect a remote or tunnel workplace to the server.",
+    )
+    workplace_connect_parser.add_argument(
+        "workplace_id",
+        help="Workplace ID to connect",
+    )
+
+    # workplace disconnect
+    workplace_disconnect_parser = workplace_subparsers.add_parser(
+        "disconnect",
+        help="Disconnect a workplace",
+        description="Disconnect a connected workplace.",
+    )
+    workplace_disconnect_parser.add_argument(
+        "workplace_id",
+        help="Workplace ID to disconnect",
+    )
+
     # --- clear-sandbox ---
     subparsers.add_parser(
         "clear-sandbox",
@@ -756,6 +925,32 @@ def main():
             )
         elif args.model_command == "rm":
             model_rm(args.model_id)
+    elif args.command == "workplace":
+        if args.workplace_command is None:
+            workplace_parser.print_help()
+            sys.exit(0)
+        elif args.workplace_command == "list":
+            workplace_list()
+        elif args.workplace_command == "get":
+            workplace_get(args.workplace_id)
+        elif args.workplace_command == "create":
+            workplace_create(args.name, args.type, getattr(args, 'config', None))
+        elif args.workplace_command == "update":
+            workplace_update(args.workplace_id, args.name, getattr(args, 'config', None))
+        elif args.workplace_command == "delete":
+            workplace_delete(args.workplace_id, force=args.force)
+        elif args.workplace_command == "pairing-code":
+            workplace_pairing_code(args.workplace_id)
+        elif args.workplace_command == "unpair":
+            workplace_unpair(args.workplace_id)
+        elif args.workplace_command == "download-binary":
+            workplace_download_binary(args.workplace_id, platform=args.platform, output=getattr(args, 'output', None))
+        elif args.workplace_command == "status":
+            workplace_status(args.workplace_id)
+        elif args.workplace_command == "connect":
+            workplace_connect(args.workplace_id)
+        elif args.workplace_command == "disconnect":
+            workplace_disconnect(args.workplace_id)
     elif args.command == "clear-sandbox":
         clear_sandbox()
     elif args.command == "backup":

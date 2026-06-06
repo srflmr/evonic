@@ -241,10 +241,9 @@ def api_create_agent():
         _write_system_prompt(agent_id, data.get('system_prompt', ''))
         # Create artifacts directory
         _artifacts_dir(agent_id)
-        # Inject artifacts instructions into SYSTEM.md if enabled
+        # Add save_artifact tool for agents with artifacts enabled
         artifacts_enabled = data.get('artifacts_enabled')
         if artifacts_enabled is None or artifacts_enabled:
-            _ensure_artifacts_prompt(agent_id, True)
             db.add_agent_tool(agent_id, 'save_artifact')
         # Create notes.md template if it does not already exist
         _notes_md = os.path.join(_kb_dir(agent_id), 'notes.md')
@@ -271,12 +270,11 @@ def api_update_agent(agent_id):
     _apply_sandbox_workplace_policy(data, target_workplace_id)
     if 'system_prompt' in data:
         _write_system_prompt(agent_id, data['system_prompt'])
-    # Handle artifacts_enabled toggle: inject/remove SYSTEM.md instructions
+    # Handle artifacts_enabled toggle: manage save_artifact tool
     if 'artifacts_enabled' in data:
         old_artifacts = existing.get('artifacts_enabled', True) if existing.get('artifacts_enabled') is not None else True
         new_artifacts = bool(data['artifacts_enabled'])
         if new_artifacts != old_artifacts:
-            _ensure_artifacts_prompt(agent_id, new_artifacts)
             if new_artifacts:
                 db.add_agent_tool(agent_id, 'save_artifact')
             else:
@@ -519,61 +517,6 @@ def _artifacts_dir(agent_id: str) -> str:
     d = os.path.join(WORKSPACE_DIR, agent_id, 'artifacts')
     os.makedirs(d, exist_ok=True)
     return d
-
-
-_ARTIFACT_PROMPT_TEMPLATE = """
-## Artifacts Feature
-
-You have an **Artifacts** feature that allows you to save files you produce during your work. Files are stored in your dedicated artifacts directory and are accessible via the web UI.
-
-### Using save_artifact Tool
-
-Use the **save_artifact** tool to save files:
-- `filename`: the name of the file (e.g. 'report.md', 'analysis.txt', 'output.json')
-- `content`: the text content of the file (or base64-encoded content for binary files)
-- `mime_type`: optional MIME type hint
-- `mode`: set to 'text' (default) for text files, or 'base64' for binary files (PDFs, images, etc.)
-
-When to use this tool:
-- After completing analysis or research, save the findings as a report
-- After generating code, configuration, or any output, save it as an artifact
-- After creating images, PDFs, or markdown documents
-- Any time you produce a file that the user or other agents may want to reference later
-- For binary files (PDFs, images), set `mode: "base64"` and provide base64-encoded content
-
-### Alternative: Using write_file or bash/runpy
-
-You can also save files directly to your artifacts directory using:
-- `write_file` with path starting with `/workspace/shared/agents/<YOUR_AGENT_ID>/artifacts/<filename>`
-- bash/runpy by writing files to the same directory path
-
-This is particularly useful for binary files (PDFs, images) that you generate via Python scripts.
-
-The files are stored in your dedicated artifacts directory and can be browsed and downloaded from the agent detail page in the Artifacts tab.
-"""
-
-
-def _ensure_artifacts_prompt(agent_id: str, enabled: bool):
-    """Inject or remove the Artifacts instructions from the agent's SYSTEM.md."""
-    path = _system_prompt_path(agent_id)
-    prompt_text = _ARTIFACT_PROMPT_TEMPLATE.strip()
-
-    if not os.path.isfile(path):
-        return
-
-    with open(path, 'r', encoding='utf-8') as f:
-        sp = f.read()
-
-    if enabled:
-        # Inject if not already present
-        if prompt_text not in sp:
-            sp = sp.rstrip() + '\n\n' + prompt_text + '\n'
-            _write_system_prompt(agent_id, sp)
-    else:
-        # Remove if present
-        if prompt_text in sp:
-            sp = sp.replace(prompt_text, '').strip()
-            _write_system_prompt(agent_id, sp)
 
 
 # ==================== Agent Artifacts API ====================
