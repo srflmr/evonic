@@ -962,8 +962,8 @@ html.dark #channel-detail-modal .hover\:bg-indigo-100:hover { background: #312e8
             <h3 class="text-gray-800 font-semibold dark:text-gray-100">Editing: <span id="kb-editor-filename" class="font-mono text-indigo-600"></span></h3>
             <button onclick="closeEditor()" class="bg-transparent border-none text-gray-400 text-2xl cursor-pointer hover:text-gray-800">&times;</button>
         </div>
-        <div class="p-5 flex-1 overflow-hidden flex flex-col">
-            <textarea id="kb-editor-content" class="flex-1 w-full p-3 border border-gray-300 rounded-md text-sm font-mono resize-none focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/10" style="min-height: 300px;"></textarea>
+        <div class="p-5 flex-1 overflow-y-auto flex flex-col">
+            <textarea id="kb-editor-content" class="w-full p-3 border border-gray-300 rounded-md text-sm font-mono resize-none focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/10 dark:bg-gray-700 dark:text-gray-100 dark:border-gray-600" style="min-height: 300px; max-height: 65vh; overflow-y: auto;" oninput="autoGrowKBTextarea(this)"></textarea>
         </div>
         <div class="flex gap-3 justify-end p-5 border-t border-gray-200">
             <button onclick="closeEditor()" class="px-4 py-2 border border-gray-300 rounded-md text-sm text-gray-600 hover:bg-gray-50 dark:text-gray-200 dark:hover:text-gray-50 dark:hover:bg-gray-400">Cancel</button>
@@ -1784,6 +1784,13 @@ async function editFile(filename) {
     document.getElementById('kb-editor-filename').textContent = filename;
     document.getElementById('kb-editor-content').value = data.content;
     document.getElementById('kb-editor-modal').classList.remove('hidden');
+    autoGrowKBTextarea(document.getElementById('kb-editor-content'));
+}
+
+function autoGrowKBTextarea(el) {
+    el.style.height = 'auto';
+    el.style.height = Math.min(el.scrollHeight, window.innerHeight * 0.65) + 'px';
+    el.style.overflowY = el.scrollHeight > window.innerHeight * 0.65 ? 'auto' : 'hidden';
 }
 
 function closeEditor() {
