@@ -287,7 +287,6 @@ rollback.slot
 shared/
 supervisor/config.json
 supervisor/run/
-VERSION
 
 # WARNING: the following dir MUST keep ignored do not index!
 docs-site/
