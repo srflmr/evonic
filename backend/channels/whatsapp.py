@@ -352,8 +352,27 @@ class WhatsAppChannel(BaseChannel):
                 try:
                     raw = base64.b64decode(audio_data['base64'])
                     mime = audio_data.get('mimetype', 'audio/ogg')
-                    b64 = base64.b64encode(raw).decode('utf-8')
-                    audio_url = f"data:{mime};base64,{b64}"
+
+                    # Convert OGG voice messages to WAV for multimodal LLM APIs
+                    # that only accept WAV or MP3 input_audio format.
+                    conversion_ok = True
+                    if 'ogg' in (mime or ''):
+                        try:
+                            from backend.audio_utils import convert_ogg_to_wav
+                            raw = convert_ogg_to_wav(raw)
+                            mime = 'audio/wav'
+                        except Exception as conv_err:
+                            _logger.error(
+                                "WhatsApp OGG→WAV conversion failed: %s — "
+                                "audio skipped for multimodal",
+                                conv_err,
+                            )
+                            audio_url = None
+                            conversion_ok = False
+
+                    if conversion_ok:
+                        b64 = base64.b64encode(raw).decode('utf-8')
+                        audio_url = f"data:{mime};base64,{b64}"
                 except Exception as e:
                     _logger.error("WhatsApp audio conversion failed: %s", e)
             elif not text:

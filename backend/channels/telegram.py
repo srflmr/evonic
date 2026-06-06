@@ -322,7 +322,25 @@ async def _ingest_audio(message, context, agent_id, session_id, user_id,
             try:
                 file = await context.bot.get_file(audio_file_id)
                 audio_bytes = await file.download_as_bytearray()
-                b64 = base64.b64encode(bytes(audio_bytes)).decode('utf-8')
+                raw_bytes = bytes(audio_bytes)
+
+                # Convert OGG voice messages to WAV for multimodal LLM APIs
+                # that only accept WAV or MP3 input_audio format.
+                if has_voice and audio_mime in ('audio/ogg', 'audio/ogg; codecs=opus'):
+                    try:
+                        from backend.audio_utils import convert_ogg_to_wav
+                        raw_bytes = convert_ogg_to_wav(raw_bytes)
+                        audio_mime = 'audio/wav'
+                        audio_orig_name = 'voice.wav'
+                    except Exception as conv_err:
+                        _logger.error(
+                            "OGG→WAV conversion failed for agent %s: %s — "
+                            "audio will be attachment-only (no multimodal)",
+                            agent_id, conv_err,
+                        )
+                        return None, None
+
+                b64 = base64.b64encode(raw_bytes).decode('utf-8')
                 audio_url = f"data:{audio_mime};base64,{b64}"
             except Exception as e:
                 _logger.error(

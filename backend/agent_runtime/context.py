@@ -5,6 +5,7 @@ Pure data preparation — no LLM calls, no threading.
 """
 from __future__ import annotations
 
+import base64
 import hashlib
 import json
 import logging
@@ -820,7 +821,26 @@ def build_message_entry(msg: dict, agent: dict) -> dict:
                     fmt = header.split(":")[1].split(";")[0].split("/")[1]
                 except (ValueError, IndexError):
                     fmt, b64data = "wav", msg_audio
-                parts.append({"type": "input_audio", "input_audio": {"data": b64data, "format": fmt}})
+
+                # Catch any OGG audio not converted at the channel level.
+                # Some code paths or legacy data may still reach here with
+                # format=ogg, which multimodal LLM APIs reject.
+                if fmt == "ogg":
+                    try:
+                        from backend.audio_utils import convert_ogg_to_wav
+                        raw = convert_ogg_to_wav(base64.b64decode(b64data))
+                        b64data = base64.b64encode(raw).decode('utf-8')
+                        fmt = "wav"
+                    except Exception as conv_err:
+                        _logger.error(
+                            "OGG->WAV conversion fallback failed: %s -- "
+                            "audio skipped for multimodal",
+                            conv_err,
+                        )
+                        fmt, b64data = "wav", ""  # empty data = skip audio
+
+                if b64data:
+                    parts.append({"type": "input_audio", "input_audio": {"data": b64data, "format": fmt}})
             else:
                 parts.append({"type": "input_audio", "input_audio": {"data": msg_audio, "format": "wav"}})
         if has_video:
