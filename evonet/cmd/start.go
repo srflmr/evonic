@@ -18,7 +18,7 @@ func RunStart(args []string) error {
 	server := fs.String("server", "", "Override server URL")
 	token := fs.String("token", "", "Override connector token")
 	workDir := fs.String("workdir", "", "Override working directory")
-	verbose := fs.Bool("verbose", false, "Log incoming commands and their results")
+	verbose := fs.Bool("verbose", true, "Log incoming commands and their results")
 	fs.Parse(args)
 
 	cfg, err := config.Load(*configPath)
@@ -37,6 +37,7 @@ func RunStart(args []string) error {
 	workdir := effectiveWorkDir(cfg)
 	exec := executor.New(workdir, *verbose)
 	client := ws.New(cfg, exec)
+	log.SetFlags(log.Ltime)
 	log.Printf("[evonet] Connecting to %s...", cfg.ServerURL)
 	return client.RunOnce()
 }
@@ -48,7 +49,7 @@ func RunRun(args []string) error {
 	server := fs.String("server", "", "Override server URL")
 	token := fs.String("token", "", "Override connector token")
 	workDir := fs.String("workdir", "", "Override working directory")
-	verbose := fs.Bool("verbose", false, "Log incoming commands and their results")
+	verbose := fs.Bool("verbose", true, "Log incoming commands and their results")
 	fs.Parse(args)
 
 	cfg, err := config.Load(*configPath)
@@ -67,6 +68,7 @@ func RunRun(args []string) error {
 	workdir := effectiveWorkDir(cfg)
 	exec := executor.New(workdir, *verbose)
 	client := ws.New(cfg, exec)
+	log.SetFlags(log.Ltime)
 	log.Printf("[evonet] Starting (auto-reconnect)...")
 	client.Run()
 	return nil
