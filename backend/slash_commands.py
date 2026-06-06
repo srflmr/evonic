@@ -13,8 +13,8 @@ from typing import Optional, Dict, Any, Callable, Tuple
 
 _logger = logging.getLogger(__name__)
 
-# Command handler signature: (session_id, agent_id, external_user_id, channel_id) -> str
-CommandHandler = Callable[[str, str, str, Optional[str]], str]
+# Command handler signature: (session_id, agent_id, external_user_id, channel_id, args) -> str
+CommandHandler = Callable[[str, str, str, Optional[str], str], str]
 
 
 class SlashCommand:
@@ -57,8 +57,8 @@ def parse_command(message: str) -> Optional[Tuple[str, str]]:
     if not message or not message.startswith("/"):
         return None
 
-    # Match /command or /command args
-    match = re.match(r"^/(\w+)(?:\s+(.*))?$", message.strip(), re.DOTALL)
+    # Match /command or /command args (hyphens allowed in command name)
+    match = re.match(r"^/([\w-]+)(?:\s+(.*))?$", message.strip(), re.DOTALL)
     if not match:
         return None
 
@@ -694,6 +694,27 @@ def _register_builtins():
         "status",
         status_handler,
         "Show agent status information",
+    )
+
+    # /clear-memory — Delete all memories for current agent
+    def clear_memory_handler(
+        session_id: str,
+        agent_id: str,
+        external_user_id: str,
+        channel_id: Optional[str],
+        args: str,
+    ) -> str:
+        from models.db import db
+
+        count = db.clear_all_memories(agent_id)
+        if count == 0:
+            return "No memories to clear."
+        return f"{count} memories deleted."
+
+    command_registry.register(
+        "clear-memory",
+        clear_memory_handler,
+        "Delete all long-term memories for current agent",
     )
 
     # /model — Show or set the agent's LLM model
