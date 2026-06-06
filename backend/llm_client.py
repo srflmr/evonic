@@ -93,7 +93,7 @@ def strip_thinking_tags(content: str) -> Tuple[str, Optional[str]]:
     # Gemma4-12B tokenizer produces "** text**" (space after opening **)
     # for certain tokens, breaking markdown bold rendering.
     # Collapse the space: "** text**" → "**text**"
-    _fix_bold = lambda s: re.sub(r'(?<!\w)\*\* ', '**', s) if s else s
+    _fix_bold = lambda s: re.sub(r'(^|\s)\*\* ', r'\1**', s) if s else s
     cleaned = _fix_bold(cleaned)
 
     # Edge case: model put the final response inside <think>...</think>, leaving cleaned empty.
