@@ -450,7 +450,6 @@ class AgentChatDB:
             cursor.execute("DELETE FROM chat_summaries WHERE session_id = ?", (session_id,))
             cursor.execute("DELETE FROM session_state WHERE session_id = ?", (session_id,))
             # Do NOT delete agent_state — it is global per-agent, not per-session
-            cursor.execute("UPDATE chat_sessions SET archived = 1 WHERE id = ?", (session_id,))
             conn.commit()
 
     def clear_all(self):
