@@ -630,7 +630,7 @@ function renderSessionList() {
             </div>
             <div class="text-[10px] text-gray-500 truncate">${esc(s.external_user_id.split('__')[1])}</div>
             <div class="text-xs text-gray-400 mt-1 truncate">${prefixIcon}${esc(preview)}</div>
-            <div class="text-[10px] text-gray-300 mt-1">${timeAgo(s.updated_at)}</div>
+            <div class="text-[10px] text-gray-300 mt-1">${timeAgo(s.updated_at)} &middot; <span class="font-mono">${esc(s.id)}</span></div>
             <button onclick="event.stopPropagation(); deleteSession('${s.id}')" title="Delete session"
                 class="session-delete-btn absolute top-2 right-2 text-gray-300 hover:text-red-500">
                 <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
