@@ -349,11 +349,15 @@ function renderAgents() {
                 </a>`;
         const avatarUrl = `/api/agents/${a.id}/avatar`;
         const initial = (a.name || a.id || '?').charAt(0).toUpperCase();
+        const hasCustomAvatar = a.avatar_path && a.avatar_path.trim() !== '';
+        const avatarHtml = hasCustomAvatar
+            ? `<img src="${avatarUrl}" alt="${esc(a.name || a.id)}" class="w-8 h-8 rounded-full object-cover flex-shrink-0 bg-indigo-50 dark:bg-indigo-900/20">`
+            : `<div class="w-8 h-8 rounded-full flex-shrink-0 bg-indigo-100 dark:bg-indigo-900/40 flex items-center justify-center text-sm font-bold text-indigo-600 dark:text-indigo-300">${initial}</div>`;
         return `
         <div class="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-100 dark:border-gray-700 hover:shadow-md transition-shadow overflow-hidden" data-agent-id="${esc(a.id)}">
             <div class="p-3">
                 <div class="flex items-start gap-2">
-                    <img src="${avatarUrl}" alt="${esc(a.name || a.id)}" class="w-8 h-8 rounded-full object-cover flex-shrink-0 bg-indigo-50 dark:bg-indigo-900/20" onerror="var d=document.createElement('div');d.className='w-8 h-8 rounded-full flex-shrink-0 bg-indigo-100 dark:bg-indigo-900/40 flex items-center justify-center text-sm font-bold text-indigo-600 dark:text-indigo-300';d.textContent='${initial}';this.replaceWith(d)">
+                    ${avatarHtml}
                     <div class="flex-1 min-w-0 cursor-pointer" onclick="window.location.href='/agents/${a.id}'">
                         <div class="flex items-center gap-2 flex-wrap" data-badges="${esc(a.id)}">
                             <h3 class="font-semibold text-sm ${a.is_super ? 'text-red-600 dark:text-red-400' : 'text-gray-800 dark:text-gray-100'} truncate">${esc(a.name || a.id)}${superBadge}</h3>
