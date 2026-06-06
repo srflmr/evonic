@@ -547,6 +547,38 @@ function _buildSysBalloon(tag, content, tagColorClass, fullColorClass, truncateL
     return $balloon;
 }
 
+function _wrapImageWithDownload($img) {
+    const imageUrl = $img.attr('src');
+    if (!imageUrl) return;
+    const $container = $('<div class="relative group inline-block">');
+    $img.wrap($container);
+    const $wrapper = $img.parent();
+    const $btn = $('<button>')
+        .addClass('absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200 bg-black/40 hover:bg-black/60 rounded-md p-1 text-white cursor-pointer')
+        .attr('title', 'Download image')
+        .attr('aria-label', 'Download image')
+        .html('<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>')
+        .on('click', async function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            try {
+                const response = await fetch(imageUrl);
+                const blob = await response.blob();
+                const blobUrl = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = blobUrl;
+                a.download = imageUrl.split('/').pop().split('?')[0] || 'image';
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(blobUrl);
+            } catch (err) {
+                window.open(imageUrl, '_blank');
+            }
+        });
+    $wrapper.append($btn);
+}
+
 function buildMessageBubble(role, content, opts = {}, cfg = {}) {
     const {
         userAlign = 'right',
@@ -558,6 +590,8 @@ function buildMessageBubble(role, content, opts = {}, cfg = {}) {
         formatTimestamp = null,
     } = cfg;
 
+    const meta        = opts.metadata || {};
+    const isSlashCmd  = !!meta.slash_command;
     const isUser      = role === 'user';
     const isError     = role === 'error';
     const isSystem    = !isUser && !isError && role !== 'assistant' && /^\[system/i.test(content);
@@ -603,7 +637,9 @@ function buildMessageBubble(role, content, opts = {}, cfg = {}) {
             const $img = $('<img>').attr('src', meta.image_url)
                 .addClass('max-w-[240px] max-h-[240px] rounded-lg mb-1 cursor-pointer')
                 .on('click', function() { window.open(meta.image_url, '_blank'); });
-            $bubble.append($img);
+            const $imgWrap = $('<div class="relative group inline-block">').append($img);
+            $bubble.append($imgWrap);
+            _wrapImageWithDownload($img);
         }
         // Render non-image file badge
         if (meta.attachment_info && !meta.attachment_info.is_image) {
@@ -626,6 +662,15 @@ function buildMessageBubble(role, content, opts = {}, cfg = {}) {
         $bubble = $('<div class="bg-orange-200 text-gray-600 border-gray-400 rounded-2xl px-4 py-2.5 text-sm break-words">');
         $bubble.append(_buildSysBalloon(sysTag, sysContent, 'text-gray-500', 'text-gray-400', 120));
 
+    } else if (isSlashCmd) {
+        // Slash command response — blue styling, visible to user only (not sent to LLM)
+        const rendered = typeof marked !== 'undefined'
+            ? sanitize(marked.parse(content || '')).replace(/<table/g, '<div class="table-wrapper"><table').replace(/<\/table>/g, '</table></div>')
+            : escape(content);
+        $bubble = $('<div class="chat-prose rounded-2xl px-4 py-2.5 text-sm break-words bg-blue-50 text-blue-800 border border-blue-200 dark:bg-blue-950 dark:text-blue-200 dark:border-blue-800">');
+        $bubble.attr('role', 'article');
+        $bubble.html(rendered);
+        $bubble.find('img').each(function() { _wrapImageWithDownload($(this)); });
     } else {
         // assistant: markdown with sanitizer
         const rendered = typeof marked !== 'undefined'
@@ -634,6 +679,7 @@ function buildMessageBubble(role, content, opts = {}, cfg = {}) {
         $bubble = $('<div class="chat-prose rounded-2xl px-4 py-2.5 border-gray-300 text-sm break-words">').addClass(assistantBubbleClass);
         $bubble.attr('role', 'article');
         $bubble.html(rendered);
+        $bubble.find('img').each(function() { _wrapImageWithDownload($(this)); });
     }
 
     const $inner = $('<div class="max-w-[80%] min-w-0">').append($bubble);
@@ -1810,7 +1856,8 @@ class ChatUI {
                 continue;
             }
             if (entry.type === 'system') {
-                this.appendMessage('system', entry.content || '');
+                const sysMeta = (entry.metadata && entry.metadata.slash_command) ? { metadata: { slash_command: true } } : {};
+                this.appendMessage('system', entry.content || '', sysMeta);
                 continue;
             }
         }
