@@ -20,6 +20,7 @@ Supported methods:
 """
 
 import json
+import os
 import shlex
 import threading
 import uuid
