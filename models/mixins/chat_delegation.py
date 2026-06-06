@@ -446,3 +446,6 @@ class ChatDelegationMixin:
 
     def expire_memory(self, agent_id: str, memory_id: int):
         self._chat_db(agent_id).expire_memory(memory_id)
+
+    def clear_all_memories(self, agent_id: str) -> int:
+        return self._chat_db(agent_id).clear_all_memories()
