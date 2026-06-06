@@ -6,6 +6,8 @@
  * Markdown output goes through sanitize() before being set via .html().
  */
 
+import { Lightbox } from './lightbox.js';
+
 // ── Sanitizer ─────────────────────────────────────────────────────────────────
 
 const ALLOWED_TAGS = new Set([
@@ -506,11 +508,21 @@ function _buildSysBalloon(tag, content, tagColorClass, fullColorClass, truncateL
 function _wrapImageWithDownload($img) {
     const imageUrl = $img.attr('src');
     if (!imageUrl) return;
+    // Thumbnail styling: constrained size, responsive, clickable
+    $img.addClass('max-w-[85vw] md:max-w-[400px] max-h-[250px] md:max-h-[300px] object-contain cursor-pointer rounded-lg');
     // Ensure the image has no bottom margin that would shift the container bounds
     $img.css('display', 'block');
     const $container = $('<div>').addClass('relative group inline-block rounded-lg overflow-hidden');
     $img.wrap($container);
     const $wrapper = $img.parent();
+
+    // Lightbox click on the wrapper (image area)
+    $wrapper.on('click', function(e) {
+        // Don't open lightbox if download button was clicked
+        if ($(e.target).closest('button').length) return;
+        Lightbox.openFromImage($img[0]);
+    });
+
     const $btn = $('<button>')
         .addClass('absolute top-1.5 right-1.5 z-10 w-9 h-9 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-200 bg-black/40 hover:bg-black/60 rounded-md text-white cursor-pointer focus:opacity-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/70')
         .attr('title', 'Download image')
@@ -593,8 +605,7 @@ export function buildMessageBubble(role, content, opts = {}, cfg = {}) {
         const meta = opts.metadata || {};
         if (meta.image_url) {
             const $img = $('<img>').attr('src', meta.image_url)
-                .addClass('max-w-[240px] max-h-[240px] block rounded-lg cursor-pointer')
-                .on('click', function() { window.open(meta.image_url, '_blank'); });
+                .addClass('max-w-[85vw] md:max-w-[400px] max-h-[250px] md:max-h-[300px] block rounded-lg cursor-pointer object-contain');
             $bubble.append($img);
             _wrapImageWithDownload($img);
         }

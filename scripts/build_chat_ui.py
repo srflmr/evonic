@@ -21,6 +21,7 @@ OUT_FILE = os.path.join(ROOT, 'static', 'js', 'chat-ui.js')
 # Process in dependency order (each file may only import from files listed above it)
 MODULE_ORDER = [
     'debug.js',
+    'lightbox.js',
     'renderers.js',
     'transport.js',
     'turn.js',
