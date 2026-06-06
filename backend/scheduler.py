@@ -28,6 +28,7 @@ Usage:
 """
 
 import logging
+import json
 import time
 import uuid
 import threading
@@ -319,24 +320,35 @@ class Scheduler:
         status = 'success'
         error_message = None
         action_summary = None
+        action_output = None
         start_ms = time.monotonic()
 
         try:
             if action_type == 'emit_event':
-                self._action_emit_event(action_config)
+                event_payload = self._action_emit_event(action_config)
                 action_summary = f"Emitted event '{action_config.get('event_name', '?')}'"
+                if event_payload:
+                    action_output = json.dumps(event_payload, indent=2) if isinstance(event_payload, dict) else str(event_payload)
             elif action_type in ('static_message', 'agent_message'):
                 # agent_message is a deprecated alias for static_message
-                self._action_static_message(action_config)
+                msg_result = self._action_static_message(action_config)
                 action_summary = f"Sent message to agent '{action_config.get('agent_id', '?')}'"
+                if msg_result:
+                    action_output = msg_result
             elif action_type == 'session_prompt':
-                self._action_session_prompt(action_config)
+                result = self._action_session_prompt(action_config)
                 action_summary = f"Sent prompt to agent '{action_config.get('agent_id', '?')}'"
+                if result and isinstance(result, dict):
+                    action_output = result.get('response')
             elif action_type == 'webhook':
-                status_code = self._action_webhook(action_config)
+                result = self._action_webhook(action_config)
                 method = action_config.get('method', 'POST').upper()
                 url = action_config.get('url', '')
+                status_code = result['status_code']
+                resp_body = result.get('body')
                 action_summary = f"{method} {url} -> {status_code}"
+                if resp_body:
+                    action_output = resp_body
             else:
                 log.warning("Unknown action_type '%s' for %s",
                             action_type, schedule_id)
@@ -360,6 +372,7 @@ class Scheduler:
             action_type=action_type,
             action_summary=action_summary,
             error_message=error_message,
+            action_output=action_output,
         )
         db.cleanup_old_schedule_logs(schedule_id, keep=100)
 
@@ -389,6 +402,7 @@ class Scheduler:
         event_name = config.get('event_name', 'schedule_custom')
         payload = config.get('payload', {})
         event_stream.emit(event_name, payload)
+        return payload
 
     def _action_static_message(self, config: dict):
         """Deliver a pre-composed message directly to the user, bypassing the LLM.
@@ -396,6 +410,9 @@ class Scheduler:
         This is the canonical name; the deprecated 'agent_message' maps here.
         The message was already composed at schedule-creation time — we just
         need to deliver it to the user's session (and push via channel).
+
+        Returns the delivered message text, or the handle_message result dict
+        when falling through to the LLM path.
         """
         from backend.agent_runtime import agent_runtime
         from backend.channels.registry import channel_manager
@@ -441,7 +458,7 @@ class Scheduler:
                         "Delivered static_message directly: agent=%s user=%s "
                         "session=%s", agent_id, external_user_id, session_id,
                     )
-                    return  # Success — delivered, nothing more to do
+                    return message  # Success — delivered, return the message as output
                 except Exception as e:
                     log.error(
                         "Failed to send static_message via channel %s: %s; "
@@ -463,12 +480,13 @@ class Scheduler:
             "resolved): agent=%s external_user_id=%s channel_id=%s",
             agent_id, external_user_id, channel_id or 'none',
         )
-        agent_runtime.handle_message(
+        result = agent_runtime.handle_message(
             agent_id=agent_id,
             external_user_id=external_user_id,
             message=message,
             channel_id=channel_id,
         )
+        return result.get('response') if isinstance(result, dict) else str(result)
 
     def _action_session_prompt(self, config: dict):
         """Send a prompt that triggers full LLM processing via handle_message().
@@ -501,14 +519,15 @@ class Scheduler:
             "Dispatching session_prompt to handle_message: agent=%s user=%s",
             agent_id, external_user_id,
         )
-        agent_runtime.handle_message(
+        result = agent_runtime.handle_message(
             agent_id=agent_id,
             external_user_id=external_user_id,
             message=message,
             channel_id=channel_id,
         )
+        return result
 
-    def _action_webhook(self, config: dict) -> int:
+    def _action_webhook(self, config: dict) -> dict:
         method = config.get('method', 'POST').upper()
         url = config['url']
         headers = config.get('headers', {})
@@ -517,7 +536,12 @@ class Scheduler:
         resp = http_lib.request(method, url, headers=headers, json=body,
                                 timeout=timeout)
         log.info("Webhook %s %s -> %d", method, url, resp.status_code)
-        return resp.status_code
+        resp_body = None
+        try:
+            resp_body = resp.text
+        except Exception:
+            pass
+        return {'status_code': resp.status_code, 'body': resp_body}
 
     # ------------------------------------------------------------------
     # Internal: APScheduler event listener

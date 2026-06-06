@@ -574,6 +574,12 @@ class SchemaMixin:
             """)
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_schedule_logs_schedule ON schedule_logs(schedule_id, executed_at)")
 
+            # Migration: add action_output column to schedule_logs
+            try:
+                cursor.execute("ALTER TABLE schedule_logs ADD COLUMN action_output TEXT")
+            except sqlite3.OperationalError:
+                pass
+
             # ==================== LLM Models Table ====================
 
             cursor.execute("""

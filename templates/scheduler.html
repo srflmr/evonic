@@ -604,11 +604,11 @@ async function loadLogs(reset) {
     const res = await fetch(`/api/schedules/${_detailScheduleId}/logs?limit=${_logsLimit}&offset=${_logsOffset}`);
     const data = await res.json();
     const logs = data.logs || [];
-    const tbody = document.getElementById('logs-tbody');
+    const list = document.getElementById('logs-list');
     const empty = document.getElementById('logs-empty');
     const loadMore = document.getElementById('logs-load-more');
 
-    if (reset) tbody.innerHTML = '';
+    if (reset) list.innerHTML = '';
 
     if (!logs.length && reset) {
         empty.classList.remove('hidden');
@@ -618,29 +618,64 @@ async function loadLogs(reset) {
     empty.classList.add('hidden');
 
     logs.forEach(l => {
-        const tr = document.createElement('tr');
-        tr.className = 'hover:bg-gray-50 dark:hover:bg-gray-700/50 border-t border-gray-100 dark:border-gray-700';
         const statusBadge = l.status === 'success'
             ? '<span class="px-2 py-0.5 rounded-full text-xs font-medium bg-green-50 text-green-700 dark:bg-green-900/40 dark:text-green-300">success</span>'
             : '<span class="px-2 py-0.5 rounded-full text-xs font-medium bg-red-50 text-red-700 dark:bg-red-900/40 dark:text-red-300">error</span>';
+
         const durationTxt = l.duration_ms != null ? `${l.duration_ms}ms` : '-';
-        const summaryTxt = esc(l.action_summary || '-');
-        const errorRow = l.error_message
-            ? `<tr class="bg-red-50 dark:bg-red-900/30 border-t border-red-100 dark:border-red-800"><td colspan="4" class="px-4 py-2 text-xs text-red-700 font-mono">${esc(l.error_message)}</td></tr>`
+
+        // Action type badge
+        const typeBadges = {
+            'static_message': 'bg-blue-50 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300',
+            'agent_message': 'bg-blue-50 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300',
+            'session_prompt': 'bg-indigo-50 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300',
+            'emit_event': 'bg-purple-50 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300',
+            'webhook': 'bg-orange-50 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300',
+        };
+        const typeLabels = {
+            'static_message': 'Static Message',
+            'agent_message': 'Agent Message',
+            'session_prompt': 'Session Prompt',
+            'emit_event': 'Emit Event',
+            'webhook': 'Webhook',
+        };
+        const typeBadge = typeBadges[l.action_type] || 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-200';
+        const typeLabel = typeLabels[l.action_type] || l.action_type;
+
+        const output = l.action_output;
+        const hasOutput = output && output.trim();
+
+        const errorBlock = l.error_message
+            ? `<div class="mt-2 px-3 py-2 bg-red-50 dark:bg-red-900/30 rounded text-xs text-red-700 dark:text-red-300 font-mono whitespace-pre-wrap break-all">${esc(l.error_message)}</div>`
             : '';
-        tr.innerHTML = `
-            <td class="px-4 py-2 text-xs text-gray-500 dark:text-gray-400 font-mono whitespace-nowrap">${fmtDate(l.executed_at)}</td>
-            <td class="px-4 py-2 text-center">${statusBadge}</td>
-            <td class="px-4 py-2 text-xs text-gray-500 dark:text-gray-400 text-right">${durationTxt}</td>
-            <td class="px-4 py-2 text-xs text-gray-600 dark:text-gray-300">${summaryTxt}</td>
+
+        const innerId = 'log-detail-' + Math.random().toString(36).slice(2, 9);
+
+        const item = document.createElement('div');
+        item.className = 'border-b border-gray-100 dark:border-gray-700 last:border-b-0';
+        item.innerHTML = `
+            <button onclick="this.parentElement.querySelector('.log-body').classList.toggle('hidden'); this.querySelector('.expand-icon').classList.toggle('rotate-90');"
+                    class="w-full text-left px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors flex items-center gap-3 cursor-pointer select-none">
+                <svg class="expand-icon w-3.5 h-3.5 text-gray-400 dark:text-gray-500 transition-transform flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+                </svg>
+                <span class="text-xs text-gray-400 dark:text-gray-500 font-mono whitespace-nowrap flex-shrink-0 w-[140px]">${fmtDate(l.executed_at)}</span>
+                <span class="px-2 py-0.5 rounded-full text-xs font-medium ${typeBadge} flex-shrink-0">${esc(typeLabel)}</span>
+                <span class="text-xs text-gray-600 dark:text-gray-300 truncate flex-1 min-w-0">${esc(l.action_summary || '-')}</span>
+                <span class="text-xs text-gray-400 dark:text-gray-500 flex-shrink-0 w-[60px] text-right">${esc(durationTxt)}</span>
+                ${statusBadge}
+            </button>
+            <div class="log-body hidden px-4 pb-3 pl-10">
+                ${
+                    hasOutput
+                        ? `<div class="text-xs text-gray-400 dark:text-gray-500 font-medium mb-1">Output / Response:</div>
+                           <pre class="text-xs bg-gray-100 dark:bg-gray-700 px-3 py-2 rounded text-gray-700 dark:text-gray-300 whitespace-pre-wrap break-words max-h-80 overflow-y-auto">${esc(output)}</pre>`
+                        : `<div class="text-xs text-gray-400 dark:text-gray-500 italic">No output captured</div>`
+                }
+                ${errorBlock}
+            </div>
         `;
-        tbody.appendChild(tr);
-        if (errorRow) {
-            const errTr = document.createElement('tr');
-            errTr.className = 'bg-red-50 dark:bg-red-900/30 border-t border-red-100 dark:border-red-800';
-            errTr.innerHTML = `<td colspan="4" class="px-4 py-2 text-xs text-red-700 font-mono break-all">${esc(l.error_message)}</td>`;
-            tbody.appendChild(errTr);
-        }
+        list.appendChild(item);
     });
 
     _logsOffset += logs.length;
@@ -653,7 +688,7 @@ async function clearLogs() {
     if (!ok) return;
     await fetch(`/api/schedules/${_detailScheduleId}/logs`, {method:'DELETE'});
     _logsOffset = 0;
-    document.getElementById('logs-tbody').innerHTML = '';
+    document.getElementById('logs-list').innerHTML = '';
     document.getElementById('logs-empty').classList.remove('hidden');
     document.getElementById('logs-load-more').classList.add('hidden');
 }
@@ -691,17 +726,7 @@ async function clearLogs() {
 
         <!-- Tab: Logs -->
         <div id="detail-tab-logs" class="hidden overflow-y-auto flex-1">
-            <table class="w-full text-sm dark:text-gray-100">
-                <thead class="bg-gray-50 text-gray-500 text-xs uppercase tracking-wider sticky top-0 dark:bg-gray-700 dark:text-gray-400">
-                    <tr>
-                        <th class="px-4 py-2 text-left">Time</th>
-                        <th class="px-4 py-2 text-center">Status</th>
-                        <th class="px-4 py-2 text-right">Duration</th>
-                        <th class="px-4 py-2 text-left">Summary</th>
-                    </tr>
-                </thead>
-                <tbody id="logs-tbody"></tbody>
-            </table>
+            <div id="logs-list" class="divide-y divide-gray-100 dark:divide-gray-700"></div>
             <div id="logs-empty" class="hidden text-center py-12 text-gray-400 dark:text-gray-500">
                 <svg class="w-12 h-12 mx-auto mb-3 opacity-40" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
                 <p class="text-sm font-medium">No execution logs yet</p>

@@ -99,11 +99,13 @@ class ScheduleMixin:
 
     def create_schedule_log(self, log_id: str, schedule_id: str, executed_at: str,
                             duration_ms: int, status: str, action_type: str,
-                            action_summary: str = None, error_message: str = None) -> dict:
+                            action_summary: str = None, error_message: str = None,
+                            action_output: str = None) -> dict:
         row = {
             'id': log_id, 'schedule_id': schedule_id, 'executed_at': executed_at,
             'duration_ms': duration_ms, 'status': status, 'error_message': error_message,
             'action_type': action_type, 'action_summary': action_summary,
+            'action_output': action_output,
         }
         with self._connect() as conn:
             cols = ', '.join(row.keys())
