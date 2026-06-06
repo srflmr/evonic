@@ -730,6 +730,20 @@ def _is_super_agent(agent_id: str) -> bool:
 # Core Detection Logic
 # ───────────────────────────────────────────────────────────────────────
 
+_FP_BASE64_FILE_PATH = re.compile(
+    r"\bbase64\s+[\"']?/\S", _FLAGS
+)
+
+
+def _is_false_positive(rule_name: str, matched_text: str) -> bool:
+    """Return True if a rule match is a known false positive."""
+    if rule_name == "base64_encoded_payload":
+        # `base64 /path/to/file` is the CLI tool encoding a file, not injection
+        if _FP_BASE64_FILE_PATH.search(matched_text):
+            return True
+    return False
+
+
 def _detect_injection(text: str) -> tuple[bool, str, str, float, str]:
     """
     Scan a single text string against all rules.
@@ -747,6 +761,8 @@ def _detect_injection(text: str) -> tuple[bool, str, str, float, str]:
 
     for rule_name, pattern, severity, category, description in _RULES:
         for m in pattern.finditer(text):
+            if _is_false_positive(rule_name, m.group(0)):
+                continue
             matched_count += 1
             sev_order = _SEVERITY_ORDER.get(severity, 0)
             sev_score = _SEVERITY_SCORE.get(severity, 0.0)
