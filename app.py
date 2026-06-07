@@ -404,6 +404,23 @@ def inject_version():
 
 
 @app.before_request
+def _log_request_start():
+    """Record request start time for slow-request logging."""
+    import time as _t
+    request._start_time = _t.monotonic()
+
+@app.after_request
+def _log_slow_requests(response):
+    """Log requests that take longer than 500ms."""
+    import time as _t
+    start = getattr(request, '_start_time', None)
+    if start is not None:
+        elapsed_ms = (_t.monotonic() - start) * 1000
+        if elapsed_ms > 500:
+            _log.warning("[SLOW REQUEST] %s %s → %dms", request.method, request.path, elapsed_ms)
+    return response
+
+@app.before_request
 def enforce_auth():
     """Enforce authentication on all API endpoints and page routes.
 
