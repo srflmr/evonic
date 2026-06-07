@@ -602,5 +602,6 @@ window.ChatUI = ChatUI;
 window.SSEAdapter = SSEAdapter;
 window.PollingAdapter = PollingAdapter;
 window.ReplayAdapter = ReplayAdapter;
+window.Lightbox = Lightbox;
 
 log('ui').info('chat-ui v2 loaded');
