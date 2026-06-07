@@ -568,9 +568,9 @@ def run_tool_loop(agent: Dict[str, Any],
         # Keep thinking enabled unless the thinking budget was exceeded, in which
         # case we disable thinking to force the model to commit without deliberating.
         _enable_thinking_this_call = not _thinking_budget_aborted
-        _logger.info("[LOCK] _llm_lock - WAITING (session=%s, main LLM call)", session_id)
+        # _logger.info("[LOCK] _llm_lock - WAITING (session=%s, main LLM call)", session_id)
         with llm_lock:
-            _logger.info("[LOCK] _llm_lock - ACQUIRED (session=%s, main LLM call)", session_id)
+            # _logger.info("[LOCK] _llm_lock - ACQUIRED (session=%s, main LLM call)", session_id)
             result = llm.chat_completion(
                 messages=messages,
                 tools=tools if tools else None,

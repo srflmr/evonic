@@ -192,9 +192,9 @@ def _emergency_compact_messages(messages: list, llm, llm_lock: threading.Lock,
     _logger.info("Calling LLM for compaction (summary=%dc, recent=%dc, prompt_total=%dc)",
                  len(existing_summary_capped), len(recent_text_capped), len(compact_prompt))
     try:
-        _logger.info("[LOCK] _llm_lock - WAITING (session=%s, compaction)", session_id)
+        # _logger.info("[LOCK] _llm_lock - WAITING (session=%s, compaction)", session_id)
         with llm_lock:
-            _logger.info("[LOCK] _llm_lock - ACQUIRED (session=%s, compaction)", session_id)
+            # _logger.info("[LOCK] _llm_lock - ACQUIRED (session=%s, compaction)", session_id)
             result = llm.chat_completion(
                 messages=[{"role": "user", "content": compact_prompt}],
                 tools=None,
