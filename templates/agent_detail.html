@@ -1185,7 +1185,7 @@ html.dark #channel-detail-modal .hover\:bg-indigo-100:hover { background: #312e8
     </div>
 </div>
 
-<script src="{{ url_for('static', filename='js/chat-ui.js') }}?v=42"></script>
+<script src="{{ url_for('static', filename='js/chat-ui.js') }}?v=43"></script>
 <script src="{{ url_for('static', filename='js/agent-state.js') }}?v=3"></script>
 <script>
 function showToast(message, type = 'success') {
@@ -4071,9 +4071,10 @@ function openArtifact(filename, category) {
     // Image branch: use Lightbox for prev/next navigation among image artifacts only
     if (category === 'image') {
         const imageArtifacts = _artifactsData.filter(f => f.category === 'image');
+        if (!imageArtifacts.length) return;
         const imageUrls = imageArtifacts.map(f => `/api/agents/${AGENT_ID}/artifacts/${f.filename}`);
         const idx = imageArtifacts.findIndex(f => f.filename === filename);
-        Lightbox.open(imageUrls, idx);
+        Lightbox.open(imageUrls, Math.max(0, idx));
         return;
     }
 
@@ -4351,7 +4352,8 @@ async function toggleEnabled() {
         body: JSON.stringify({enabled: newEnabled})
     });
     const data = await res.json();
-    if (data.error) { alert(data.error); return; }
+    if (data.error) { toast.error('Failed to ' + action + ' agent: ' + data.error); return; }
+    toast.success('Agent ' + action + 'd successfully');
     _agentEnabled = newEnabled;
     const btn = document.getElementById('toggle-enabled-btn');
     if (btn) {
