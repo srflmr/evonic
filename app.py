@@ -409,6 +409,15 @@ def _log_request_start():
     import time as _t
     request._start_time = _t.monotonic()
 
+@app.teardown_request
+def _close_db_connection(exc):
+    """Close thread-local DB connection after each request.
+
+    Flask's dev server creates a new thread per request. Without this,
+    SQLite connections accumulate until GC runs → "Too many open files".
+    """
+    db.close()
+
 @app.after_request
 def _log_slow_requests(response):
     """Log requests that take longer than 500ms."""

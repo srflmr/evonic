@@ -50,6 +50,11 @@ class Database(
         _migrate_db_to_subdir(db_path)
         self._tls = threading.local()
         self._init_tables()
+        # Keep one read-only connection alive for the process lifetime.
+        # This prevents SQLite from running a WAL checkpoint every time the
+        # last per-request connection closes, which causes random stalls.
+        self._anchor = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+        self._anchor.execute("PRAGMA journal_mode=WAL")
 
     @contextmanager
     def _connect(self) -> Generator[sqlite3.Connection, None, None]:
