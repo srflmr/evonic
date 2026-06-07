@@ -4061,6 +4061,15 @@ function downloadArtifact(filename) {
 }
 
 function openArtifact(filename, category) {
+    // Image branch: use Lightbox for prev/next navigation among image artifacts only
+    if (category === 'image') {
+        const imageArtifacts = _artifactsData.filter(f => f.category === 'image');
+        const imageUrls = imageArtifacts.map(f => `/api/agents/${AGENT_ID}/artifacts/${f.filename}`);
+        const idx = imageArtifacts.findIndex(f => f.filename === filename);
+        Lightbox.open(imageUrls, idx);
+        return;
+    }
+
     const existing = document.getElementById('artifact-viewer-modal');
     if (existing) existing.remove();
 
