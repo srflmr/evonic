@@ -48,8 +48,8 @@ class Database(
         self.db_path = db_path
         os.makedirs(os.path.dirname(db_path), exist_ok=True)
         _migrate_db_to_subdir(db_path)
-        self._init_tables()
         self._tls_db = threading.local()
+        self._init_tables()
 
     @contextmanager
     def _connect(self) -> Generator[sqlite3.Connection, None, None]:

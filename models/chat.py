@@ -50,8 +50,8 @@ class AgentChatDB:
             agent_dir = os.path.join(AGENTS_DIR, agent_id)
         os.makedirs(agent_dir, exist_ok=True)
         self.db_path = os.path.join(agent_dir, 'chat.db')
-        self._init_tables()
         self._tls_db = threading.local()
+        self._init_tables()
 
     @contextmanager
     def _connect(self) -> Generator[sqlite3.Connection, None, None]:
