@@ -69,6 +69,20 @@ class LocalPortalBackend(ExecutionBackend):
         except Exception as e:
             return {"error": str(e)}
 
+    def cat_file_bytes(self, path: str) -> dict:
+        """Read a file as raw bytes directly from the host filesystem."""
+        try:
+            with open(path, 'rb') as f:
+                return {'bytes': f.read()}
+        except PermissionError:
+            return {'error': 'Permission denied'}
+        except FileNotFoundError:
+            return {'error': f'File not found: {path}'}
+        except IsADirectoryError:
+            return {'error': f'Path is a directory, not a file: {path}'}
+        except Exception as e:
+            return {'error': str(e)}
+
     # ------------------------------------------------------------------
     # Path resolution — identity (noop)
     # ------------------------------------------------------------------

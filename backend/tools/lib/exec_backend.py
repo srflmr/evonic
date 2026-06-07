@@ -125,6 +125,16 @@ class ExecutionBackend(ABC):
     def make_dirs(self, path: str) -> dict:
         """Create directories recursively. Returns {'ok': True} or {'error': str}."""
 
+    @abstractmethod
+    def cat_file_bytes(self, path: str) -> dict:
+        """Read a file as raw bytes from the execution environment.
+
+        Used by save_artifact to stream file contents from sandbox (tmpfs),
+        SSH remote, or tunnel — places where shutil.copy2 / docker cp cannot reach.
+
+        Returns {'bytes': b'...'} or {'error': str}.
+        """
+
     # ------------------------------------------------------------------
     # Path resolution — converts a host filesystem path into the
     # path the backend's execution environment can access.

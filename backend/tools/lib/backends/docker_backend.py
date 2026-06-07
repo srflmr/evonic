@@ -695,6 +695,36 @@ class DockerBackend(ExecutionBackend):
         except Exception:
             return {'error': 'Failed to parse response from container'}
 
+    def cat_file_bytes(self, path: str) -> dict:
+        """Read a file as raw bytes from inside the container.
+
+        Uses ``docker exec`` to stream the file content (base64-encoded for
+        binary safety), which can read from tmpfs mounts that ``docker cp``
+        cannot access.
+        """
+        import json as _json, base64 as _b64
+        code = (
+            'import base64, json\n'
+            f'p = {_json.dumps(path)}\n'
+            'try:\n'
+            '    with open(p, "rb") as f:\n'
+            '        data = f.read()\n'
+            '    print(json.dumps({"data": base64.b64encode(data).decode("ascii")}))\n'
+            'except Exception as e:\n'
+            '    print(json.dumps({"error": str(e)}))\n'
+        )
+        r = self._container_exec_python(code, timeout=60)
+        if 'error' in r:
+            return r
+        try:
+            result = _json.loads(r.get('stdout', '{}'))
+        except Exception:
+            return {'error': 'Failed to parse response from container'}
+        if 'error' in result:
+            return result
+        data = _b64.b64decode(result['data'])
+        return {'bytes': data}
+
     def docker_cp_out(self, container_path: str, host_path: str) -> dict:
         """Copy a file from the container to the host filesystem."""
         container_id, err = _get_or_create_container(

@@ -196,6 +196,23 @@ class TunnelWorkplaceBackend(ExecutionBackend):
             return {'error': r.get('stderr', '') or r.get('error', 'write_file_b64 failed')}
         return {'ok': True}
 
+    def cat_file_bytes(self, path: str) -> dict:
+        """Read a file as raw bytes from the remote Evonet via RPC.
+
+        Uses the existing read_file_b64 RPC call and base64-decodes the result.
+        """
+        import base64
+        r = self.read_file_b64(path)
+        if 'error' in r:
+            return r
+        data = r.get('data', '')
+        if not data:
+            return {'bytes': b''}
+        try:
+            return {'bytes': base64.b64decode(data)}
+        except Exception as e:
+            return {'error': f'base64 decode failed: {e}'}
+
     def make_dirs(self, path: str) -> dict:
         r = self.run_bash(f'mkdir -p {shlex.quote(path)}', 10, {})
         if r.get('exit_code', 1) != 0:

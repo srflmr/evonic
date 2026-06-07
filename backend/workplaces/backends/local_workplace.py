@@ -61,6 +61,10 @@ class LocalWorkplaceBackend(ExecutionBackend):
     def write_file(self, path: str, content: str, create_dirs: bool = True) -> dict:
         return self._get_inner().write_file(path, content, create_dirs)
 
+    def cat_file_bytes(self, path: str) -> dict:
+        """Read a file as raw bytes (delegates to inner backend)."""
+        return self._get_inner().cat_file_bytes(path)
+
     def make_dirs(self, path: str) -> dict:
         return self._get_inner().make_dirs(path)
 

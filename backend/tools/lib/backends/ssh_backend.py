@@ -390,6 +390,25 @@ class SSHBackend(ExecutionBackend):
             return {'error': r.get('stderr', '') or r.get('error', 'write failed')}
         return {'ok': True}
 
+    def cat_file_bytes(self, path: str) -> dict:
+        """Read a file as raw bytes from the remote host via SSH.
+
+        Uses ``base64`` encoding over the SSH exec channel for binary-safe
+        transfer, avoiding the SFTP layer entirely.
+        """
+        import base64
+        r = self._exec(f'base64 {shlex.quote(path)}', '', 60)
+        if r.get('exit_code', 1) != 0:
+            return {'error': r.get('stderr', '') or r.get('error', 'cat failed')}
+        encoded = r.get('stdout', '').replace('\n', '').replace('\r', '').strip()
+        if not encoded:
+            return {'bytes': b''}
+        try:
+            data = base64.b64decode(encoded)
+            return {'bytes': data}
+        except Exception as e:
+            return {'error': f'base64 decode failed: {e}'}
+
     def make_dirs(self, path: str) -> dict:
         r = self._exec(f'mkdir -p {shlex.quote(path)}', '', 10)
         if r.get('exit_code', 1) != 0:
