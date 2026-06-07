@@ -1,0 +1,16 @@
+{
+  "id": "coding_fe_jquery_spa_5",
+  "name": "Generate jQuery - SPA Router",
+  "description": "Test code generation: client-side routing with jQuery hash-based SPA",
+  "prompt": "Tulis kode jQuery yang mengimplementasikan simple SPA (Single Page Application) router:\n- Hash-based routing: #/, #/about, #/products, #/products/:id, #/contact\n- Setiap route menampilkan content berbeda di #app container\n- Route #/products/:id harus extract parameter id dari hash\n- Fallback ke #/ jika route tidak dikenali\n- Gunakan $(window).on('hashchange') untuk listen perubahan route\n\nJika user navigasi ke #/products/42, value apa yang di-extract sebagai parameter id? Dan berapa jumlah total route patterns yang didefinisikan (termasuk dynamic route)? Jawab format: id,total_routes",
+  "expected": {
+    "answer": "42,5",
+    "type": "exact_match"
+  },
+  "evaluator_id": "two_pass",
+  "timeout_ms": 30000,
+  "weight": 1.0,
+  "enabled": true,
+  "created_at": "2026-05-17T12:00:00.000000",
+  "updated_at": "2026-05-17T12:00:00.000000"
+}

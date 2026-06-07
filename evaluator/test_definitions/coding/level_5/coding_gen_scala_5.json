@@ -1,0 +1,16 @@
+{
+  "id": "coding_gen_scala_5",
+  "name": "Generate Scala - Actor Concurrency",
+  "description": "Test code generation: actor-based message counting in Scala",
+  "prompt": "Tulis kode Scala yang mengimplementasikan simple actor system (tanpa Akka, gunakan basic threads/queues) dengan:\n- RouterActor yang menerima pesan dan mendistribusikan ke WorkerActor berdasarkan round-robin\n- 3 WorkerActor yang masing-masing menghitung jumlah pesan yang diproses\n\nJika RouterActor menerima 10 pesan dan mendistribusikan round-robin ke 3 worker, berapa pesan yang diproses oleh worker yang paling banyak dan paling sedikit? Jawab format: max,min",
+  "expected": {
+    "answer": "4,3",
+    "type": "exact_match"
+  },
+  "evaluator_id": "two_pass",
+  "timeout_ms": 30000,
+  "weight": 1.0,
+  "enabled": true,
+  "created_at": "2026-05-17T10:00:00.000000",
+  "updated_at": "2026-05-17T10:00:00.000000"
+}

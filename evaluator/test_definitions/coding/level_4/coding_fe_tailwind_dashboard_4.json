@@ -1,0 +1,16 @@
+{
+  "id": "coding_fe_tailwind_dashboard_4",
+  "name": "Generate Tailwind - Dashboard Layout",
+  "description": "Test code generation: complex Tailwind dashboard with grid and responsive",
+  "prompt": "Tulis HTML dengan Tailwind CSS untuk dashboard layout:\n- Sidebar: fixed, w-64, h-screen, bg-gray-900, text-white\n- Main content: ml-64, p-8, bg-gray-100, min-h-screen\n- Top bar di main: flex, justify-between, items-center, mb-8\n- Grid stats: grid, grid-cols-1, md:grid-cols-2, lg:grid-cols-4, gap-6\n- Setiap stat card: bg-white, rounded-xl, shadow-sm, p-6\n- 4 stat cards dengan title dan value\n\nPada breakpoint lg (large), berapa kolom yang ditampilkan di grid stats?",
+  "expected": {
+    "answer": 4.0,
+    "type": "numeric"
+  },
+  "evaluator_id": "two_pass",
+  "timeout_ms": 30000,
+  "weight": 1.0,
+  "enabled": true,
+  "created_at": "2026-05-17T12:00:00.000000",
+  "updated_at": "2026-05-17T12:00:00.000000"
+}

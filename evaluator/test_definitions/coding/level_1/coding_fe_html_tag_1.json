@@ -1,0 +1,16 @@
+{
+  "id": "coding_fe_html_tag_1",
+  "name": "HTML Basic Tags",
+  "description": "Test knowledge of basic HTML tags and their purpose",
+  "prompt": "Dalam HTML, tag apa yang digunakan untuk membuat link ke halaman lain? Jawab hanya nama tag-nya saja (tanpa kurung sudut).",
+  "expected": {
+    "answer": "a",
+    "type": "exact_match"
+  },
+  "evaluator_id": "two_pass",
+  "timeout_ms": 30000,
+  "weight": 1.0,
+  "enabled": true,
+  "created_at": "2026-05-17T12:00:00.000000",
+  "updated_at": "2026-05-17T12:00:00.000000"
+}

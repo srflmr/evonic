@@ -1,0 +1,16 @@
+{
+  "id": "coding_fe_flexbox_2",
+  "name": "CSS Flexbox Knowledge",
+  "description": "Test understanding of CSS flexbox properties",
+  "prompt": "Diberikan CSS berikut:\n\n```css\n.container {\n  display: flex;\n  justify-content: space-between;\n  align-items: center;\n}\n```\n\nJika container punya 3 child element, bagaimana posisi horizontal child-child tersebut? Jawab salah satu: rapat-kiri, rapat-kanan, tengah-semua, tersebar-merata, ujung-dan-tengah",
+  "expected": {
+    "answer": "ujung-dan-tengah",
+    "type": "exact_match"
+  },
+  "evaluator_id": "two_pass",
+  "timeout_ms": 30000,
+  "weight": 1.0,
+  "enabled": true,
+  "created_at": "2026-05-17T12:00:00.000000",
+  "updated_at": "2026-05-17T12:00:00.000000"
+}

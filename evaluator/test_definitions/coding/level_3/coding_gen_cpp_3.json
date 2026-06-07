@@ -1,0 +1,16 @@
+{
+  "id": "coding_gen_cpp_3",
+  "name": "Generate C++ - Linked List Cycle",
+  "description": "Test code generation: detect cycle length in linked list using C++",
+  "prompt": "Tulis fungsi C++ yang menghitung panjang cycle dalam sebuah linked list menggunakan Floyd's algorithm. Jika tidak ada cycle, return 0.\n\nJika linked list memiliki nodes [1, 2, 3, 4, 5, 6] dan node terakhir (6) menunjuk kembali ke node ke-3 (value 3), berapa panjang cycle-nya?",
+  "expected": {
+    "answer": 4.0,
+    "type": "numeric"
+  },
+  "evaluator_id": "two_pass",
+  "timeout_ms": 30000,
+  "weight": 1.0,
+  "enabled": true,
+  "created_at": "2026-05-17T10:00:00.000000",
+  "updated_at": "2026-05-17T10:00:00.000000"
+}

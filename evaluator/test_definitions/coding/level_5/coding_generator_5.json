@@ -1,0 +1,16 @@
+{
+  "id": "coding_generator_5",
+  "name": "Generator & Iterator Protocol",
+  "description": "Test complex generator chaining with send() and state tracking",
+  "prompt": "Apa output dari kode Python berikut?\n\n```python\ndef akumulator():\n    total = 0\n    while True:\n        nilai = yield total\n        if nilai is None:\n            break\n        total += nilai\n\ndef pipeline(data, threshold):\n    gen = akumulator()\n    next(gen)  # prime\n    results = []\n    for x in data:\n        current = gen.send(x)\n        if current > threshold:\n            results.append(current)\n    return results\n\ndata = [5, 10, 3, 8, 15, 2, 7]\nresult = pipeline(data, 20)\nprint(len(result), result[-1])\n```",
+  "expected": {
+    "answer": "4 50",
+    "type": "exact_match"
+  },
+  "evaluator_id": "two_pass",
+  "timeout_ms": 30000,
+  "weight": 1.0,
+  "enabled": true,
+  "created_at": "2026-05-17T10:00:00.000000",
+  "updated_at": "2026-05-17T10:00:00.000000"
+}

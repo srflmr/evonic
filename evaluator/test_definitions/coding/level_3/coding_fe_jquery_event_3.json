@@ -1,0 +1,16 @@
+{
+  "id": "coding_fe_jquery_event_3",
+  "name": "Generate jQuery - Event Handling",
+  "description": "Test code generation: jQuery click counter with DOM manipulation",
+  "prompt": "Tulis kode jQuery yang:\n1. Saat tombol #btn-add diklik, tambahkan 1 ke counter\n2. Saat tombol #btn-reset diklik, reset counter ke 0\n3. Tampilkan nilai counter di element #display\n\nJika user melakukan: klik add 5 kali, klik reset, klik add 3 kali — berapa nilai yang ditampilkan di #display?",
+  "expected": {
+    "answer": 3.0,
+    "type": "numeric"
+  },
+  "evaluator_id": "two_pass",
+  "timeout_ms": 30000,
+  "weight": 1.0,
+  "enabled": true,
+  "created_at": "2026-05-17T12:00:00.000000",
+  "updated_at": "2026-05-17T12:00:00.000000"
+}

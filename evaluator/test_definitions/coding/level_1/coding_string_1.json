@@ -1,0 +1,16 @@
+{
+  "id": "coding_string_1",
+  "name": "String Concatenation",
+  "description": "Test basic string operations and output tracing",
+  "prompt": "Apa output dari kode Python berikut?\n\n```python\nnama = \"Budi\"\nsalam = \"Halo, \" + nama + \"!\"\nprint(salam)\n```",
+  "expected": {
+    "answer": "Halo, Budi!",
+    "type": "exact_match"
+  },
+  "evaluator_id": "two_pass",
+  "timeout_ms": 30000,
+  "weight": 1.0,
+  "enabled": true,
+  "created_at": "2026-05-17T10:00:00.000000",
+  "updated_at": "2026-05-17T10:00:00.000000"
+}

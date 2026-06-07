@@ -3,7 +3,7 @@ Evaluation Engine - Run LLM evaluations using configurable test definitions.
 
 Supports both:
 1. Legacy hardcoded tests (from tests/ module)
-2. New configurable tests (from test_definitions/ directory)
+2. New configurable tests (from evaluator/test_definitions/ directory)
 """
 
 import time
@@ -37,7 +37,7 @@ class EvaluationEngine:
         Initialize evaluation engine.
         
         Args:
-            use_configurable_tests: If True, load tests from test_definitions/
+            use_configurable_tests: If True, load tests from evaluator/test_definitions/
                                    If False, use legacy hardcoded tests
         """
         self.current_run_id: Optional[int] = None
@@ -628,7 +628,7 @@ class EvaluationEngine:
                 mock_responses[func_name] = rt["mock_response"]
                 mock_response_types[func_name] = rt.get("mock_response_type", "json")
 
-        # Also check skill tools for no_mock — skill tool no_mock overrides test_definitions tool
+        # Also check skill tools for no_mock — skill tool no_mock overrides evaluator/test_definitions tool
         if tools_list:
             from backend.skills_manager import skills_manager
             resolved_fn_names = {t["function"]["name"] for t in tools_list}
@@ -897,7 +897,7 @@ class EvaluationEngine:
         # Evaluate using appropriate evaluator
         evaluator_id = test.get('evaluator_id', '')
         
-        # Check if we need to use a custom evaluator from test_definitions/evaluators/
+        # Check if we need to use a custom evaluator from evaluator/test_definitions/evaluators/
         evaluator_config = test_loader.get_evaluator(evaluator_id) if evaluator_id else None
         
         if evaluator_config and evaluator_config.type in ('custom', 'regex', 'hybrid'):

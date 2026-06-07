@@ -1,0 +1,16 @@
+{
+  "id": "coding_gen_go_2",
+  "name": "Generate Go - Reverse String",
+  "description": "Test code generation: reverse a string in Go",
+  "prompt": "Tulis fungsi Go yang membalik string. Contoh: reverse(\"hello\") menghasilkan \"olleh\".\n\nTulis kodenya lalu tunjukkan output dari reverse(\"Indonesia\").",
+  "expected": {
+    "answer": "aisenodnI",
+    "type": "exact_match"
+  },
+  "evaluator_id": "two_pass",
+  "timeout_ms": 30000,
+  "weight": 1.0,
+  "enabled": true,
+  "created_at": "2026-05-17T10:00:00.000000",
+  "updated_at": "2026-05-17T10:00:00.000000"
+}

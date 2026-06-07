@@ -1,0 +1,16 @@
+{
+  "id": "coding_dict_3",
+  "name": "Dictionary Manipulation",
+  "description": "Test dictionary operations including grouping and aggregation",
+  "prompt": "Apa output dari kode Python berikut?\n\n```python\npenjualan = [\n    {\"produk\": \"A\", \"qty\": 10},\n    {\"produk\": \"B\", \"qty\": 5},\n    {\"produk\": \"A\", \"qty\": 7},\n    {\"produk\": \"C\", \"qty\": 3},\n    {\"produk\": \"B\", \"qty\": 8}\n]\n\ntotal = {}\nfor item in penjualan:\n    p = item[\"produk\"]\n    total[p] = total.get(p, 0) + item[\"qty\"]\n\nprint(total[\"A\"] + total[\"B\"])\n```",
+  "expected": {
+    "answer": 30.0,
+    "type": "numeric"
+  },
+  "evaluator_id": "two_pass",
+  "timeout_ms": 30000,
+  "weight": 1.0,
+  "enabled": true,
+  "created_at": "2026-05-17T10:00:00.000000",
+  "updated_at": "2026-05-17T10:00:00.000000"
+}

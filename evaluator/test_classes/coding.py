@@ -7,11 +7,11 @@ class CodingTest(BaseTest):
     """Python coding tests - expects clean output from PASS 2"""
 
     def get_prompt(self) -> str:
-        # Prompts are loaded from test_definitions/coding/ JSON files
+        # Prompts are loaded from evaluator/test_definitions/coding/ JSON files
         return ""
 
     def get_expected(self) -> Any:
-        # Expected values are loaded from test_definitions/coding/ JSON files
+        # Expected values are loaded from evaluator/test_definitions/coding/ JSON files
         return ""
 
     def score_response(self, response: str, expected: Any) -> Dict[str, Any]:

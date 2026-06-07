@@ -1,0 +1,16 @@
+{
+  "id": "coding_fe_html_form_3",
+  "name": "Generate HTML - Form with Validation",
+  "description": "Test code generation: HTML form with proper attributes",
+  "prompt": "Buatkan HTML form login dengan spesifikasi:\n- Form method POST, action \"/login\"\n- Input email (type email, required, placeholder \"Email\")\n- Input password (type password, required, minlength 8)\n- Submit button dengan teks \"Masuk\"\n\nBerapa jumlah total atribut (termasuk type, required, placeholder, dll) yang ada di semua element input dan button? Hitung setiap atribut yang tertulis.",
+  "expected": {
+    "answer": 7.0,
+    "type": "numeric"
+  },
+  "evaluator_id": "two_pass",
+  "timeout_ms": 30000,
+  "weight": 1.0,
+  "enabled": true,
+  "created_at": "2026-05-17T12:00:00.000000",
+  "updated_at": "2026-05-17T12:00:00.000000"
+}

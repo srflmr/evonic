@@ -20,9 +20,9 @@ class TestManager:
     """Manage test definitions with file and database sync"""
     
     def __init__(self,
-                 tests_dir: str = "test_definitions",
+                 tests_dir: str = "evaluator/test_definitions",
                  custom_dir: str = "custom_tests",
-                 evaluators_dir: str = "test_definitions/evaluators",
+                 evaluators_dir: str = "evaluator/test_definitions/evaluators",
                  custom_evaluators_dir: str = "custom_evaluators",
                  tools_dir: str = "tools"):
         self.loader = TestLoader(tests_dir, custom_dir, evaluators_dir, custom_evaluators_dir, tools_dir)

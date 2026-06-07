@@ -1,0 +1,16 @@
+{
+  "id": "coding_fe_selector_2",
+  "name": "CSS Selector Specificity",
+  "description": "Test understanding of CSS selector specificity",
+  "prompt": "Diberikan HTML:\n```html\n<div id=\"main\" class=\"container\">\n  <p class=\"text red\">Hello</p>\n</div>\n```\n\nDan CSS:\n```css\n.container .text { color: blue; }\n#main p { color: green; }\np.red { color: red; }\n```\n\nWarna apa yang akan ditampilkan pada teks \"Hello\"? Jawab: blue, green, atau red.",
+  "expected": {
+    "answer": "green",
+    "type": "exact_match"
+  },
+  "evaluator_id": "two_pass",
+  "timeout_ms": 30000,
+  "weight": 1.0,
+  "enabled": true,
+  "created_at": "2026-05-17T12:00:00.000000",
+  "updated_at": "2026-05-17T12:00:00.000000"
+}

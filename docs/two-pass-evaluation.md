@@ -11,7 +11,7 @@ Pass 2 makes scoring reliable when Pass 1 is verbose or formatted inconsistently
 
 ## When it runs
 
-Two-pass extraction is used by the built-in **Two-Pass Evaluator** (`two_pass`), which is the default for domains such as **math**, **reasoning**, and **health** (see `evaluator/domain_evaluators.py` and `test_definitions/evaluators/two_pass.json`).
+Two-pass extraction is used by the built-in **Two-Pass Evaluator** (`two_pass`), which is the default for domains such as **math**, **reasoning**, and **health** (see `evaluator/domain_evaluators.py` and `evaluator/test_definitions/evaluators/two_pass.json`).
 
 Custom evaluators can set `"uses_pass2": true` in their JSON definition to opt in.
 

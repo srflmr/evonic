@@ -1,0 +1,16 @@
+{
+  "id": "coding_function_2",
+  "name": "Function Definition & Call",
+  "description": "Test function creation with parameters and return value",
+  "prompt": "Apa output dari kode Python berikut?\n\n```python\ndef luas_persegi(sisi):\n    return sisi * sisi\n\ndef keliling_persegi(sisi):\n    return 4 * sisi\n\ns = 7\nprint(luas_persegi(s) + keliling_persegi(s))\n```",
+  "expected": {
+    "answer": 77.0,
+    "type": "numeric"
+  },
+  "evaluator_id": "two_pass",
+  "timeout_ms": 30000,
+  "weight": 1.0,
+  "enabled": true,
+  "created_at": "2026-05-17T10:00:00.000000",
+  "updated_at": "2026-05-17T10:00:00.000000"
+}

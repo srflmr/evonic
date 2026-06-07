@@ -1,0 +1,16 @@
+{
+  "id": "coding_fe_jquery_tabs_4",
+  "name": "Generate jQuery + Tailwind - Tab Component",
+  "description": "Test code generation: interactive tabs with jQuery and Tailwind",
+  "prompt": "Tulis kode HTML + jQuery + Tailwind untuk komponen Tab:\n- 4 tab buttons: \"Overview\", \"Analytics\", \"Reports\", \"Settings\"\n- Tab aktif: border-b-2, border-blue-500, text-blue-600\n- Tab non-aktif: text-gray-500, hover:text-gray-700\n- Klik tab menampilkan content panel yang sesuai (hide/show)\n- Tab \"Overview\" aktif by default\n\nDiberikan HTML structure dengan 4 tab-panel divs. Jika user klik tab \"Reports\" (tab ke-3), berapa index (0-based) dari panel yang visible?",
+  "expected": {
+    "answer": 2.0,
+    "type": "numeric"
+  },
+  "evaluator_id": "two_pass",
+  "timeout_ms": 30000,
+  "weight": 1.0,
+  "enabled": true,
+  "created_at": "2026-05-17T12:00:00.000000",
+  "updated_at": "2026-05-17T12:00:00.000000"
+}

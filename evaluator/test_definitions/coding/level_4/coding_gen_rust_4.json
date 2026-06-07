@@ -1,0 +1,16 @@
+{
+  "id": "coding_gen_rust_4",
+  "name": "Generate Rust - Iterator Chain",
+  "description": "Test code generation: complex iterator operations in Rust",
+  "prompt": "Tulis kode Rust yang melakukan operasi berikut pada vector [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]:\n1. Filter hanya angka ganjil\n2. Map: kalikan masing-masing dengan 3\n3. Filter: ambil yang nilainya > 10\n4. Jumlahkan semua\n\nTulis kodenya lalu tunjukkan hasil akhirnya.",
+  "expected": {
+    "answer": 63.0,
+    "type": "numeric"
+  },
+  "evaluator_id": "two_pass",
+  "timeout_ms": 30000,
+  "weight": 1.0,
+  "enabled": true,
+  "created_at": "2026-05-17T10:00:00.000000",
+  "updated_at": "2026-05-17T10:00:00.000000"
+}

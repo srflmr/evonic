@@ -1,0 +1,16 @@
+{
+  "id": "coding_algorithm_3",
+  "name": "Sorting Algorithm",
+  "description": "Test understanding of bubble sort algorithm tracing",
+  "prompt": "Apa output dari kode Python berikut?\n\n```python\ndef bubble_sort(arr):\n    n = len(arr)\n    swaps = 0\n    for i in range(n):\n        for j in range(0, n-i-1):\n            if arr[j] > arr[j+1]:\n                arr[j], arr[j+1] = arr[j+1], arr[j]\n                swaps += 1\n    return swaps\n\ndata = [64, 34, 25, 12, 22]\njumlah_swap = bubble_sort(data)\nprint(jumlah_swap)\n```",
+  "expected": {
+    "answer": 9.0,
+    "type": "numeric"
+  },
+  "evaluator_id": "two_pass",
+  "timeout_ms": 30000,
+  "weight": 1.0,
+  "enabled": true,
+  "created_at": "2026-05-17T10:00:00.000000",
+  "updated_at": "2026-05-17T10:00:00.000000"
+}

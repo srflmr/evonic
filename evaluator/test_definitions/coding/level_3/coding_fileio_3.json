@@ -1,0 +1,16 @@
+{
+  "id": "coding_fileio_3",
+  "name": "String Parsing & Processing",
+  "description": "Test CSV-like string parsing and data extraction",
+  "prompt": "Apa output dari kode Python berikut?\n\n```python\ncsv_data = \"\"\"nama,umur,kota\nAndi,25,Jakarta\nBudi,30,Bandung\nCitra,22,Surabaya\nDewi,28,Jakarta\"\"\"\n\nbaris = csv_data.strip().split(\"\\n\")\nheader = baris[0].split(\",\")\ndata = [dict(zip(header, b.split(\",\"))) for b in baris[1:]]\n\njakarta_count = sum(1 for d in data if d[\"kota\"] == \"Jakarta\")\ntotal_umur = sum(int(d[\"umur\"]) for d in data)\nprint(f\"{jakarta_count},{total_umur}\")\n```",
+  "expected": {
+    "answer": "2,105",
+    "type": "exact_match"
+  },
+  "evaluator_id": "two_pass",
+  "timeout_ms": 30000,
+  "weight": 1.0,
+  "enabled": true,
+  "created_at": "2026-05-17T10:00:00.000000",
+  "updated_at": "2026-05-17T10:00:00.000000"
+}

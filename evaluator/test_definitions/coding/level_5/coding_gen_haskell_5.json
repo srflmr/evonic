@@ -1,0 +1,16 @@
+{
+  "id": "coding_gen_haskell_5",
+  "name": "Generate Haskell - Monad Transformer",
+  "description": "Test code generation: State monad computation in Haskell",
+  "prompt": "Tulis kode Haskell menggunakan State monad untuk mensimulasikan stack calculator. Operasi yang didukung: push, pop, dan peek.\n\nJalankan sequence berikut:\n1. push 10\n2. push 20\n3. push 30\n4. pop (hapus 30)\n5. peek (lihat top = 20)\n6. push 40\n7. pop (hapus 40)\n8. pop (hapus 20)\n9. peek (lihat top = 10)\n\nBerapa nilai akhir dari peek terakhir?",
+  "expected": {
+    "answer": 10.0,
+    "type": "numeric"
+  },
+  "evaluator_id": "two_pass",
+  "timeout_ms": 30000,
+  "weight": 1.0,
+  "enabled": true,
+  "created_at": "2026-05-17T10:00:00.000000",
+  "updated_at": "2026-05-17T10:00:00.000000"
+}

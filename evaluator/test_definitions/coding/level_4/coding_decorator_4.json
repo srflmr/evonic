@@ -1,0 +1,16 @@
+{
+  "id": "coding_decorator_4",
+  "name": "Decorator Pattern",
+  "description": "Test understanding of Python decorators and closure behavior",
+  "prompt": "Apa output dari kode Python berikut?\n\n```python\ndef counter(func):\n    count = [0]\n    def wrapper(*args, **kwargs):\n        count[0] += 1\n        result = func(*args, **kwargs)\n        return result\n    wrapper.get_count = lambda: count[0]\n    return wrapper\n\n@counter\ndef tambah(a, b):\n    return a + b\n\n@counter\ndef kali(a, b):\n    return a * b\n\ntambah(1, 2)\ntambah(3, 4)\ntambah(5, 6)\nkali(2, 3)\nkali(4, 5)\n\nprint(tambah.get_count() * 10 + kali.get_count())\n```",
+  "expected": {
+    "answer": 32.0,
+    "type": "numeric"
+  },
+  "evaluator_id": "two_pass",
+  "timeout_ms": 30000,
+  "weight": 1.0,
+  "enabled": true,
+  "created_at": "2026-05-17T10:00:00.000000",
+  "updated_at": "2026-05-17T10:00:00.000000"
+}

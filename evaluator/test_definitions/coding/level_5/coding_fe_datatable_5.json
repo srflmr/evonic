@@ -1,0 +1,16 @@
+{
+  "id": "coding_fe_datatable_5",
+  "name": "Generate jQuery + Tailwind - DataTable",
+  "description": "Test code generation: full-featured data table with sort, filter, pagination",
+  "prompt": "Tulis kode HTML + jQuery + Tailwind untuk DataTable component:\n- Table dengan Tailwind styling: w-full, divide-y, divide-gray-200\n- Header: bg-gray-50, text-left, text-xs, font-medium, text-gray-500, uppercase\n- Fitur sort: klik header kolom untuk toggle asc/desc\n- Fitur search: input filter yang search across semua kolom\n- Fitur pagination: 5 items per page, tombol prev/next, display \"Page X of Y\"\n- Data: 12 items dengan kolom [Name, Email, Role, Status]\n\nDengan 12 items dan 5 items per page:\n1. Berapa total halaman?\n2. Di halaman terakhir, berapa item yang ditampilkan?\n\nJawab format: total_pages,last_page_items",
+  "expected": {
+    "answer": "3,2",
+    "type": "exact_match"
+  },
+  "evaluator_id": "two_pass",
+  "timeout_ms": 30000,
+  "weight": 1.0,
+  "enabled": true,
+  "created_at": "2026-05-17T12:00:00.000000",
+  "updated_at": "2026-05-17T12:00:00.000000"
+}

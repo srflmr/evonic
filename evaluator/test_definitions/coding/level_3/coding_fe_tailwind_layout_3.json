@@ -1,0 +1,19 @@
+{
+  "id": "coding_fe_tailwind_layout_3",
+  "name": "Generate Tailwind - Responsive Card",
+  "description": "Test code generation: Tailwind CSS responsive card layout",
+  "prompt": "Tulis HTML dengan Tailwind CSS untuk card component yang:\n- Container: background putih, rounded-lg, shadow-md, padding 6\n- Gambar di atas: w-full, h-48, object-cover, rounded-t-lg\n- Title: text-xl, font-bold, text-gray-800, mt-4\n- Description: text-gray-600, mt-2\n- Button: bg-blue-500, text-white, px-4, py-2, rounded, mt-4, hover:bg-blue-600\n\nBerapa jumlah total class Tailwind yang digunakan pada seluruh element (hitung setiap class individual)?",
+  "expected": {
+    "answer": 21,
+    "type": "numeric"
+  },
+  "evaluator_id": "two_pass",
+  "timeout_ms": 30000,
+  "weight": 1,
+  "enabled": true,
+  "created_at": "2026-05-17T12:00:00.000000",
+  "updated_at": "2026-05-17T15:24:43.257711",
+  "system_prompt": null,
+  "system_prompt_mode": "overwrite",
+  "tool_ids": []
+}

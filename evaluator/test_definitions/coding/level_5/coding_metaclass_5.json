@@ -1,0 +1,16 @@
+{
+  "id": "coding_metaclass_5",
+  "name": "Metaclass & Descriptor",
+  "description": "Test metaclass behavior and descriptor protocol understanding",
+  "prompt": "Apa output dari kode Python berikut?\n\n```python\nclass ValidatedField:\n    def __init__(self, min_val, max_val):\n        self.min_val = min_val\n        self.max_val = max_val\n\n    def __set_name__(self, owner, name):\n        self.name = '_' + name\n\n    def __get__(self, obj, objtype=None):\n        if obj is None:\n            return self\n        return getattr(obj, self.name, 0)\n\n    def __set__(self, obj, value):\n        if value < self.min_val:\n            value = self.min_val\n        elif value > self.max_val:\n            value = self.max_val\n        setattr(obj, self.name, value)\n\nclass RegistryMeta(type):\n    registry = []\n    def __new__(mcs, name, bases, namespace):\n        cls = super().__new__(mcs, name, bases, namespace)\n        if bases:  # skip base class itself\n            mcs.registry.append(name)\n        return cls\n\nclass Sensor(metaclass=RegistryMeta):\n    suhu = ValidatedField(-40, 100)\n    kelembaban = ValidatedField(0, 100)\n\nclass SensorDalam(Sensor):\n    pass\n\nclass SensorLuar(Sensor):\n    pass\n\ns = Sensor()\ns.suhu = 150\ns.kelembaban = -10\n\nprint(s.suhu + s.kelembaban + len(RegistryMeta.registry))\n```",
+  "expected": {
+    "answer": 102.0,
+    "type": "numeric"
+  },
+  "evaluator_id": "two_pass",
+  "timeout_ms": 30000,
+  "weight": 1.0,
+  "enabled": true,
+  "created_at": "2026-05-17T10:00:00.000000",
+  "updated_at": "2026-05-17T10:00:00.000000"
+}

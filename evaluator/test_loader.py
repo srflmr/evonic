@@ -2,7 +2,7 @@
 Test Loader - Load test definitions from directory structure.
 
 Directory structure:
-test_definitions/
+evaluator/test_definitions/
 ├── conversation/
 │   ├── domain.json
 │   ├── level_1/
@@ -214,9 +214,9 @@ class TestLoader:
     """Load test definitions from directory structure"""
     
     def __init__(self,
-                 tests_dir: str = "test_definitions",
+                 tests_dir: str = "evaluator/test_definitions",
                  custom_dir: str = "custom_tests",
-                 evaluators_dir: str = "test_definitions/evaluators",
+                 evaluators_dir: str = "evaluator/test_definitions/evaluators",
                  custom_evaluators_dir: str = "custom_evaluators",
                  tools_dir: str = "tools"):
         # Use absolute paths based on this file's directory (evaluator/)

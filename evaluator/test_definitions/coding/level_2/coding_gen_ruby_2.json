@@ -1,0 +1,16 @@
+{
+  "id": "coding_gen_ruby_2",
+  "name": "Generate Ruby - Array Sum Even",
+  "description": "Test code generation: sum even numbers from array in Ruby",
+  "prompt": "Tulis fungsi Ruby yang menjumlahkan hanya angka genap dari sebuah array.\n\nTulis kodenya lalu tunjukkan output dari sum_even([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]).",
+  "expected": {
+    "answer": 30.0,
+    "type": "numeric"
+  },
+  "evaluator_id": "two_pass",
+  "timeout_ms": 30000,
+  "weight": 1.0,
+  "enabled": true,
+  "created_at": "2026-05-17T10:00:00.000000",
+  "updated_at": "2026-05-17T10:00:00.000000"
+}

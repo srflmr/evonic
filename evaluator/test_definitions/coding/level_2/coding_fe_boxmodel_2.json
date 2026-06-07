@@ -1,0 +1,16 @@
+{
+  "id": "coding_fe_boxmodel_2",
+  "name": "CSS Box Model Calculation",
+  "description": "Test understanding of CSS box model width calculation",
+  "prompt": "Diberikan CSS:\n```css\n.box {\n  width: 200px;\n  padding: 20px;\n  border: 5px solid black;\n  margin: 10px;\n  box-sizing: content-box;\n}\n```\n\nBerapa total lebar ruang yang diambil oleh element .box (termasuk margin) dalam pixel?",
+  "expected": {
+    "answer": 270.0,
+    "type": "numeric"
+  },
+  "evaluator_id": "two_pass",
+  "timeout_ms": 30000,
+  "weight": 1.0,
+  "enabled": true,
+  "created_at": "2026-05-17T12:00:00.000000",
+  "updated_at": "2026-05-17T12:00:00.000000"
+}

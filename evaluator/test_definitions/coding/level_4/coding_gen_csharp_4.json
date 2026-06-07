@@ -1,0 +1,16 @@
+{
+  "id": "coding_gen_csharp_4",
+  "name": "Generate C# - Observer Pattern",
+  "description": "Test code generation: observer/event pattern in C#",
+  "prompt": "Tulis implementasi Observer Pattern di C# dengan:\n- EventBus class yang punya Subscribe(event, handler) dan Publish(event, data)\n- 3 subscriber yang masing-masing menghitung berapa kali mereka menerima event\n\nSimulasikan:\n1. SubscriberA subscribe ke \"order\"\n2. SubscriberB subscribe ke \"order\" dan \"payment\"\n3. SubscriberC subscribe ke \"payment\"\n4. Publish \"order\" 3 kali\n5. Publish \"payment\" 2 kali\n\nBerapa total event yang diterima oleh semua subscriber digabung?",
+  "expected": {
+    "answer": 10.0,
+    "type": "numeric"
+  },
+  "evaluator_id": "two_pass",
+  "timeout_ms": 30000,
+  "weight": 1.0,
+  "enabled": true,
+  "created_at": "2026-05-17T10:00:00.000000",
+  "updated_at": "2026-05-17T10:00:00.000000"
+}

@@ -1,0 +1,16 @@
+{
+  "id": "coding_variables_1",
+  "name": "Variable Assignment & Print",
+  "description": "Test basic variable assignment and print output tracing",
+  "prompt": "Apa output dari kode Python berikut?\n\n```python\nx = 5\ny = 3\nz = x + y\nprint(z)\n```",
+  "expected": {
+    "answer": 8.0,
+    "type": "numeric"
+  },
+  "evaluator_id": "two_pass",
+  "timeout_ms": 30000,
+  "weight": 1.0,
+  "enabled": true,
+  "created_at": "2026-05-17T10:00:00.000000",
+  "updated_at": "2026-05-17T10:00:00.000000"
+}

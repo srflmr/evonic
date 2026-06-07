@@ -1,0 +1,16 @@
+{
+  "id": "coding_fe_jquery_ajax_4",
+  "name": "Generate jQuery - AJAX & DOM",
+  "description": "Test code generation: jQuery AJAX with dynamic table rendering",
+  "prompt": "Tulis kode jQuery yang:\n1. Fetch data dari API endpoint \"/api/users\" via $.ajax GET\n2. Response berupa array: [{name: \"Andi\", age: 25}, {name: \"Budi\", age: 30}, {name: \"Citra\", age: 22}]\n3. Render data ke table #user-table dengan kolom Name dan Age\n4. Tambahkan tombol \"Delete\" di setiap row yang menghapus row tersebut dari DOM\n5. Setelah delete, update jumlah row di #row-count\n\nJika user menghapus row \"Budi\", berapa nilai #row-count yang ditampilkan?",
+  "expected": {
+    "answer": 2.0,
+    "type": "numeric"
+  },
+  "evaluator_id": "two_pass",
+  "timeout_ms": 30000,
+  "weight": 1.0,
+  "enabled": true,
+  "created_at": "2026-05-17T12:00:00.000000",
+  "updated_at": "2026-05-17T12:00:00.000000"
+}

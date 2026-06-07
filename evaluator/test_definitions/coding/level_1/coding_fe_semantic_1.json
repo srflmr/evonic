@@ -1,0 +1,16 @@
+{
+  "id": "coding_fe_semantic_1",
+  "name": "HTML Semantic Elements",
+  "description": "Test knowledge of HTML5 semantic elements",
+  "prompt": "Dalam HTML5, tag semantic apa yang digunakan untuk mendefinisikan konten navigasi utama sebuah halaman? Jawab hanya nama tag-nya saja (tanpa kurung sudut).",
+  "expected": {
+    "answer": "nav",
+    "type": "exact_match"
+  },
+  "evaluator_id": "two_pass",
+  "timeout_ms": 30000,
+  "weight": 1.0,
+  "enabled": true,
+  "created_at": "2026-05-17T12:00:00.000000",
+  "updated_at": "2026-05-17T12:00:00.000000"
+}

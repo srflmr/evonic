@@ -1,0 +1,16 @@
+{
+  "id": "coding_fe_css_property_1",
+  "name": "CSS Basic Property",
+  "description": "Test knowledge of basic CSS properties",
+  "prompt": "Property CSS apa yang digunakan untuk mengubah warna teks? Jawab hanya nama property-nya.",
+  "expected": {
+    "answer": "color",
+    "type": "exact_match"
+  },
+  "evaluator_id": "two_pass",
+  "timeout_ms": 30000,
+  "weight": 1.0,
+  "enabled": true,
+  "created_at": "2026-05-17T12:00:00.000000",
+  "updated_at": "2026-05-17T12:00:00.000000"
+}

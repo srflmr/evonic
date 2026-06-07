@@ -1,0 +1,16 @@
+{
+  "id": "coding_fe_tailwind_modal_5",
+  "name": "Generate Tailwind + jQuery - Modal System",
+  "description": "Test code generation: reusable modal system with animations and stacking",
+  "prompt": "Tulis kode HTML + jQuery + Tailwind untuk modal system yang reusable:\n- Fungsi openModal(id) dan closeModal(id) untuk buka/tutup modal by ID\n- Backdrop: fixed, inset-0, bg-black/50, z-40, transition-opacity\n- Modal container: fixed, inset-0, z-50, flex, items-center, justify-center\n- Modal content: bg-white, rounded-2xl, shadow-2xl, max-w-lg, w-full, mx-4, transform, transition-all\n- Animasi open: scale-95 → scale-100, opacity-0 → opacity-100\n- Animasi close: scale-100 → scale-95, opacity-100 → opacity-0\n- Close saat klik backdrop atau tombol X\n- Support stacking: modal di atas modal, z-index increment per level\n\nJika 3 modal dibuka berturut-turut (modal-1, modal-2, modal-3), dan z-index base adalah 50 dengan increment 10 per modal, berapa z-index modal teratas?",
+  "expected": {
+    "answer": 70.0,
+    "type": "numeric"
+  },
+  "evaluator_id": "two_pass",
+  "timeout_ms": 30000,
+  "weight": 1.0,
+  "enabled": true,
+  "created_at": "2026-05-17T12:00:00.000000",
+  "updated_at": "2026-05-17T12:00:00.000000"
+}

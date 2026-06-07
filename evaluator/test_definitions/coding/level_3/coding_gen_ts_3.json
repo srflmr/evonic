@@ -1,0 +1,16 @@
+{
+  "id": "coding_gen_ts_3",
+  "name": "Generate TypeScript - Matrix Transpose",
+  "description": "Test code generation: matrix transpose in TypeScript",
+  "prompt": "Tulis fungsi TypeScript yang melakukan transpose pada matrix 2D (array of arrays).\n\nTulis kodenya lalu tunjukkan output dari transpose([[1,2,3],[4,5,6]]) dalam format [[1,4],[2,5],[3,6]].\n\nBerapa nilai elemen pada baris ke-2 kolom ke-1 dari hasil transpose?",
+  "expected": {
+    "answer": 2.0,
+    "type": "numeric"
+  },
+  "evaluator_id": "two_pass",
+  "timeout_ms": 30000,
+  "weight": 1.0,
+  "enabled": true,
+  "created_at": "2026-05-17T10:00:00.000000",
+  "updated_at": "2026-05-17T10:00:00.000000"
+}

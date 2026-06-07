@@ -1,0 +1,16 @@
+{
+  "id": "coding_gen_elixir_5",
+  "name": "Generate Elixir - GenServer Pipeline",
+  "description": "Test code generation: GenServer-based data pipeline in Elixir",
+  "prompt": "Tulis kode Elixir menggunakan GenServer yang mengimplementasikan pipeline data processing:\n- Stage 1: Filter angka prima dari input list\n- Stage 2: Map setiap prima ke kuadratnya\n- Stage 3: Accumulate (jumlahkan semua)\n\nInput list: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]\n\nAngka prima: 2, 3, 5, 7, 11, 13\nKuadrat: 4, 9, 25, 49, 121, 169\nTotal: ?\n\nBerapa hasil akhir pipeline?",
+  "expected": {
+    "answer": 377.0,
+    "type": "numeric"
+  },
+  "evaluator_id": "two_pass",
+  "timeout_ms": 30000,
+  "weight": 1.0,
+  "enabled": true,
+  "created_at": "2026-05-17T10:00:00.000000",
+  "updated_at": "2026-05-17T10:00:00.000000"
+}
