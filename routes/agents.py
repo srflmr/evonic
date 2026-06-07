@@ -1499,6 +1499,10 @@ def api_chat_stream(agent_id):
 
     from backend.event_stream import event_stream
 
+    # Release the thread-local DB connection acquired by enforce_auth.
+    # This SSE thread will block for 30+s; without close() it leaks an FD.
+    db.close()
+
     q = queue.Queue(maxsize=200)
 
     _SENTINEL = object()
@@ -1694,6 +1698,9 @@ def api_approvals_stream():
     """
     from backend.event_stream import event_stream
 
+    # Release the thread-local DB connection acquired by enforce_auth.
+    db.close()
+
     q = queue.Queue(maxsize=200)
 
     _TRANSFORMS = {
@@ -1865,6 +1872,9 @@ def api_agents_status_stream():
     """
     import queue as _queue
     from backend.event_stream import event_stream
+
+    # Release the thread-local DB connection acquired by enforce_auth.
+    db.close()
 
     q = _queue.Queue(maxsize=200)
 

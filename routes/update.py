@@ -67,6 +67,10 @@ def api_update_restart():
 def api_update_stream():
     """SSE endpoint for real-time update progress. Follows the same pattern
     as the approval stream in routes/agents.py."""
+    # Release the thread-local DB connection — this SSE thread is long-lived.
+    from models.db import db
+    db.close()
+
     q = update_manager.register_listener()
 
     def generate():

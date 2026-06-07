@@ -157,6 +157,9 @@ def api_workplace_events(workplace_id):
     if not workplace:
         return jsonify({'error': 'Not found'}), 404
 
+    # Release the thread-local DB connection — this SSE thread is long-lived.
+    db.close()
+
     q = queue.Queue(maxsize=20)
 
     _WATCHED = ('connector_connected', 'connector_disconnected', 'connector_paired', 'workplace_status_changed')
