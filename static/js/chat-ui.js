@@ -377,7 +377,7 @@ const ALLOWED_ATTRS = {
     a:    ['href', 'title', 'target'],
     code: ['class'],
     pre:  ['class'],
-    img:  ['src', 'alt', 'class'],
+    img:  ['src', 'alt', 'class', 'loading'],
 };
 
 function _walkSanitize(node) {
@@ -852,6 +852,8 @@ function _buildSysBalloon(tag, content, tagColorClass, fullColorClass, truncateL
 function _wrapImageWithDownload($img) {
     const imageUrl = $img.attr('src');
     if (!imageUrl) return;
+    // Lazy-load images to prevent flooding HTTP connections on page with many images
+    $img.attr('loading', 'lazy');
     // Thumbnail styling: constrained size via inline CSS (Tailwind compiled CSS
     // may not include arbitrary-value classes like max-w-[85vw]).
     $img.addClass('rounded-lg')
@@ -1000,7 +1002,7 @@ function buildMessageBubble(role, content, opts = {}, cfg = {}) {
         // Render image attachment if present
         const meta = opts.metadata || {};
         if (meta.image_url) {
-            const $img = $('<img>').attr('src', meta.image_url);
+            const $img = $('<img>').attr('src', meta.image_url).attr('loading', 'lazy');
             $bubble.append($img);
             _wrapImageWithDownload($img);
         }
@@ -2549,7 +2551,6 @@ window.ChatUI = ChatUI;
 window.SSEAdapter = SSEAdapter;
 window.PollingAdapter = PollingAdapter;
 window.ReplayAdapter = ReplayAdapter;
-window.Lightbox = Lightbox;
 
 log('ui').info('chat-ui v2 loaded');
 

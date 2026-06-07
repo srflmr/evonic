@@ -3084,7 +3084,7 @@ function setChatBusy(busy) {
 
 // Background poll for busy state set by external sessions (notifier, other channels)
 let _busyPolling = false;
-setInterval(async () => {
+let _busyPollTimer = setInterval(async () => {
     if (_chatBusy || _busyPolling) return; // skip if already busy or previous request still in-flight
     _busyPolling = true;
     try {
@@ -3093,6 +3093,12 @@ setInterval(async () => {
         updateBusyBadge(data.busy);
     } catch (e) { /* ignore */ } finally { _busyPolling = false; }
 }, 5000);
+
+// Stop all polling on page unload to free HTTP connections during navigation
+window.addEventListener('beforeunload', () => {
+    if (_busyPollTimer) { clearInterval(_busyPollTimer); _busyPollTimer = null; }
+    stopIdlePoll();
+});
 
 function startIdlePoll() {
     if (chatIdleTimer) return; // already running
@@ -3654,7 +3660,8 @@ function closeMobileChatSummary() {
     document.getElementById('mobile-chat-summary-overlay').classList.add('hidden');
 }
 
-async function refreshSessionState() {
+let _refreshSessionStateTimer = null;
+const _refreshSessionStateImpl = async function() {
     try {
         // Fetch both session summary and agent state in parallel
         const sid = _chatSessionId ? `&session_id=${encodeURIComponent(_chatSessionId)}` : '';
@@ -3724,6 +3731,12 @@ async function refreshSessionState() {
             mobileMeta.classList.add('hidden');
         }
     } catch(e) { /* ignore */ }
+};
+
+// Debounced wrapper — coalesces rapid calls into one (300ms delay)
+function refreshSessionState() {
+    if (_refreshSessionStateTimer) clearTimeout(_refreshSessionStateTimer);
+    _refreshSessionStateTimer = setTimeout(() => { _refreshSessionStateTimer = null; _refreshSessionStateImpl(); }, 300);
 }
 
 async function refreshAgentState() {

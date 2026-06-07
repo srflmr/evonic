@@ -308,10 +308,11 @@ document.addEventListener('click', function (e) {
 });
 
 /** Subscribe to SSE for real-time busy state updates and turn-complete notifications */
+var _statusSSE = null;
 function subscribeBusySSE() {
     try {
-        var es = new EventSource('/api/agents/status/stream');
-        es.addEventListener('agent_busy_changed', function (e) {
+        _statusSSE = new EventSource('/api/agents/status/stream');
+        _statusSSE.addEventListener('agent_busy_changed', function (e) {
             try {
                 var payload = JSON.parse(e.data);
                 var avatar = document.querySelector(
@@ -322,7 +323,7 @@ function subscribeBusySSE() {
                 }
             } catch (_) {}
         });
-        es.addEventListener('agent_turn_complete', function (e) {
+        _statusSSE.addEventListener('agent_turn_complete', function (e) {
             try {
                 var payload = JSON.parse(e.data);
                 // Don't show bubble if user is already viewing this agent's page
@@ -330,13 +331,18 @@ function subscribeBusySSE() {
                 showBubblePopup(payload.agent_id, payload.agent_name, payload.response, payload.session_id, payload.external_user_id);
             } catch (_) {}
         });
-        es.addEventListener('error', function () {
+        _statusSSE.addEventListener('error', function () {
             // EventSource will auto-reconnect; no action needed
         });
     } catch (_) {
         // EventSource not supported — polling fallback already active
     }
 }
+
+// Close SSE on page unload to free HTTP connections during navigation
+window.addEventListener('beforeunload', function () {
+    if (_statusSSE) { _statusSSE.close(); _statusSSE = null; }
+});
 
 /** Toggle sidebar collapsed state */
 function toggleSidebar() {

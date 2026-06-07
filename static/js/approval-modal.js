@@ -298,5 +298,9 @@ document.addEventListener('evonic:approval-resolved', function(e) {
             _startSSE();
         }
     });
+    // Close SSE on page unload to free HTTP connections during navigation
+    window.addEventListener('beforeunload', function() {
+        if (_sse) { _sse.close(); _sse = null; }
+    });
 })();
 })();
