@@ -4351,7 +4351,8 @@ async function toggleEnabled() {
         body: JSON.stringify({enabled: newEnabled})
     });
     const data = await res.json();
-    if (data.error) { alert(data.error); return; }
+    if (data.error) { toast.error('Failed to ' + action + ' agent: ' + data.error); return; }
+    toast.success('Agent ' + action + 'd successfully');
     _agentEnabled = newEnabled;
     const btn = document.getElementById('toggle-enabled-btn');
     if (btn) {
