@@ -58,6 +58,10 @@ class Database(
         """
         conn = sqlite3.connect(f"file:{self.db_path}?mode=rwc&busy_timeout=10000", uri=True)
         conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA synchronous=NORMAL")
+        conn.execute("PRAGMA wal_autocheckpoint=100")
+        conn.execute("PRAGMA cache_size=-8000")
+        conn.execute("PRAGMA mmap_size=268435456")
         try:
             with conn:
                 yield conn

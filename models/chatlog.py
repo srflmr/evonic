@@ -117,10 +117,8 @@ class ChatLog:
                 # If not using context manager, open on-demand
                 with open(self._path, 'a', encoding='utf-8') as f:
                     f.write(line)
-                    f.flush()
             else:
                 self._fh.write(line)
-                self._fh.flush()
 
     def close(self) -> None:
         with self._lock:
