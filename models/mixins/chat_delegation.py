@@ -26,6 +26,12 @@ class ChatDelegationMixin:
         except Exception:
             pass
 
+    def get_session_id(self, agent_id: str, external_user_id: str,
+                        channel_id: str = None, db_agent_id: str = None) -> Optional[str]:
+        """Read-only session lookup — no writes, no sync. Returns session_id or None."""
+        _db_id = db_agent_id or agent_id
+        return self._chat_db(_db_id).get_session_id(agent_id, external_user_id, channel_id)
+
     def get_or_create_session(self, agent_id: str, external_user_id: str,
                                channel_id: str = None,
                                db_agent_id: str = None) -> str:

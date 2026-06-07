@@ -980,7 +980,7 @@ def api_llm_preview(agent_id):
     if not agent:
         return jsonify({'error': 'Agent not found'}), 404
     user_id = request.args.get('user_id', 'anonymous')
-    session_id = db.get_or_create_session(agent_id, user_id)
+    session_id = db.get_session_id(agent_id, user_id) or db.get_or_create_session(agent_id, user_id)
 
     from backend.agent_runtime import agent_runtime
     from backend.agent_runtime.context import build_system_prompt
@@ -1127,7 +1127,7 @@ def api_chat_jsonl(agent_id):
     limit = min(request.args.get('limit', 30, type=int), 200)
 
     if not session_id:
-        session_id = db.get_or_create_session(agent_id, user_id)
+        session_id = db.get_session_id(agent_id, user_id) or db.get_or_create_session(agent_id, user_id)
 
     chatlog = chatlog_manager.get(agent_id, session_id)
 
@@ -1145,7 +1145,7 @@ def api_chat_jsonl(agent_id):
 @agents_bp.route('/api/agents/<agent_id>/chat/history', methods=['GET'])
 def api_chat_history(agent_id):
     user_id = request.args.get('user_id', 'anonymous')
-    session_id = db.get_or_create_session(agent_id, user_id)
+    session_id = db.get_session_id(agent_id, user_id) or db.get_or_create_session(agent_id, user_id)
     messages = db.get_session_messages(session_id, limit=50, agent_id=agent_id)
     filtered = []
     for m in messages:
@@ -1177,7 +1177,7 @@ def api_chat_poll(agent_id):
     """Poll for new messages after a given message ID."""
     user_id = request.args.get('user_id', 'anonymous')
     after_id = request.args.get('after', 0, type=int)
-    session_id = db.get_or_create_session(agent_id, user_id)
+    session_id = db.get_session_id(agent_id, user_id) or db.get_or_create_session(agent_id, user_id)
     messages = db.get_messages_after(session_id, after_id, agent_id=agent_id)
     filtered = []
     for m in messages:
@@ -1208,7 +1208,7 @@ def api_chat_poll(agent_id):
 @agents_bp.route('/api/agents/<agent_id>/chat/summary', methods=['GET'])
 def api_chat_summary(agent_id):
     user_id = request.args.get('user_id', 'anonymous')
-    session_id = db.get_or_create_session(agent_id, user_id)
+    session_id = db.get_session_id(agent_id, user_id) or db.get_or_create_session(agent_id, user_id)
     summary = db.get_summary(session_id, agent_id=agent_id)
     if summary:
         return jsonify({'summary': summary['summary'],
@@ -1486,7 +1486,7 @@ def api_chat_session(agent_id):
         user_id = _validate_user_id(raw_user_id)
     except ValueError as e:
         return jsonify({'error': str(e)}), 400
-    session_id = db.get_or_create_session(agent_id, user_id)
+    session_id = db.get_session_id(agent_id, user_id) or db.get_or_create_session(agent_id, user_id)
     return jsonify({'session_id': session_id})
 
 

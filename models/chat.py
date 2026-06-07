@@ -72,7 +72,7 @@ class AgentChatDB:
             conn = sqlite3.connect(f"file:{self.db_path}?mode=rwc&busy_timeout=10000", uri=True)
             conn.execute("PRAGMA journal_mode=WAL")
             conn.execute("PRAGMA synchronous=NORMAL")
-            conn.execute("PRAGMA wal_autocheckpoint=100")
+            conn.execute("PRAGMA wal_autocheckpoint=1000")
             conn.execute("PRAGMA cache_size=-8000")
             conn.execute("PRAGMA mmap_size=268435456")
             self._tls_db.conn = conn
@@ -225,6 +225,27 @@ class AgentChatDB:
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_memories_dimension ON memories(dimension)")
             conn.commit()
 
+    def get_session_id(self, agent_id: str, external_user_id: str,
+                        channel_id: str = None) -> Optional[str]:
+        """Read-only session lookup. Returns session_id if it exists, else None."""
+        from models.chatlog import session_slug
+        slug = f"{agent_id}-{session_slug(external_user_id, agent_id=agent_id)}"
+        with self._connect() as conn:
+            conn.row_factory = sqlite3.Row
+            if channel_id:
+                row = conn.execute("""
+                    SELECT id FROM chat_sessions
+                    WHERE agent_id = ? AND channel_id = ? AND external_user_id = ?
+                    AND (archived IS NULL OR archived = 0)
+                """, (agent_id, channel_id, external_user_id)).fetchone()
+            else:
+                row = conn.execute("""
+                    SELECT id FROM chat_sessions
+                    WHERE agent_id = ? AND channel_id IS NULL AND external_user_id = ?
+                    AND (archived IS NULL OR archived = 0)
+                """, (agent_id, external_user_id)).fetchone()
+            return row['id'] if row else None
+
     def get_or_create_session(self, agent_id: str, external_user_id: str,
                                channel_id: str = None,
                                channel_type: str = None) -> str:
@@ -252,10 +273,6 @@ class AgentChatDB:
                     _migrate_session_id(cursor, old_id, slug)
                     conn.commit()
                     return slug
-                cursor.execute(
-                    "UPDATE chat_sessions SET updated_at = CURRENT_TIMESTAMP WHERE id = ?",
-                    (row['id'],))
-                conn.commit()
                 return row['id']
             # No active session found — check for archived session to reuse
             if channel_id:
