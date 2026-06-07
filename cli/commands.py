@@ -4163,6 +4163,39 @@ def _create_rollback_copies(file_list):
     return rollbacks
 
 
+def _fixup_avatar_paths():
+    """Normalize avatar_path from absolute to relative in the restored database.
+
+    Old backups store absolute file paths (e.g. /home/user/evonic/shared/avatars/...)
+    which break when restored to a different machine or directory.  This rewrites
+    them to relative paths (shared/avatars/...) so the server can resolve them
+    against the current ROOT on startup.
+    """
+    db_path = os.path.join(ROOT, "shared", "db", "evonic.db")
+    if not os.path.exists(db_path):
+        return
+    try:
+        conn = sqlite3.connect(db_path)
+        cur = conn.execute("SELECT id, avatar_path FROM agents WHERE avatar_path IS NOT NULL AND avatar_path != ''")
+        rows = cur.fetchall()
+        fixed = 0
+        for agent_id, avatar_path in rows:
+            if os.path.isabs(avatar_path):
+                if 'shared/avatars/' in avatar_path:
+                    idx = avatar_path.find('shared/avatars/')
+                    rel_path = avatar_path[idx:]
+                else:
+                    rel_path = os.path.join('shared', 'avatars', agent_id, os.path.basename(avatar_path))
+                conn.execute("UPDATE agents SET avatar_path = ? WHERE id = ?", (rel_path, agent_id))
+                fixed += 1
+        if fixed:
+            conn.commit()
+            print(f"  Fixed {fixed} avatar path(s) in restored database")
+        conn.close()
+    except Exception as e:
+        print(f"  Warning: avatar path fixup failed: {e}")
+
+
 def _rollback_restore(rollbacks):
     """Restore all .bak copies (reverse the restore)."""
     restored = 0
@@ -4543,6 +4576,9 @@ def restore_command(backup_file, dry_run=False, force=False, no_restart=False):
         
         print(f"  {restored} files restored" + (f", {skipped} skipped" if skipped else ""))
         
+        # Fixup avatar paths from absolute to relative for portability
+        _fixup_avatar_paths()
+
         # Step 9: Post-restore validation
         print("Validating restored database...")
         valid, msg = _validate_restored_db()

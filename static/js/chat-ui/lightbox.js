@@ -24,6 +24,7 @@ const Lightbox = (function() {
     let _$prevBtn = null;
     let _$nextBtn = null;
     let _$counter = null;
+    let _$downloadBtn = null;
     let _isOpen = false;
     let _prevFocusedEl = null;
     let _boundKeyHandler = null;
@@ -125,6 +126,10 @@ const Lightbox = (function() {
             '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>',
             function(e) { e.stopPropagation(); Lightbox._navigate(1); });
 
+        // Image container (position-relative so download button aligns to image area)
+        const _$imgContainer = $('<div>')
+            .css({ position: 'relative', display: 'inline-block' });
+
         // Image element (lazy-loaded — src set when showing)
         _$img = $('<img>')
             .addClass('ev-lightbox-img max-h-[90vh] select-none')
@@ -135,6 +140,67 @@ const Lightbox = (function() {
                 // Fade in effect
                 $(this).css('opacity', '1');
             });
+
+        _$imgContainer.append(_$img);
+
+        // Download button (top-right of image area, matches chat thumbnail style)
+        _$downloadBtn = $('<button>')
+            .addClass('w-9 h-9 rounded-md text-white cursor-pointer')
+            .css({
+                position: 'absolute',
+                top: '6px',
+                right: '6px',
+                zIndex: 20,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                opacity: 0,
+                transition: 'opacity 200ms ease',
+                backgroundColor: 'rgba(0,0,0,0.4)',
+                border: 'none',
+            })
+            .attr('title', 'Download image')
+            .attr('aria-label', 'Download image')
+            .attr('type', 'button')
+            .html('<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>')
+            .on('click', async function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                const url = _images[_currentIndex];
+                try {
+                    const response = await fetch(url);
+                    const blob = await response.blob();
+                    const blobUrl = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = blobUrl;
+                    a.download = url.split('/').pop().split('?')[0] || 'image';
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(blobUrl);
+                } catch (err) {
+                    window.open(url, '_blank');
+                }
+            });
+
+        _$imgContainer.append(_$downloadBtn);
+
+        // Hover on image container: show download button
+        _$imgContainer.on('mouseenter', function() { _$downloadBtn.css('opacity', 1); });
+        _$imgContainer.on('mouseleave', function() { _$downloadBtn.css('opacity', 0); });
+
+        // Download button hover: darker background
+        _$downloadBtn.on('mouseenter', function() { $(this).css('backgroundColor', 'rgba(0,0,0,0.6)'); });
+        _$downloadBtn.on('mouseleave', function() { $(this).css('backgroundColor', 'rgba(0,0,0,0.4)'); });
+
+        // Focus: show button with ring
+        _$downloadBtn.on('focus', function() {
+            $(this).css({ opacity: 1, outline: '2px solid rgba(255,255,255,0.7)', outlineOffset: '2px' });
+        });
+        _$downloadBtn.on('blur', function() {
+            $(this).css({ outline: 'none', outlineOffset: '0' });
+            if (!_$imgContainer.is(':hover')) _$downloadBtn.css('opacity', 0);
+        });
 
         // Counter indicator — use inline CSS for fractional positioning & opacity
         _$counter = $('<span>')
@@ -206,11 +272,12 @@ const Lightbox = (function() {
             }
         };
 
-        // Focus trap: cycle between close, prev, next buttons
+        // Focus trap: cycle between close, download, prev, next buttons
         function _trapFocus(shiftKey) {
             const focusable = [];
             const $closeBtn = _$overlay.find('.ev-lightbox-close');
             if ($closeBtn.length) focusable.push($closeBtn[0]);
+            if (_$downloadBtn && _$downloadBtn.length) focusable.push(_$downloadBtn[0]);
             if (_images.length > 1) {
                 if (_$prevBtn && _$prevBtn.length) focusable.push(_$prevBtn[0]);
                 if (_$nextBtn && _$nextBtn.length) focusable.push(_$nextBtn[0]);
@@ -226,7 +293,7 @@ const Lightbox = (function() {
             focusable[nextIndex].focus();
         }
 
-        _$overlay.append($closeBtn, _$prevBtn, _$nextBtn, _$img, _$counter);
+        _$overlay.append($closeBtn, _$prevBtn, _$nextBtn, _$imgContainer, _$counter);
         $('body').append(_$overlay);
     }
 

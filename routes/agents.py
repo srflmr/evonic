@@ -654,22 +654,30 @@ def _avatar_dir(agent_id: str) -> str:
     return d
 
 
+def _abs_avatar_path(avatar_path):
+    """Resolve a stored avatar_path (may be relative) to an absolute path."""
+    if avatar_path and not os.path.isabs(avatar_path):
+        return os.path.join(BASE_DIR, avatar_path)
+    return avatar_path
+
+
 @agents_bp.route('/api/agents/<agent_id>/avatar', methods=['GET'])
 def api_get_avatar(agent_id):
     agent = db.get_agent(agent_id)
     if not agent:
         return jsonify({'error': 'Agent not found'}), 404
     avatar_path = agent.get('avatar_path', '')
-    if avatar_path and os.path.isfile(avatar_path):
+    abs_path = _abs_avatar_path(avatar_path)
+    if abs_path and os.path.isfile(abs_path):
         import mimetypes
-        mime, _ = mimetypes.guess_type(avatar_path)
+        mime, _ = mimetypes.guess_type(abs_path)
         if mime is None:
             mime = 'application/octet-stream'
         from flask import send_file
         # Force download for all stored avatar files to prevent any stored SVG
         # from being rendered as an active document in the browser (XSS defence).
-        return send_file(avatar_path, mimetype=mime, as_attachment=True,
-                         download_name=os.path.basename(avatar_path))
+        return send_file(abs_path, mimetype=mime, as_attachment=True,
+                         download_name=os.path.basename(abs_path))
     # Return the default avatar as an inline SVG served from a static string.
     # This SVG is fully controlled server-side and contains no user content.
     default_svg = '''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40" fill="none">
@@ -705,16 +713,18 @@ def api_upload_avatar(agent_id):
     avatar_dir = _avatar_dir(agent_id)
     # Remove old avatar file if exists
     old_path = agent.get('avatar_path', '')
-    if old_path and os.path.isfile(old_path):
+    old_abs = _abs_avatar_path(old_path)
+    if old_abs and os.path.isfile(old_abs):
         try:
-            os.remove(old_path)
+            os.remove(old_abs)
         except OSError:
             pass
     # Save new avatar
     fname = f'avatar{ext}'
     fpath = os.path.join(avatar_dir, fname)
     f.save(fpath)
-    db.update_agent(agent_id, {'avatar_path': fpath})
+    rel_path = os.path.join('shared', 'avatars', agent_id, fname)
+    db.update_agent(agent_id, {'avatar_path': rel_path})
     return jsonify({'success': True, 'avatar_path': f'/api/agents/{agent_id}/avatar'})
 
 
@@ -724,9 +734,10 @@ def api_delete_avatar(agent_id):
     if not agent:
         return jsonify({'error': 'Agent not found'}), 404
     old_path = agent.get('avatar_path', '')
-    if old_path and os.path.isfile(old_path):
+    old_abs = _abs_avatar_path(old_path)
+    if old_abs and os.path.isfile(old_abs):
         try:
-            os.remove(old_path)
+            os.remove(old_abs)
         except OSError:
             pass
     db.update_agent(agent_id, {'avatar_path': ''})
