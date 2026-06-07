@@ -402,6 +402,19 @@ class SchemaMixin:
             except sqlite3.OperationalError:
                 pass
 
+            # Migration: normalize avatar_path from absolute to relative
+            # (makes backup/restore portable across different install paths)
+            cursor.execute("SELECT id, avatar_path FROM agents WHERE avatar_path IS NOT NULL AND avatar_path != ''")
+            rows = cursor.fetchall()
+            for agent_id, avatar_path in rows:
+                if os.path.isabs(avatar_path):
+                    if 'shared/avatars/' in avatar_path:
+                        idx = avatar_path.find('shared/avatars/')
+                        rel_path = avatar_path[idx:]
+                    else:
+                        rel_path = os.path.join('shared', 'avatars', agent_id, os.path.basename(avatar_path))
+                    cursor.execute("UPDATE agents SET avatar_path = ? WHERE id = ?", (rel_path, agent_id))
+
             # Migration: add disable_parallel_tool_execution toggle (default OFF = feature runs)
             try:
                 cursor.execute("ALTER TABLE agents ADD COLUMN disable_parallel_tool_execution BOOLEAN DEFAULT 0")
