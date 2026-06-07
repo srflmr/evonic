@@ -566,6 +566,7 @@ def build_system_prompt(agent: Dict[str, Any]) -> str:
         slash_commands.append(("/restart", "Restart the service (super agent only)"))
         slash_commands.append(("/cwd", "Show current workspace directory"))
         slash_commands.append(("/cd", "Change workspace directory"))
+        slash_commands.append(("/shutdown", "Shut down the Evonic server completely (super agent only)"))
     # /autopilot is not yet implemented, omit from listing
 
     if slash_commands:

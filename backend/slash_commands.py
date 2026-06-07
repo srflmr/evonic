@@ -174,7 +174,7 @@ def _register_builtins():
         except Exception:
             is_super = False
         lines = ["**Available commands:**"]
-        super_only = {"restart", "cd", "cwd"}
+        super_only = {"restart", "cd", "cwd", "shutdown"}
         for name, desc in commands:
             if name in super_only and not is_super:
                 continue
@@ -400,6 +400,41 @@ def _register_builtins():
         "restart",
         restart_handler,
         "Restart the service (super agent only)",
+    )
+
+    # /shutdown — Shut down the server completely (super agent only)
+    def shutdown_handler(
+        session_id: str,
+        agent_id: str,
+        external_user_id: str,
+        channel_id: Optional[str],
+        args: str,
+    ) -> str:
+        from models.db import db
+
+        super_agent = db.get_super_agent()
+        if not super_agent or super_agent.get('id') != agent_id:
+            return "Permission denied: /shutdown is only available to the super agent."
+
+        def _do_shutdown():
+            import time
+            time.sleep(1.5)  # brief delay so response is sent first
+
+            # Stop all channels cleanly
+            from backend.channels.registry import channel_manager
+            channel_manager.stop_all()
+            time.sleep(1.0)
+
+            os._exit(0)
+
+        t = threading.Thread(target=_do_shutdown, daemon=True)
+        t.start()
+        return "Shutting down..."
+
+    command_registry.register(
+        "shutdown",
+        shutdown_handler,
+        "Shut down the Evonic server completely (super agent only)",
     )
 
     # /plan - Switch agent to plan mode
