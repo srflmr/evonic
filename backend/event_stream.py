@@ -35,6 +35,10 @@ class EventStream:
         self._listeners: Dict[str, List[Callable]] = {}
         self._lock = threading.Lock()
         self._log_lock = threading.Lock()
+        self._log_buffer: List[str] = []
+        self._log_timer: Optional[threading.Timer] = None
+        self._LOG_FLUSH_INTERVAL = 2.0
+        self._LOG_BUFFER_LIMIT = 50
         self._executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix='event')
         self._log_file: str = None  # resolved lazily to avoid import-time circular deps
         # Sequence numbering and ring buffers for gap-fill recovery
@@ -52,14 +56,48 @@ class EventStream:
         return self._log_file
 
     def _write_log(self, line: str):
+        """Buffer a log line; flush when buffer is full or timer fires."""
+        try:
+            ts = datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
+            formatted = f"[{ts}] {line}\n"
+            with self._log_lock:
+                self._log_buffer.append(formatted)
+                if len(self._log_buffer) >= self._LOG_BUFFER_LIMIT:
+                    self._do_flush()
+                elif self._log_timer is None:
+                    self._log_timer = threading.Timer(
+                        self._LOG_FLUSH_INTERVAL, self._flush_log
+                    )
+                    self._log_timer.daemon = True
+                    self._log_timer.start()
+        except Exception as e:
+            _logger.error("Failed to buffer log: %s", e)
+
+    def _do_flush(self):
+        """Flush buffered lines to disk. Caller must hold _log_lock."""
+        if not self._log_buffer:
+            return
+        lines = self._log_buffer[:]
+        self._log_buffer.clear()
+        if self._log_timer:
+            self._log_timer.cancel()
+            self._log_timer = None
         try:
             log_file = self._get_log_file()
-            ts = datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
-            with self._log_lock:
-                with open(log_file, 'a', encoding='utf-8') as f:
-                    f.write(f"[{ts}] {line}\n")
+            with open(log_file, 'a', encoding='utf-8') as f:
+                f.writelines(lines)
         except Exception as e:
-            _logger.error("Failed to write log: %s", e)
+            _logger.error("Failed to flush log: %s", e)
+
+    def _flush_log(self):
+        """Timer callback — acquire lock and flush."""
+        with self._log_lock:
+            self._do_flush()
+
+    def flush_log(self):
+        """Public flush — call on shutdown to drain remaining buffer."""
+        with self._log_lock:
+            self._do_flush()
 
     def on(self, event_name: str, callback: Callable):
         """Subscribe a callback to an event."""
