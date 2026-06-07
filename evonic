@@ -25,16 +25,10 @@ if [ -z "$PYTHON" ]; then
 fi
 
 export EVONIC_SCRIPT_DIR="$SCRIPT_DIR"
-exec "$PYTHON" - "$@" <<'PYEOF'
-import sys
-import os
-
-# Ensure the script's directory is on the path
-_script_dir = os.environ.get("EVONIC_SCRIPT_DIR", os.path.dirname(os.path.abspath(__file__)))
+exec "$PYTHON" -c "
+import sys, os
+_script_dir = os.environ['EVONIC_SCRIPT_DIR']
 sys.path.insert(0, _script_dir)
-
 from cli.__main__ import main
-
-if __name__ == "__main__":
-    main()
-PYEOF
+main()
+" "$@"
