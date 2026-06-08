@@ -38,7 +38,7 @@ def execute(agent: dict, args: dict) -> dict:
 
     # Security: prevent path traversal
     if '/' in filename or '\\' in filename or '..' in filename:
-        return {'error': 'Invalid filename'}
+        return {'error': 'Invalid filename: must not contain "/", "\\", or "..". Use a plain basename like "chart.png" or "output.json"'}
 
     artifacts_dir = _artifacts_dir(agent_id)
     filepath = os.path.join(artifacts_dir, filename)
