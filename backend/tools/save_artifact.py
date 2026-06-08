@@ -73,7 +73,49 @@ def execute(agent: dict, args: dict) -> dict:
 
             result = backend.cat_file_bytes(resolved)
             if 'error' in result:
-                return {'error': f'Failed to read source file: {result["error"]}'}
+                err_msg = result["error"]
+
+                # Detect file-not-found errors (pattern varies across backends)
+                is_not_found = (
+                    'file not found' in err_msg.lower() or
+                    'no such file' in err_msg.lower() or
+                    'not found' in err_msg.lower()
+                )
+
+                if is_not_found:
+                    # Heuristic: does source_path look like text content
+                    # rather than a filesystem path? Common signs:
+                    # - contains newlines
+                    # - very long (> 512 chars)
+                    # - has spaces but no path separators (. / \)
+                    looks_like_text = (
+                        '\n' in source_path or
+                        len(source_path) > 512 or
+                        (not any(c in source_path for c in '/.\\') and ' ' in source_path)
+                    )
+
+                    if looks_like_text:
+                        return {
+                            'error': (
+                                f'Source file not found. The provided source_path '
+                                f'looks like text content rather than a file path. '
+                                f'... Did you mean to use the "content" parameter '
+                                f'instead of "source_path"?'
+                            )
+                        }
+
+                    # Legitimate-looking short path — give actionable error
+                    return {
+                        'error': (
+                            f'Source file not found: "{source_path}". '
+                            f'Check that the file exists and the path is correct. '
+                            f'If you meant to write text content, use the '
+                            f'"content" parameter instead of "source_path".'
+                        )
+                    }
+
+                # Non-file-not-found errors (permission, I/O, etc.)
+                return {'error': f'Failed to read source file: {err_msg}'}
 
             source_bytes = result['bytes']
 
