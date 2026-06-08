@@ -106,3 +106,38 @@ If a tool returns an error about PinchTab being unreachable:
 - Verify PinchTab is running with: `pinchtab serve`
 - Check the host/port configuration
 - The `pinchtab_health` tool is the fastest way to diagnose connection issues
+
+## Known Issues & Workarounds
+
+### DNS Resolution Failures ("could not resolve navigation host")
+
+PinchTab's Go bridge performs DNS resolution **before** passing navigation to Chrome. In WSL environments, the DNS proxy (`10.255.255.254`) can time out on AAAA (IPv6) queries for certain CDN-backed domains: **x.com**, **nitter.net**, and others.
+
+Chrome itself resolves these domains without issues (it uses `--dns-servers=8.8.8.8` with async DNS).
+
+**Workaround — JS navigation via `pinchtab_eval`:**
+
+```
+# 1. Open a blank tab
+pinchtab_new_tab()
+
+# 2. Navigate via JavaScript (bypasses Go's DNS check)
+pinchtab_eval(tab_id="<tab_id>", expression="window.location.href = 'https://x.com'")
+```
+
+This works because `pinchtab_eval` sends JavaScript directly to Chrome — no Go-side DNS resolution is performed.
+
+### IDPI Scanner Blocking `pinchtab_snapshot`
+
+Some pages — particularly those with code templates, system prompts, or role-based examples (e.g. HuggingFace model pages) — contain text that matches IDPI detection patterns. This produces a false-positive 403:
+
+```
+"snapshot blocked by IDPI scanner: exfiltration patterns detected; role-hijack pattern detected"
+```
+
+**Workaround:** Fall back to `pinchtab_get_text` for plain text content, or use `pinchtab_eval` to extract specific DOM elements:
+
+```
+pinchtab_get_text(tab_id="<tab_id>")
+pinchtab_eval(tab_id="<tab_id>", expression="document.querySelector('.content').innerText")
+```
