@@ -188,4 +188,4 @@ def execute(agent: dict, args: dict) -> dict:
             'size': stat.st_size,
         }
     except Exception as e:
-        return {'error': f'Failed to save artifact: {str(e)}'}
+        return {'error': f'Failed to save artifact "{filename}": {str(e)}'}
