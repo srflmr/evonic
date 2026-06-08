@@ -374,11 +374,13 @@ class LLMClient:
         is_claude = (self.model or "").lower().startswith("claude") or (
             self.base_url and "anthropic.com" in self.base_url
         )
-        url = (
-            f"{self.base_url}/chat"
-            if is_ollama_fmt
-            else f"{self.base_url}/chat/completions"
-        )
+        is_anthropic = self.api_format == "anthropic"
+        if is_anthropic:
+            url = f"{self.base_url}/messages"
+        elif is_ollama_fmt:
+            url = f"{self.base_url}/chat"
+        else:
+            url = f"{self.base_url}/chat/completions"
         if max_tokens is None:
             max_tokens = self.max_tokens
         # When thinking is active, the model's internal chain-of-thought consumes tokens
@@ -483,6 +485,32 @@ class LLMClient:
                 payload["options"]["temperature"] = effective_temperature
             if tools:
                 payload["tools"] = tools
+        elif is_anthropic:
+            # Anthropic API uses /messages endpoint with different payload structure.
+            # Extract system messages into top-level "system" field.
+            system_msgs = [m["content"] for m in processed_messages if m.get("role") == "system"]
+            non_system_msgs = [m for m in processed_messages if m.get("role") != "system"]
+            payload = {
+                "model": self.model,
+                "messages": non_system_msgs,
+                "max_tokens": max_tokens,
+            }
+            if system_msgs:
+                payload["system"] = "\n\n".join(system_msgs) if len(system_msgs) > 1 else system_msgs[0]
+            if effective_temperature is not None:
+                payload["temperature"] = effective_temperature
+            # Transform OpenAI tools -> Anthropic tools format
+            if tools:
+                anthropic_tools = []
+                for tool in tools:
+                    fn = tool.get("function", {})
+                    anthropic_tools.append({
+                        "name": fn.get("name", ""),
+                        "description": fn.get("description", ""),
+                        "input_schema": fn.get("parameters", {}),
+                    })
+                payload["tools"] = anthropic_tools
+                payload["tool_choice"] = {"type": "auto"}
         else:
             payload = {
                 "model": self.model,
@@ -502,9 +530,17 @@ class LLMClient:
                 )
                 payload["thinking"] = {"type": "enabled", "budget_tokens": budget}
 
-        headers = {"Content-Type": "application/json"}
-        if self.api_key:
-            headers["Authorization"] = f"Bearer {self.api_key}"
+        if is_anthropic:
+            headers = {
+                "Content-Type": "application/json",
+                "anthropic-version": "2023-06-01",
+            }
+            if self.api_key:
+                headers["x-api-key"] = self.api_key
+        else:
+            headers = {"Content-Type": "application/json"}
+            if self.api_key:
+                headers["Authorization"] = f"Bearer {self.api_key}"
 
         try:
             from models.db import db as _db
@@ -608,6 +644,99 @@ class LLMClient:
                             "prompt_tokens": prompt_eval,
                             "completion_tokens": eval_count,
                             "total_tokens": prompt_eval + eval_count,
+                        },
+                    }
+
+                # Transform Anthropic native response to OpenAI-compatible format.
+                # Check for Anthropic error first (before the transformation rewrites result).
+                if is_anthropic and result.get("type") == "error":
+                    error_obj = result.get("error", {})
+                    error_type = error_obj.get("type", "") if isinstance(error_obj, dict) else ""
+                    error_message = error_obj.get("message", "") if isinstance(error_obj, dict) else str(error_obj)
+                    error_msg_lower = f"{error_type} {error_message}".lower()
+                    is_transient = (
+                        "rate_limit" in error_msg_lower
+                        or "overloaded" in error_msg_lower
+                        or "unavailable" in error_msg_lower
+                        or "internal_error" in error_msg_lower
+                        or "server_error" in error_msg_lower
+                    )
+                    error_detail = str(error_obj)
+                    log_api_call(
+                        messages,
+                        None,
+                        duration_ms,
+                        error=f"[attempt {attempt + 1}/{1 + max_retries}] {error_detail}"
+                        if is_transient
+                        else error_detail,
+                        log_file=log_file,
+                    )
+                    _et = "provider_error" if is_transient else "llm_error"
+                    last_error_result = {
+                        "response": result,
+                        "duration_ms": duration_ms,
+                        "success": False,
+                        "error_type": _et,
+                        "error_detail": error_detail,
+                    }
+                    if is_transient and attempt < max_retries:
+                        time.sleep(min(2 ** (attempt + 1), 60))
+                        continue
+                    last_error_result["response"] = {"error": _format_llm_error(_et)}
+                    return last_error_result
+
+                if is_anthropic:
+                    anthropic_content = result.get("content", [])
+                    anthropic_stop = result.get("stop_reason", "end_turn")
+                    anthropic_usage = result.get("usage", {})
+
+                    # Map stop_reason to finish_reason
+                    stop_map = {
+                        "end_turn": "stop",
+                        "tool_use": "tool_calls",
+                        "max_tokens": "length",
+                        "stop_sequence": "stop",
+                    }
+                    mapped_finish = stop_map.get(anthropic_stop, "stop")
+
+                    # Parse content blocks
+                    text_parts = []
+                    tool_calls_list = []
+                    for block in anthropic_content:
+                        if isinstance(block, dict):
+                            if block.get("type") == "text":
+                                text_parts.append(block.get("text", ""))
+                            elif block.get("type") == "tool_use":
+                                tool_calls_list.append({
+                                    "id": block.get("id", ""),
+                                    "type": "function",
+                                    "function": {
+                                        "name": block.get("name", ""),
+                                        "arguments": json.dumps(block.get("input", {})),
+                                    },
+                                })
+
+                    transformed_message = {
+                        "role": "assistant",
+                        "content": "\n".join(text_parts) if text_parts else None,
+                    }
+                    if tool_calls_list:
+                        transformed_message["tool_calls"] = tool_calls_list
+
+                    # Map usage from Anthropic to OpenAI field names
+                    anthropic_input = anthropic_usage.get("input_tokens", 0)
+                    anthropic_output = anthropic_usage.get("output_tokens", 0)
+                    result = {
+                        "choices": [
+                            {
+                                "message": transformed_message,
+                                "finish_reason": mapped_finish,
+                            }
+                        ],
+                        "usage": {
+                            "prompt_tokens": anthropic_input,
+                            "completion_tokens": anthropic_output,
+                            "total_tokens": anthropic_input + anthropic_output,
                         },
                     }
 
