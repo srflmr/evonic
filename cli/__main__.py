@@ -127,6 +127,10 @@ def main():
         "--quick", action="store_true", default=False,
         help="Skip slow checks (LLM provider tests)",
     )
+    doctor_parser.add_argument(
+        "--fix", action="store_true", default=False,
+        help="Automatically fix detected inconsistencies (e.g. missing save_artifact tool)",
+    )
 
     # --- plugin ---
     plugin_parser = subparsers.add_parser(
@@ -832,7 +836,7 @@ def main():
     elif args.command == "restart":
         restart_server()
     elif args.command == "doctor":
-        doctor_command(quick=args.quick)
+        doctor_command(quick=args.quick, fix=args.fix)
     elif args.command == "plugin":
         if args.plugin_command is None:
             plugin_parser.print_help()
