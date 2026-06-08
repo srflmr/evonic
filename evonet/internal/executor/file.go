@@ -29,6 +29,10 @@ func (e *Executor) handleReadFile(req Request) Response {
 	if err != nil {
 		return errResp(req.ID, "read_file error: "+err.Error())
 	}
+	// Check if path is a directory before attempting to read it as a file.
+	if stat, statErr := os.Stat(path); statErr == nil && stat.IsDir() {
+		return errResp(req.ID, "read_file error: path is a directory, not a file: "+path)
+	}
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return errResp(req.ID, "read_file error: "+err.Error())
@@ -92,6 +96,9 @@ func (e *Executor) handleReadFileB64(req Request) Response {
 	fi, err := os.Stat(path)
 	if err != nil {
 		return errResp(req.ID, "read_file_b64 error: "+err.Error())
+	}
+	if fi.IsDir() {
+		return errResp(req.ID, "read_file_b64 error: path is a directory, not a file: "+path)
 	}
 	totalSize := fi.Size()
 

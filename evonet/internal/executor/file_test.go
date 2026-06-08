@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -309,5 +310,41 @@ func TestNew_NormalizesPath(t *testing.T) {
 	want := "/home/user/"
 	if e.workDir != want {
 		t.Errorf("got %q, want %q", e.workDir, want)
+	}
+}
+
+func TestHandleReadFile_Directory(t *testing.T) {
+	dir := t.TempDir()
+	e := New(dir, false)
+
+	// read_file on the workDir itself (a directory) should return a clear error.
+	params, _ := json.Marshal(readFileParams{Path: "."})
+	resp := e.Handle(Request{ID: "dir-1", Method: "read_file", Params: params})
+	if resp.OK {
+		t.Fatal("expected error for directory path, got OK")
+	}
+	if resp.Error == nil {
+		t.Fatal("expected non-nil error for directory path")
+	}
+	if !strings.Contains(*resp.Error, "directory") {
+		t.Errorf("expected directory error message, got: %s", *resp.Error)
+	}
+}
+
+func TestHandleReadFileB64_Directory(t *testing.T) {
+	dir := t.TempDir()
+	e := New(dir, false)
+
+	// read_file_b64 on a directory should return a clear error.
+	params, _ := json.Marshal(readFileB64Params{Path: ".", Offset: 0, Size: 0})
+	resp := e.Handle(Request{ID: "dir-2", Method: "read_file_b64", Params: params})
+	if resp.OK {
+		t.Fatal("expected error for directory path, got OK")
+	}
+	if resp.Error == nil {
+		t.Fatal("expected non-nil error for directory path")
+	}
+	if !strings.Contains(*resp.Error, "directory") {
+		t.Errorf("expected directory error message, got: %s", *resp.Error)
 	}
 }
