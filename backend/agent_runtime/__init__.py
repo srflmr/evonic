@@ -139,9 +139,8 @@ try:
     # Auto-forward sub-agent/inter-agent replies to the originating agent's session.
     # Must be registered here (not lazily in agent_messaging.py) so it fires
     # regardless of whether agent_messaging tools have been loaded yet.
-    from backend.tools.agent_messaging import _on_final_answer, _on_final_answer_reply_back
+    from backend.tools.agent_messaging import _on_final_answer
     event_stream.on('final_answer', _on_final_answer)
-    event_stream.on('final_answer', _on_final_answer_reply_back)
 except Exception:
     pass
 
