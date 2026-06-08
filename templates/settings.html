@@ -559,6 +559,22 @@ block content %}
                 />
             </div>
 
+            <div class="mb-4">
+                <label
+                    class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
+                    for="model-api-format"
+                    >API Format *</label
+                >
+                <select
+                    id="model-api-format"
+                    class="w-full border border-gray-200 dark:border-gray-600 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-indigo-400 dark:bg-gray-700 dark:text-gray-100"
+                >
+                    <option value="openai">OpenAI</option>
+                    <option value="ollama">Ollama</option>
+                    <option value="anthropic">Anthropic</option>
+                </select>
+            </div>
+
             <div class="mb-4" id="api-key-group">
                 <label
                     class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
@@ -2423,6 +2439,7 @@ block content %}
             !!model.vision_supported;
         document.getElementById("model-attachments-supported").checked =
             !!model.attachments_supported;
+        document.getElementById("model-api-format").value = model.api_format || "openai";
 
         toggleModelFields();
         $("#model-modal").addClass("active");
@@ -2483,6 +2500,7 @@ block content %}
                 : 0,
             vision_supported: document.getElementById("model-vision-supported").checked ? 1 : 0,
             attachments_supported: document.getElementById("model-attachments-supported").checked ? 1 : 0,
+            api_format: document.getElementById("model-api-format").value,
         };
 
         try {
