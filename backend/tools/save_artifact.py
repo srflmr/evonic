@@ -173,7 +173,7 @@ def execute(agent: dict, args: dict) -> dict:
         else:
             # --- content mode: write text (UTF-8) ---
             if not content:
-                return {'error': 'Either content or source_path must be provided'}
+                return {'error': 'No data provided. Use "content" for text output (e.g. content="# My Report\\n...") or "source_path" for an existing file on disk (e.g. source_path="/workspace/output.png").'}
             # Normalise smart quotes in text mode artifacts
             from backend.normalizer import normalize_code_quotes
             content = normalize_code_quotes(content)
