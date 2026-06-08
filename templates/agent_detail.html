@@ -4006,8 +4006,10 @@ let _artifactsTotal = 0;
 
 async function loadArtifacts() {
     const sort = document.getElementById('artifacts-sort').value;
+    const q = document.getElementById('artifacts-search').value.trim();
+    const type = _artifactsFilterType;
     try {
-        const res = await fetch(`/api/agents/${AGENT_ID}/artifacts?sort=${sort}&page=${_artifactsPage}&limit=24`);
+        const res = await fetch(`/api/agents/${AGENT_ID}/artifacts?sort=${sort}&page=${_artifactsPage}&limit=24&q=${encodeURIComponent(q)}&type=${encodeURIComponent(type)}`);
         const data = await res.json();
         _artifactsData = data.files || [];
         _artifactsPages = data.pages || 1;
@@ -4023,17 +4025,8 @@ function renderArtifacts() {
     const grid = document.getElementById('artifacts-grid');
     const empty = document.getElementById('artifacts-empty');
     
-    // Apply search filter
-    const query = (document.getElementById('artifacts-search').value || '').trim().toLowerCase();
-    let filtered = _artifactsData;
-    if (query) {
-        filtered = filtered.filter(f => f.filename.toLowerCase().includes(query));
-    }
-    
-    // Apply type filter
-    if (_artifactsFilterType !== 'all') {
-        filtered = filtered.filter(f => f.category === _artifactsFilterType);
-    }
+    // Server already applies search and type filtering; just render what we have
+    const filtered = _artifactsData;
     
     if (filtered.length === 0) {
         grid.innerHTML = '';
@@ -4090,9 +4083,12 @@ function getArtifactIcon(category) {
     }
 }
 
+let _artifactsSearchTimer = null;
+
 function filterArtifacts() {
+    clearTimeout(_artifactsSearchTimer);
     _artifactsPage = 1;
-    renderArtifacts();
+    _artifactsSearchTimer = setTimeout(() => loadArtifacts(), 250);
 }
 
 function setArtifactFilter(type) {
