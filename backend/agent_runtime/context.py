@@ -326,6 +326,22 @@ def _build_static_prompt(agent: Dict[str, Any]) -> str:
         "needed. Do not keep unused skills in context; they waste tokens by "
         "adding stale tool definitions."
     )
+    # Build operations rule: inject for agents that have bash or runpy tools.
+    # This ensures long-running compilations don't block the agent.
+    if assigned_ids and ('bash' in assigned_ids or 'runpy' in assigned_ids):
+        parts.append("\n## Build Operations Rule\n")
+        parts.append(
+            "Every build operation (cmake, make, ninja, gcc, g++, cargo build, "
+            "go build, npm build, or any long-running compilation) MUST be "
+            "executed inside a tmux or screen session. Never run these commands "
+            "directly in bash — they will block the agent. **Dependency "
+            "priority**: (1) `tmux` — `tmux new-session -d -s build \"cd "
+            "/path && make 2>&1 | tee build.log\"` then monitor with `tmux "
+            "capture-pane -t build -p`. (2) `screen` — fallback if tmux "
+            "not available. (3) `nohup` — last resort if neither tmux "
+            "nor screen available."
+        )
+    
 
     # Inform all agents about /_self/ access to their local config directory
     parts.append("\n## Agent Home Directory")
