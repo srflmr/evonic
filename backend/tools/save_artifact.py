@@ -34,7 +34,7 @@ def execute(agent: dict, args: dict) -> dict:
     source_path = args.get('source_path', '').strip()
 
     if not filename:
-        return {'error': 'filename is required'}
+        return {'error': 'The "filename" parameter is required. Provide a name for the artifact file, e.g. filename="report.md"'}
 
     # Security: prevent path traversal
     if '/' in filename or '\\' in filename or '..' in filename:
