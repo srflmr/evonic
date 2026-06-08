@@ -1,4 +1,5 @@
 import os
+import secrets
 
 from flask import jsonify, redirect, request, session, url_for
 import re
@@ -66,6 +67,8 @@ app.secret_key = config.SECRET_KEY
 # Make session permanent so it survives mobile browser backgrounding / restarts
 from datetime import timedelta
 app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=7)
+app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+app.config['SESSION_COOKIE_HTTPONLY'] = True
 
 # Global upload size limit (defense-in-depth for all endpoints)
 app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50 MB
@@ -411,6 +414,56 @@ def _close_db_connection(exc):
     SQLite connections accumulate until GC runs → "Too many open files".
     """
     db.close()
+
+def _csrf_exempt(path):
+    """Return True if the path should skip CSRF validation."""
+    if path in ('/login', '/logout', '/setup',
+                '/api/health', '/api/connector/pair',
+                '/api/setup', '/api/setup/test-connection', '/api/setup/docker-status'):
+        return True
+    if path.startswith(('/static/', '/webhook', '/plugin/', '/ws/',
+                        '/api/channels/whatsapp-bridge/')):
+        return True
+    if path.endswith('/download-binary') and path.startswith('/api/workplaces/'):
+        return True
+    return False
+
+
+@app.before_request
+def csrf_protect():
+    """Double-submit cookie CSRF protection for all state-changing requests."""
+    if request.method in ('GET', 'HEAD', 'OPTIONS'):
+        return None
+    if _csrf_exempt(request.path):
+        return None
+
+    token_header = request.headers.get('X-CSRF-Token', '')
+    token_form = request.form.get('csrf_token', '')
+    submitted = token_header or token_form
+    cookie_token = request.cookies.get('csrf_token', '')
+
+    if not submitted or not cookie_token:
+        return jsonify({'error': 'CSRF token missing'}), 403
+    if not secrets.compare_digest(submitted, cookie_token):
+        return jsonify({'error': 'CSRF token mismatch'}), 403
+    return None
+
+
+@app.after_request
+def set_csrf_cookie(response):
+    """Ensure csrf_token cookie exists on every response (for login page, first visit, etc.)."""
+    if 'csrf_token' not in request.cookies:
+        token = secrets.token_hex(32)
+        response.set_cookie(
+            'csrf_token', token,
+            httponly=False,
+            samesite='Strict',
+            secure=not config.DEBUG,
+            path='/',
+            max_age=604800,
+        )
+    return response
+
 
 @app.before_request
 def enforce_auth():

@@ -41,6 +41,7 @@
 
             <form method="POST" action="/login">
                 <input type="hidden" name="next" value="{{ request.args.get('next', '/') }}">
+                <input type="hidden" name="csrf_token" id="csrf_token_field" value="">
 
                 <div class="mb-4">
                     <label class="block mb-1 text-gray-700 dark:text-gray-300 text-sm font-medium">Password</label>
@@ -71,5 +72,11 @@
             </form>
         </div>
     </div>
+    <script>
+    (function() {
+        var m = document.cookie.match('(?:^|; )csrf_token=([^;]*)');
+        if (m) document.getElementById('csrf_token_field').value = decodeURIComponent(m[1]);
+    })();
+    </script>
 </body>
 </html>

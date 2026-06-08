@@ -44,6 +44,49 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v=17">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/recap-prose.css') }}?v=1">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/agent-sidebar.css') }}?v=7">
+    <script>
+    // CSRF double-submit: attach X-CSRF-Token header to all mutating same-origin requests
+    (function() {
+        function getCsrfToken() {
+            var m = document.cookie.match('(?:^|; )csrf_token=([^;]*)');
+            return m ? decodeURIComponent(m[1]) : '';
+        }
+        function isSameOrigin(url) {
+            if (!url || url.startsWith('/') && !url.startsWith('//')) return true;
+            try { return new URL(url, location.origin).origin === location.origin; }
+            catch(e) { return false; }
+        }
+        // Patch fetch
+        var _fetch = window.fetch;
+        window.fetch = function(input, init) {
+            init = init || {};
+            var method = (init.method || 'GET').toUpperCase();
+            var url = typeof input === 'string' ? input : (input.url || '');
+            if (method !== 'GET' && method !== 'HEAD' && isSameOrigin(url)) {
+                init.headers = init.headers instanceof Headers ? init.headers : new Headers(init.headers || {});
+                if (!init.headers.has('X-CSRF-Token')) {
+                    init.headers.set('X-CSRF-Token', getCsrfToken());
+                }
+            }
+            return _fetch.call(this, input, init);
+        };
+        // Patch XMLHttpRequest
+        var _xhrOpen = XMLHttpRequest.prototype.open;
+        var _xhrSend = XMLHttpRequest.prototype.send;
+        XMLHttpRequest.prototype.open = function(method, url) {
+            this._csrfMethod = method;
+            this._csrfUrl = url;
+            return _xhrOpen.apply(this, arguments);
+        };
+        XMLHttpRequest.prototype.send = function() {
+            var method = (this._csrfMethod || 'GET').toUpperCase();
+            if (method !== 'GET' && method !== 'HEAD' && isSameOrigin(this._csrfUrl)) {
+                try { this.setRequestHeader('X-CSRF-Token', getCsrfToken()); } catch(e) {}
+            }
+            return _xhrSend.apply(this, arguments);
+        };
+    })();
+    </script>
 </head>
 <body>
     <header>

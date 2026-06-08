@@ -2,12 +2,13 @@
 Authentication Blueprint — admin login with Cloudflare Turnstile captcha.
 """
 
+import secrets
 import time
 import threading
 from typing import Dict, List
 
 import requests
-from flask import Blueprint, render_template, request, session, redirect, url_for, jsonify
+from flask import Blueprint, make_response, render_template, request, session, redirect, url_for, jsonify
 import config
 
 auth_bp = Blueprint('auth', __name__)
@@ -122,14 +123,36 @@ def login_submit():
                                error='Invalid password.')
 
     _clear_attempts(ip)
+
+    # Regenerate session to prevent session fixation
+    old_session = dict(session)
+    session.clear()
+    session.update(old_session)
+
     session['authenticated'] = True
     session.permanent = True  # Persist cookie for 7 days (configured in app.py)
+
+    # Generate CSRF token for double-submit cookie pattern
+    csrf_token = secrets.token_hex(32)
+    session['csrf_token'] = csrf_token
+
     if not _is_safe_redirect_url(next_url):
         next_url = '/'
-    return redirect(next_url)
+    response = make_response(redirect(next_url))
+    response.set_cookie(
+        'csrf_token', csrf_token,
+        httponly=False,       # JS must read this cookie
+        samesite='Strict',
+        secure=not config.DEBUG,
+        path='/',
+        max_age=604800,       # 7 days, matching session lifetime
+    )
+    return response
 
 
 @auth_bp.route('/logout')
 def logout():
     session.clear()
-    return redirect(url_for('auth.login_page'))
+    response = make_response(redirect(url_for('auth.login_page')))
+    response.delete_cookie('csrf_token', path='/')
+    return response
