@@ -635,7 +635,7 @@ html.dark #channel-detail-modal .hover\:bg-indigo-100:hover { background: #312e8
                     <h3 id="chatPanelTitle" class="text-base font-semibold text-gray-800 dark:text-gray-100 truncate max-w-[200px] sm:max-w-[320px] flex items-center gap-1.5">
                         <img id="agent-avatar-header" src="/api/agents/{{ agent.id }}/avatar" alt="" class="w-6 h-6 rounded-full object-cover bg-indigo-50 dark:bg-indigo-900/20 flex-shrink-0" onerror="this.style.display='none'">
                         <span class="truncate">{{ agent.name }}</span>
-                        <span id="homeWorkplaceBadge" class="hidden inline-flex items-center text-[10px] font-semibold px-1.5 py-0.5 rounded border flex-shrink-0"></span>
+                        <span id="homeWorkplaceBadge" class="hidden"></span>
                     </h3>
                     <div class="flex gap-3 items-center">
                         <button onclick="showCompiledPrompt()" class="text-xs text-gray-400 hover:text-gray-600 flex items-center gap-1" title="System Prompt">
