@@ -105,6 +105,21 @@ def _extract_dimension(content: str, category: str,
         return None
 
 
+def _backfill_null_dimensions(agent_id: str, llm_lock: threading.Lock = None) -> None:
+    """Backfill dimension for active memories that have dimension=NULL.
+
+    This is a lazy migration: called during conflict detection so that
+    pre-existing memories (stored before the dimension feature) become
+    visible to dimension-based conflict lookups.
+    """
+    null_mems = db.get_null_dimension_memories(agent_id)
+    for m in null_mems:
+        dim = _extract_dimension(m['content'], m.get('category', 'general'), llm_lock)
+        if dim:
+            db.update_memory(agent_id, m['id'], m['content'],
+                             m.get('category'), dimension=dim)
+
+
 def _store_with_conflict_detection(agent_id: str, session_id: str, content: str,
                                    category: str, llm_lock: threading.Lock = None,
                                    dimension: str = None) -> dict:
@@ -112,12 +127,17 @@ def _store_with_conflict_detection(agent_id: str, session_id: str, content: str,
 
     If dimension is not provided, extracts it via LLM.
     If an existing active memory shares the same dimension, supersedes it.
+    Backfills NULL-dimension memories lazily so pre-existing records are
+    included in conflict detection.
     """
     if dimension is None:
         dimension = _extract_dimension(content, category, llm_lock)
 
     superseded_ids = []
     if dimension:
+        # Backfill any pre-existing memories that lack a dimension
+        _backfill_null_dimensions(agent_id, llm_lock)
+
         existing = db.get_memories_by_dimension(agent_id, dimension)
         superseded_ids = [m['id'] for m in existing]
 

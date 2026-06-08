@@ -217,3 +217,74 @@ class TestConflictDetectionEndToEnd:
         assert mid3 in ids
         assert mid1 not in ids
         assert mid2 not in ids
+
+
+class TestGetNullDimensionMemories:
+    """Test the get_null_dimension_memories helper."""
+
+    def test_returns_only_null_dimension(self, chat_db):
+        chat_db.add_memory("Old fact without dimension", "general")
+        chat_db.add_memory("Fact with dimension", "preference",
+                           dimension="user.language_preference")
+        result = chat_db.get_null_dimension_memories()
+        assert len(result) == 1
+        assert result[0]['content'] == 'Old fact without dimension'
+
+    def test_excludes_expired(self, chat_db):
+        mid = chat_db.add_memory("Old fact", "general")
+        chat_db.expire_memory(mid)
+        result = chat_db.get_null_dimension_memories()
+        assert len(result) == 0
+
+    def test_excludes_superseded(self, chat_db):
+        mid1 = chat_db.add_memory("Old fact", "general")
+        mid2 = chat_db.add_memory("New fact", "general")
+        chat_db.supersede_memory(mid1, mid2)
+        result = chat_db.get_null_dimension_memories()
+        # mid1 is superseded, mid2 is still NULL-dimension but active
+        assert len(result) == 1
+        assert result[0]['id'] == mid2
+
+
+class TestNullDimensionBackfillConflict:
+    """Test that NULL-dimension memories get backfilled and superseded
+    when a new conflicting memory with a valid dimension is stored.
+
+    These tests simulate the backfill at the DB level (without LLM calls).
+    """
+
+    def test_old_null_dimension_superseded_after_backfill(self, chat_db):
+        """Simulates: old memory stored without dimension, then backfilled,
+        then a new conflicting memory supersedes it."""
+        dim = 'user.github_token'
+
+        # Old memory stored before the feature (no dimension)
+        mid_old = chat_db.add_memory(
+            "User's GitHub token is ghp_OLD", "user_info")
+        assert chat_db.get_null_dimension_memories() == \
+            [m for m in chat_db.get_all_memories() if m['id'] == mid_old]
+
+        # Simulate backfill: extract dimension and update
+        chat_db.update_memory(mid_old, "User's GitHub token is ghp_OLD",
+                              "user_info", dimension=dim)
+
+        # Now dimension lookup finds the old memory
+        existing = chat_db.get_memories_by_dimension(dim)
+        assert len(existing) == 1
+        assert existing[0]['id'] == mid_old
+
+        # Store new conflicting memory and supersede
+        mid_new = chat_db.add_memory(
+            "User's GitHub token is ghp_NEW", "user_info", dimension=dim)
+        for m in existing:
+            chat_db.supersede_memory(m['id'], mid_new)
+
+        # Only the new one should be active
+        active = chat_db.get_memories_by_dimension(dim)
+        assert len(active) == 1
+        assert active[0]['content'] == "User's GitHub token is ghp_NEW"
+
+        recent = chat_db.get_recent_memories()
+        contents = [m['content'] for m in recent]
+        assert "User's GitHub token is ghp_NEW" in contents
+        assert "User's GitHub token is ghp_OLD" not in contents

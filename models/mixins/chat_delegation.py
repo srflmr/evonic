@@ -447,6 +447,9 @@ class ChatDelegationMixin:
     def get_memories_by_dimension(self, agent_id: str, dimension: str) -> List[Dict[str, Any]]:
         return self._chat_db(agent_id).get_memories_by_dimension(dimension)
 
+    def get_null_dimension_memories(self, agent_id: str) -> List[Dict[str, Any]]:
+        return self._chat_db(agent_id).get_null_dimension_memories()
+
     def supersede_memory(self, agent_id: str, old_memory_id: int, new_memory_id: int):
         self._chat_db(agent_id).supersede_memory(old_memory_id, new_memory_id)
 

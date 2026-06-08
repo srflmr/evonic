@@ -951,6 +951,15 @@ class AgentChatDB:
                 (dimension,))
             return [dict(r) for r in cursor.fetchall()]
 
+    def get_null_dimension_memories(self) -> List[Dict[str, Any]]:
+        """Get all active, non-superseded memories that have no dimension assigned."""
+        with self._connect() as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT * FROM memories WHERE dimension IS NULL AND expired = 0 AND superseded_by IS NULL ORDER BY updated_at DESC")
+            return [dict(r) for r in cursor.fetchall()]
+
     def supersede_memory(self, old_memory_id: int, new_memory_id: int):
         """Mark old_memory_id as superseded by new_memory_id."""
         with self._connect() as conn:
