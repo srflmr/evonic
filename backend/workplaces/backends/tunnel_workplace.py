@@ -213,6 +213,12 @@ class TunnelWorkplaceBackend(ExecutionBackend):
         except Exception as e:
             return {'error': f'base64 decode failed: {e}'}
 
+    def delete_file(self, path: str) -> dict:
+        """Delete a file on the remote Evonet via shell."""
+        r = self.run_bash(f'rm -f {shlex.quote(path)}', 10, {})
+        # rm -f succeeds even if the file doesn't exist
+        return {'ok': True}
+
     def make_dirs(self, path: str) -> dict:
         r = self.run_bash(f'mkdir -p {shlex.quote(path)}', 10, {})
         if r.get('exit_code', 1) != 0:

@@ -247,6 +247,20 @@ class LocalBackend(ExecutionBackend):
         except Exception as e:
             return {'error': str(e)}
 
+    def delete_file(self, path: str) -> dict:
+        """Delete a file from the host filesystem."""
+        try:
+            os.remove(path)
+            return {'ok': True}
+        except FileNotFoundError:
+            return {'error': f'File not found: {path}'}
+        except PermissionError:
+            return {'error': f'Permission denied: {path}'}
+        except IsADirectoryError:
+            return {'error': f'Path is a directory, not a file: {path}'}
+        except Exception as e:
+            return {'error': str(e)}
+
     def make_dirs(self, path: str) -> dict:
         try:
             os.makedirs(path, exist_ok=True)

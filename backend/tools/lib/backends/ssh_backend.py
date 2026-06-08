@@ -409,6 +409,13 @@ class SSHBackend(ExecutionBackend):
         except Exception as e:
             return {'error': f'base64 decode failed: {e}'}
 
+    def delete_file(self, path: str) -> dict:
+        """Delete a file on the remote host via SSH."""
+        r = self._exec(f'rm {shlex.quote(path)}', '', 10)
+        if r.get('exit_code', 1) != 0:
+            return {'error': r.get('stderr', '') or r.get('error', 'rm failed')}
+        return {'ok': True}
+
     def make_dirs(self, path: str) -> dict:
         r = self._exec(f'mkdir -p {shlex.quote(path)}', '', 10)
         if r.get('exit_code', 1) != 0:

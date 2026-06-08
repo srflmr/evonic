@@ -65,6 +65,10 @@ class LocalWorkplaceBackend(ExecutionBackend):
         """Read a file as raw bytes (delegates to inner backend)."""
         return self._get_inner().cat_file_bytes(path)
 
+    def delete_file(self, path: str) -> dict:
+        """Delete a file (delegates to inner backend)."""
+        return self._get_inner().delete_file(path)
+
     def make_dirs(self, path: str) -> dict:
         return self._get_inner().make_dirs(path)
 

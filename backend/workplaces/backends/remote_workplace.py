@@ -129,6 +129,14 @@ __PYEOF__"""
         path = self._resolve_path(path)
         return self._ssh.cat_file_bytes(path)
 
+    def delete_file(self, path: str) -> dict:
+        """Delete a file on the remote host via SSH."""
+        path = self._resolve_path(path)
+        r = self._ssh.run_bash(f'rm {shlex.quote(path)}', 10, {})
+        if r.get('exit_code', 1) != 0:
+            return {'error': r.get('stderr', '') or r.get('error', 'rm failed')}
+        return {'ok': True}
+
     def make_dirs(self, path: str) -> dict:
         path = self._resolve_path(path)
         r = self._ssh.run_bash(f'mkdir -p {shlex.quote(path)}', 10, {})

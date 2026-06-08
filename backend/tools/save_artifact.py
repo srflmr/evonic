@@ -75,8 +75,58 @@ def execute(agent: dict, args: dict) -> dict:
             if 'error' in result:
                 return {'error': f'Failed to read source file: {result["error"]}'}
 
+            source_bytes = result['bytes']
+
+            # --- Write to artifacts destination ---
             with open(filepath, 'wb') as f:
-                f.write(result['bytes'])
+                f.write(source_bytes)
+
+            # --- Verify: compare destination size vs source bytes length ---
+            dest_size = os.stat(filepath).st_size
+            source_len = len(source_bytes)
+
+            warning = None
+
+            if dest_size == source_len:
+                # Success — delete source file (move behavior)
+                delete_result = backend.delete_file(resolved)
+                if 'error' in delete_result:
+                    warning = f'Source file not deleted after move: {delete_result["error"]}'
+            else:
+                # Size mismatch — retry once (overwrite destination)
+                with open(filepath, 'wb') as f:
+                    f.write(source_bytes)
+
+                dest_size = os.stat(filepath).st_size
+
+                if dest_size == source_len:
+                    # Retry succeeded — delete source
+                    delete_result = backend.delete_file(resolved)
+                    if 'error' in delete_result:
+                        warning = f'Source file not deleted after retry: {delete_result["error"]}'
+                else:
+                    # Retry still mismatched — delete corrupt destination, return error
+                    try:
+                        os.remove(filepath)
+                    except OSError:
+                        pass
+                    return {
+                        'error': (
+                            f'Size mismatch after retry: wrote {source_len} bytes '
+                            f'but destination has {dest_size} bytes. Source file retained.'
+                        )
+                    }
+
+            stat = os.stat(filepath)
+            response = {
+                'result': 'Artifact saved successfully',
+                'filepath': filepath,
+                'filename': filename,
+                'size': stat.st_size,
+            }
+            if warning:
+                response['warning'] = warning
+            return response
 
         else:
             # --- content mode: write text (UTF-8) ---

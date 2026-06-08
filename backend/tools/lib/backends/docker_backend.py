@@ -725,6 +725,35 @@ class DockerBackend(ExecutionBackend):
         data = _b64.b64decode(result['data'])
         return {'bytes': data}
 
+    def delete_file(self, path: str) -> dict:
+        """Delete a file from inside the container.
+
+        Uses ``docker exec`` to run ``os.remove(path)`` inside the container.
+        """
+        import json as _json
+        code = (
+            'import json, os\n'
+            f'p = {_json.dumps(path)}\n'
+            'try:\n'
+            '    os.remove(p)\n'
+            '    print(json.dumps({"ok": True}))\n'
+            'except FileNotFoundError:\n'
+            '    print(json.dumps({"error": "File not found"}))\n'
+            'except PermissionError:\n'
+            '    print(json.dumps({"error": "Permission denied"}))\n'
+            'except IsADirectoryError:\n'
+            '    print(json.dumps({"error": "Path is a directory, not a file"}))\n'
+            'except Exception as e:\n'
+            '    print(json.dumps({"error": str(e)}))\n'
+        )
+        r = self._container_exec_python(code, timeout=30)
+        if 'error' in r:
+            return r
+        try:
+            return _json.loads(r.get('stdout', '{}'))
+        except Exception:
+            return {'error': 'Failed to parse response from container'}
+
     def docker_cp_out(self, container_path: str, host_path: str) -> dict:
         """Copy a file from the container to the host filesystem."""
         container_id, err = _get_or_create_container(
