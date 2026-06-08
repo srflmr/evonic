@@ -212,6 +212,8 @@ class LocalBackend(ExecutionBackend):
                 return {'content': f.read()}
         except PermissionError:
             return {'error': 'Permission denied — cannot read this file.'}
+        except IsADirectoryError:
+            return {'error': f'Path is a directory, not a file: {path}'}
         except UnicodeDecodeError:
             return {'error': 'File contains non-UTF-8 characters.'}
         except Exception as e:

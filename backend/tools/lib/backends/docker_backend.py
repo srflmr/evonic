@@ -631,6 +631,8 @@ class DockerBackend(ExecutionBackend):
             '    with open(p, "rb") as f:\n'
             '        data = f.read()\n'
             '    print(json.dumps({"content": base64.b64encode(data).decode("ascii")}))\n'
+            'except IsADirectoryError:\n'
+            f'    print(json.dumps({{"error": "Path is a directory, not a file: " + {_json.dumps(path)}}}))\n'
             'except Exception as e:\n'
             '    print(json.dumps({"error": str(e)}))\n'
         )

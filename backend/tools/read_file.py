@@ -42,6 +42,9 @@ def read_file(file_path: str, offset: int = 1) -> str:
     if not os.path.exists(file_path):
         return "Error: File not found."
 
+    if os.path.isdir(file_path):
+        return f"Error: Path is a directory, not a file: {file_path}"
+
     # Check file size before reading
     file_size = os.path.getsize(file_path)
     if file_size > _MAX_FILE_SIZE:
