@@ -1,8 +1,0 @@
-{
-  "id": "math",
-  "name": "Math",
-  "description": "Mathematical calculation tests - expects clean numerical answers",
-  "icon": "calculator",
-  "color": "#10B981",
-  "evaluator_id": "two_pass"
-}
