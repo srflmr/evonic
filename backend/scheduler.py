@@ -33,7 +33,7 @@ import time
 import uuid
 import threading
 import requests as http_lib
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -110,6 +110,13 @@ class Scheduler:
         # For one-shot date triggers, enforce max_runs=1
         if trigger_type == 'date' and max_runs is None:
             max_runs = 1
+
+        # Minimum interval validation for auto_extend (>= 60 seconds)
+        if trigger_type == 'auto_extend':
+            interval_seconds = self._parse_interval_seconds(trigger_config)
+            if interval_seconds < 60:
+                raise ValueError(
+                    f"auto_extend interval must be >= 60 seconds, got {interval_seconds}s")
 
         from models.db import db
         db.create_schedule(
@@ -230,6 +237,17 @@ class Scheduler:
         except (ValueError, TypeError):
             pass  # Malformed — let APScheduler handle the error
 
+    @staticmethod
+    def _parse_interval_seconds(trigger_config: dict) -> int:
+        """Convert interval config to total seconds (supports seconds, minutes, hours keys)."""
+        if 'seconds' in trigger_config:
+            return int(trigger_config['seconds'])
+        elif 'minutes' in trigger_config:
+            return int(trigger_config['minutes']) * 60
+        elif 'hours' in trigger_config:
+            return int(trigger_config['hours']) * 3600
+        return 0
+
     def _build_trigger(self, trigger_type: str, trigger_config: dict):
         if trigger_type == 'cron':
             return CronTrigger(**trigger_config)
@@ -238,8 +256,17 @@ class Scheduler:
         elif trigger_type == 'date':
             self._make_run_date_aware(trigger_config)
             return DateTrigger(**trigger_config)
+        elif trigger_type == 'auto_extend':
+            self._make_run_date_aware(trigger_config)
+            # Only pass run_date and timezone to DateTrigger — filter out interval info
+            kwargs = {}
+            if 'run_date' in trigger_config:
+                kwargs['run_date'] = trigger_config['run_date']
+            if 'timezone' in trigger_config:
+                kwargs['timezone'] = trigger_config['timezone']
+            return DateTrigger(**kwargs)
         else:
-            raise ValueError(f"Unknown trigger_type: {trigger_config}")
+            raise ValueError(f"Unknown trigger_type: {trigger_type}")
 
     def _register_job(self, schedule_id: str, trigger_type: str, trigger_config: dict):
         """Register (or replace) an APScheduler job for this schedule."""
@@ -286,12 +313,25 @@ class Scheduler:
         loaded = 0
         for s in schedules:
             try:
-                # Skip expired one-shot schedules
-                if s['trigger_type'] == 'date':
-                    run_date = s['trigger_config'].get('run_date', '')
-                    if run_date and run_date < datetime.now().isoformat():
+                trigger_type = s['trigger_type']
+                run_date = s['trigger_config'].get('run_date', '')
+                now = datetime.now()
+
+                # Handle past-due schedules
+                if trigger_type == 'date':
+                    # Skip expired one-shot schedules
+                    if run_date and run_date < now.isoformat():
                         db.update_schedule(s['id'], enabled=0)
                         continue
+                elif trigger_type == 'auto_extend':
+                    # Past-due auto_extend: fire immediately (now + 5s grace)
+                    if run_date and run_date < now.isoformat():
+                        reschedule = now + timedelta(seconds=5)
+                        s['trigger_config']['run_date'] = reschedule.isoformat()
+                        db.update_schedule(s['id'],
+                                           trigger_config=s['trigger_config'])
+                        log.info("auto_extend %s past-due, rescheduled to %s",
+                                 s['id'], reschedule.isoformat())
 
                 self._register_job(s['id'], s['trigger_type'], s['trigger_config'])
                 self._update_next_run(s['id'])
@@ -313,9 +353,55 @@ class Scheduler:
         if not schedule or not schedule['enabled']:
             return
 
+        trigger_type = schedule['trigger_type']
         action_type = schedule['action_type']
         action_config = schedule['action_config']
         fired_at = datetime.now().isoformat()
+
+        # --- auto_extend pre-flight guards ---
+        running_log_id = None
+        if trigger_type == 'auto_extend':
+            # Concurrent execution guard: check if previous run is still in progress
+            recent_logs = db.get_schedule_logs(schedule_id, limit=1)
+            if recent_logs and recent_logs[0].get('status') == 'running':
+                log.warning("auto_extend %s: previous run still in progress, skipping", schedule_id)
+                return
+
+            # Agent disabled mid-run guard: check agent enablement before proceeding
+            agent_id = (action_config.get('agent_id')
+                        or schedule.get('owner_id'))
+            if agent_id:
+                agent = db.get_agent(agent_id)
+                if agent and not agent.get('enabled'):
+                    log.warning("auto_extend %s: agent %s is disabled, stopping chain",
+                                schedule_id, agent_id)
+                    # Create an error log and stop the chain
+                    db.create_schedule_log(
+                        log_id=str(uuid.uuid4()),
+                        schedule_id=schedule_id,
+                        executed_at=fired_at,
+                        duration_ms=0,
+                        status='error',
+                        action_type=action_type,
+                        error_message=f"Agent {agent_id} is disabled — chain stopped",
+                    )
+                    db.cleanup_old_schedule_logs(schedule_id, keep=100)
+                    new_count = schedule['run_count'] + 1
+                    db.update_schedule(schedule_id, last_run_at=fired_at,
+                                       run_count=new_count, enabled=0)
+                    self._remove_job(schedule_id)
+                    return
+
+            # Create a running-pending log so concurrent guard works
+            running_log_id = str(uuid.uuid4())
+            db.create_schedule_log(
+                log_id=running_log_id,
+                schedule_id=schedule_id,
+                executed_at=fired_at,
+                duration_ms=0,
+                status='running',
+                action_type=action_type,
+            )
 
         status = 'success'
         error_message = None
@@ -352,6 +438,10 @@ class Scheduler:
             else:
                 log.warning("Unknown action_type '%s' for %s",
                             action_type, schedule_id)
+                # Clean up running log if we bailed early for auto_extend
+                if running_log_id:
+                    db.update_schedule_log(running_log_id, status='error',
+                                           error_message=f"Unknown action_type: {action_type}")
                 return
         except Exception as e:
             log.error("Action failed for %s (%s): %s",
@@ -362,32 +452,77 @@ class Scheduler:
 
         duration_ms = int((time.monotonic() - start_ms) * 1000)
 
-        # Persist execution log
-        db.create_schedule_log(
-            log_id=str(uuid.uuid4()),
-            schedule_id=schedule_id,
-            executed_at=fired_at,
-            duration_ms=duration_ms,
-            status=status,
-            action_type=action_type,
-            action_summary=action_summary,
-            error_message=error_message,
-            action_output=action_output,
-        )
-        db.cleanup_old_schedule_logs(schedule_id, keep=100)
+        # Persist / update execution log
+        if running_log_id:
+            # Update the running-pending log with final results
+            db.update_schedule_log(
+                running_log_id,
+                status=status,
+                duration_ms=duration_ms,
+                error_message=error_message,
+                action_summary=action_summary,
+                action_output=action_output,
+            )
+            db.cleanup_old_schedule_logs(schedule_id, keep=100)
+        else:
+            db.create_schedule_log(
+                log_id=str(uuid.uuid4()),
+                schedule_id=schedule_id,
+                executed_at=fired_at,
+                duration_ms=duration_ms,
+                status=status,
+                action_type=action_type,
+                action_summary=action_summary,
+                error_message=error_message,
+                action_output=action_output,
+            )
+            db.cleanup_old_schedule_logs(schedule_id, keep=100)
 
         # Update run stats
         new_count = schedule['run_count'] + 1
         updates = {'last_run_at': fired_at, 'run_count': new_count}
+        do_extend = False
 
         # Auto-disable if max_runs reached
         if schedule['max_runs'] and new_count >= schedule['max_runs']:
             updates['enabled'] = 0
             self._remove_job(schedule_id)
+        elif trigger_type == 'auto_extend' and status == 'success':
+            # The chain continues — extend to next run
+            do_extend = True
+        elif trigger_type == 'auto_extend' and status == 'error':
+            # Chain stops on error — disable schedule
+            updates['enabled'] = 0
+            self._remove_job(schedule_id)
+            log.warning("auto_extend %s: error encountered, chain stopped", schedule_id)
         else:
             self._update_next_run(schedule_id)
 
+        if do_extend:
+            # Calculate and validate the auto_extend interval
+            trigger_config = dict(schedule['trigger_config'])
+            interval_seconds = self._parse_interval_seconds(trigger_config)
+            if interval_seconds < 60:
+                log.warning("auto_extend %s: interval %ds < 60s, clamping to 60s",
+                            schedule_id, interval_seconds)
+                interval_seconds = 60
+
+            # Calculate next run date from completion time
+            completed_at = datetime.fromisoformat(fired_at)
+            next_run = completed_at.replace(tzinfo=None)
+            next_run = next_run + timedelta(seconds=interval_seconds)
+            trigger_config['run_date'] = next_run.isoformat()
+            updates['trigger_config'] = trigger_config
+            updates['next_run_at'] = next_run.isoformat()
+
         db.update_schedule(schedule_id, **updates)
+
+        # Re-register job for auto_extend extension
+        if do_extend:
+            updated_schedule = db.get_schedule(schedule_id)
+            if updated_schedule and updated_schedule.get('trigger_config'):
+                self._register_job(schedule_id, 'auto_extend',
+                                   updated_schedule['trigger_config'])
 
         # Emit schedule_fired event
         self._emit('schedule_fired', {

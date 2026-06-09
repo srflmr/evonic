@@ -115,6 +115,24 @@ class ScheduleMixin:
             conn.commit()
         return row
 
+    def update_schedule_log(self, log_id: str, **kwargs) -> bool:
+        """Update fields on an existing schedule log (e.g. status after running)."""
+        allowed = {'status', 'duration_ms', 'error_message',
+                    'action_summary', 'action_output'}
+        updates = {}
+        for k, v in kwargs.items():
+            if k not in allowed:
+                continue
+            updates[k] = v
+        if not updates:
+            return False
+        set_clause = ", ".join(f"{k} = ?" for k in updates)
+        with self._connect() as conn:
+            conn.execute(f"UPDATE schedule_logs SET {set_clause} WHERE id = ?",
+                          list(updates.values()) + [log_id])
+            conn.commit()
+        return True
+
     def get_schedule_logs(self, schedule_id: str, limit: int = 50, offset: int = 0) -> List[Dict]:
         with self._connect() as conn:
             conn.row_factory = sqlite3.Row
