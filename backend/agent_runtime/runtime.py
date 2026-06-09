@@ -1723,7 +1723,8 @@ class AgentRuntime:
                         is_stale = True
 
         # Apply preference wrapper prefix to user messages if enabled
-        _apply_wrapper_prefix(messages, _should_wrap_user_message(agent))
+        _apply_wrapper_prefix(messages, _should_wrap_user_message(agent),
+                              is_stale=is_stale, stale_threshold=stale_threshold)
 
         # Call LLM with tool loop
         _inner_turn_start = time.time()
