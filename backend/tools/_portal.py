@@ -72,7 +72,21 @@ def resolve_portal_path(agent_id: str, file_path: str) -> tuple:
 
     # Strip matched virtual_path prefix from sub_path
     remainder = sub_path[len(best_vpath):].lstrip("/")
-    real_path = os.path.join(best_match.get("real_path", ""), remainder)
+
+    # Reject traversal sequences before joining — fast-path guard
+    if ".." in remainder.split("/"):
+        return (None, "Path traversal ('..') is not allowed in portal paths.")
+
+    portal_root = best_match.get("real_path", "")
+    real_path = os.path.join(portal_root, remainder)
+
+    # Realpath confinement: ensure resolved path stays inside the portal root
+    # (handles symlinks and any remaining traversal after join)
+    if portal_root:
+        confined_root = os.path.realpath(portal_root)
+        resolved = os.path.realpath(real_path)
+        if resolved != confined_root and not resolved.startswith(confined_root + os.sep):
+            return (None, "Access denied — path resolves outside the portal root.")
 
     # Get or create the backend
     from backend.portals import portal_manager
