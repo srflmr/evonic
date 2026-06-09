@@ -41,6 +41,7 @@ from backend.agent_runtime.prefetch import TurnPrefetcher
 import atexit
 import re
 from config import AGENT_MAX_TOOL_RESULT_CHARS as MAX_TOOL_RESULT_CHARS
+from config import STALE_SESSION_INJECTION_ENABLED, STALE_SESSION_THRESHOLD_SECONDS
 
 _BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 _LOGS_DIR = os.path.join(_BASE_DIR, 'logs')
@@ -1678,6 +1679,28 @@ class AgentRuntime:
             if agent.get('is_subagent'):
                 ms = AgentState(mode="execute", auto_trivial=True)
             agent_context['agent_state'] = ms
+
+        # --- Staleness detection ---
+        # Detect when the previous user message is older than the threshold
+        # and mark as stale so the wrapper prefix can inject context awareness.
+        is_stale = False
+        stale_threshold = STALE_SESSION_THRESHOLD_SECONDS
+        _stale_skip = (
+            ctx.external_user_id.startswith('__agent__') or
+            ctx.external_user_id.startswith('__system__')
+        )
+        if not _stale_skip:
+            _stale_enabled = agent.get('stale_session_injection_enabled')
+            if _stale_enabled is None:
+                _stale_enabled = STALE_SESSION_INJECTION_ENABLED
+            if _stale_enabled:
+                _recent = chatlog.tail(limit=50)
+                _user_entries = [e for e in _recent if e.get('type') == 'user']
+                if len(_user_entries) >= 2:
+                    _prev_ts = _user_entries[-2].get('ts', 0)
+                    _gap = time.time() - _prev_ts
+                    if _gap > stale_threshold:
+                        is_stale = True
 
         # Apply preference wrapper prefix to user messages if enabled
         _apply_wrapper_prefix(messages, _should_wrap_user_message(agent))
