@@ -248,8 +248,12 @@ document.addEventListener('evonic:approval-resolved', function(e) {
 // This receives approval events (any agent, any session) via the 'approvals' channel.
 (function() {
     var _sse = null;
+    var _reconnectTimer = null;
+    var _enabled = false;
+    var _realtimeHandlersBound = false;
 
     function _connectSSE() {
+        if (!_enabled) return;
         if (_sse) return;
 
         // Use RealtimeClient if available
@@ -257,30 +261,35 @@ document.addEventListener('evonic:approval-resolved', function(e) {
             var rt = window._evApprovalRT = window._evApprovalRT || new RealtimeClient({
                 channels: 'approvals'
             });
-            rt.on('approvals', 'approval_required', function(data) {
-                if (!data.approval_id) return;
-                _currentData = data;
-                populateModal(data);
-                openModal();
-            });
-            rt.on('approvals', 'approval_resolved', function(data) {
-                if (_currentData && data.approval_id === _currentData.approval_id) {
-                    closeModal();
-                }
-            });
+            if (!_realtimeHandlersBound) {
+                rt.on('approvals', 'approval_required', function(data) {
+                    if (!data.approval_id) return;
+                    _currentData = data;
+                    populateModal(data);
+                    openModal();
+                });
+                rt.on('approvals', 'approval_resolved', function(data) {
+                    if (_currentData && data.approval_id === _currentData.approval_id) {
+                        closeModal();
+                    }
+                });
+                _realtimeHandlersBound = true;
+            }
             rt.start();
             _sse = { close: function() { rt.stop(); } };
             return;
         }
 
         // Fallback: old EventSource
+        var es;
         try {
-            _sse = new EventSource('/api/approvals/stream');
+            es = new EventSource('/api/approvals/stream');
+            _sse = es;
         } catch (e) {
             return;
         }
 
-        _sse.addEventListener('approval_required', function(e) {
+        es.addEventListener('approval_required', function(e) {
             var data = JSON.parse(e.data);
             if (!data.approval_id) return;
             _currentData = data;
@@ -288,23 +297,43 @@ document.addEventListener('evonic:approval-resolved', function(e) {
             openModal();
         });
 
-        _sse.addEventListener('approval_resolved', function(e) {
+        es.addEventListener('approval_resolved', function(e) {
             var data = JSON.parse(e.data);
             if (_currentData && data.approval_id === _currentData.approval_id) {
                 closeModal();
             }
         });
 
-        _sse.onerror = function() {
-            _sse.close();
-            _sse = null;
-            setTimeout(_startSSE, 3000);
+        es.onerror = function() {
+            es.close();
+            if (_sse === es) _sse = null;
+            if (!_enabled) return;
+            if (_reconnectTimer) clearTimeout(_reconnectTimer);
+            // Reconnect after a short delay
+            _reconnectTimer = setTimeout(function() {
+                _reconnectTimer = null;
+                _connectSSE();
+            }, 3000);
         };
     }
 
     function _startSSE() {
+        _enabled = true;
         if (_sse) return;
         _connectSSE();
+    }
+
+    function _closeSSE() {
+        _enabled = false;
+        if (_reconnectTimer) {
+            clearTimeout(_reconnectTimer);
+            _reconnectTimer = null;
+        }
+        if (!_sse) return;
+        try {
+            _sse.close();
+        } catch (e) {}
+        _sse = null;
     }
 
     // Start SSE when the page loads and when it becomes visible
@@ -318,10 +347,8 @@ document.addEventListener('evonic:approval-resolved', function(e) {
             _startSSE();
         }
     });
-    // Close SSE/RealtimeClient on page unload to free HTTP connections during navigation
-    window.addEventListener('beforeunload', function() {
-        if (_sse) { _sse.close(); _sse = null; }
-        if (window._evApprovalRT) { window._evApprovalRT.stop(); }
-    });
+    window.addEventListener('pagehide', _closeSSE);
+    window.addEventListener('beforeunload', _closeSSE);
+    window.addEventListener('pageshow', _startSSE);
 })();
 })();

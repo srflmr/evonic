@@ -240,6 +240,7 @@ function switchTab(tab) {
 let agents = [];
 let skillsets = [];
 let busyAgents = {};
+let agentStatusEventsSubscribed = false;
 
 async function loadSkillsets() {
     try {
@@ -281,7 +282,7 @@ async function loadAgents() {
     renderAgents();
     loadSkillsets();
     loadBusyAgents();
-    startAgentStatusStream();
+    subscribeAgentStatusEvents();
 }
 
 function renderAgents() {
@@ -406,70 +407,32 @@ function updateAgentBusyBadge(agentId, busy) {
     }
 }
 
-function startAgentStatusStream() {
-    // Use RealtimeClient if available
-    if (typeof RealtimeClient !== 'undefined') {
-        var rt = window._evAgentsRT = window._evAgentsRT || new RealtimeClient({
-            channels: 'status'
+function subscribeAgentStatusEvents() {
+    if (agentStatusEventsSubscribed) return;
+    agentStatusEventsSubscribed = true;
+    document.addEventListener('evonic:agent-busy-changed', function(e) {
+        const data = e.detail || {};
+        const agentId = data.agent_id;
+        if (!agentId) return;
+        if (data.busy) {
+            busyAgents[agentId] = true;
+        } else {
+            delete busyAgents[agentId];
+        }
+        updateAgentBusyBadge(agentId, data.busy);
+    });
+    document.addEventListener('evonic:agent-busy-resync', function(e) {
+        busyAgents = {};
+        for (const id of Object.keys(e.detail || {})) busyAgents[id] = true;
+        document.querySelectorAll('.busy-badge').forEach(function(b) {
+            const parent = b.closest('[data-badges]');
+            if (parent && !busyAgents[parent.getAttribute('data-badges')]) b.remove();
         });
-        rt.on('status', 'agent_busy_changed', function(data) {
-            const agentId = data.agent_id;
-            if (!agentId) return;
-            if (data.busy) {
-                busyAgents[agentId] = true;
-            } else {
-                delete busyAgents[agentId];
-            }
-            updateAgentBusyBadge(agentId, data.busy);
-        });
-        rt.start();
-        return;
-    }
-
-    // Fallback: old EventSource
-    const url = `/api/agents/status/stream`;
-
-    function connect() {
-        const es = new EventSource(url);
-        es.addEventListener('agent_busy_changed', function(e) {
-            try {
-                const data = JSON.parse(e.data);
-                const agentId = data.agent_id;
-                if (!agentId) return;
-                if (data.busy) {
-                    busyAgents[agentId] = true;
-                } else {
-                    delete busyAgents[agentId];
-                }
-                updateAgentBusyBadge(agentId, data.busy);
-            } catch (_) {}
-        });
-        es.addEventListener('error', function() {
-            es.close();
-            // Reconnect after a short delay
-            setTimeout(function() {
-                // Re-fetch full busy state before reconnecting
-                fetch('/api/agents/busy').then(r => r.json()).then(data => {
-                    busyAgents = {};
-                    for (const id of Object.keys(data.busy || {})) busyAgents[id] = true;
-                    for (const id of Object.keys(busyAgents)) updateAgentBusyBadge(id, true);
-                    // Clear stale badges for agents not in busy list
-                    document.querySelectorAll('.busy-badge').forEach(function(b) {
-                        const parent = b.closest('[data-badges]');
-                        if (parent) {
-                            const agentId = parent.getAttribute('data-badges');
-                            if (!busyAgents[agentId]) b.remove();
-                        }
-                    });
-                }).catch(function() {}).finally(function() {
-                    connect();
-                });
-            }, 2000);
-        });
-    }
-
-    connect();
+        for (const id of Object.keys(busyAgents)) updateAgentBusyBadge(id, true);
+    });
 }
+
+window.addEventListener('pageshow', loadBusyAgents);
 
 function toggleDisabledAgents() {
     const grid = document.getElementById('disabled-agents-grid');
