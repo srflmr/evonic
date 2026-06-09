@@ -221,6 +221,13 @@ AGENT_MAX_SUMMARIZE_BATCH = _get_env_int("AGENT_MAX_SUMMARIZE_BATCH", 20, min_va
 AGENT_TIMEOUT_RETRIES = _get_env_int("AGENT_TIMEOUT_RETRIES", 2, min_val=0, max_val=20)
 AGENT_QUEUE_WORKERS = _get_env_int("AGENT_QUEUE_WORKERS", 5, min_val=1, max_val=32)
 
+# Stale session injection — inject staleness-awareness note when the previous
+# message in a session is older than the threshold. Per-agent setting with
+# global fallback via the DB settings system (stale_session_injection_enabled,
+# stale_session_threshold_seconds).
+STALE_SESSION_INJECTION_ENABLED = _get_env_bool("STALE_SESSION_INJECTION_ENABLED", True)
+STALE_SESSION_THRESHOLD_SECONDS = _get_env_int("STALE_SESSION_THRESHOLD_SECONDS", 25200, min_val=1, max_val=604800)
+
 # Thinking budget cap for small reasoning models (tokens per turn).
 # Only active when explicitly set per-model via thinking_budget field in DB.
 # Models with thinking_budget=0 have no cap (disabled by default).
