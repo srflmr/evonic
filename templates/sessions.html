@@ -933,7 +933,7 @@ function connectSessionStream(sessionId, afterSeq = 0) {
         _sessionEs = null;
     }
     if (!currentAgentId) return;
-    const url = `/api/agents/${encodeURIComponent(currentAgentId)}/chat/stream?session_id=${encodeURIComponent(sessionId)}&after=${afterSeq}`;
+    const url = `/api/realtime/stream?chat=1&agent_id=${encodeURIComponent(currentAgentId)}&session_id=${encodeURIComponent(sessionId)}&after=${afterSeq}`;
     // LOG-A: track every connect/reconnect and whether _lastSeq will reset
     console.log(`[sse] connect afterSeq=${afterSeq} sseThinkingId=${!!_sseThinkingId} url=${url}`);
     if (afterSeq === 0 && _sseThinkingId) {

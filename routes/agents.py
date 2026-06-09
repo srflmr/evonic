@@ -1517,7 +1517,12 @@ def api_chat_session(agent_id):
 
 @agents_bp.route('/api/agents/<agent_id>/chat/stream', methods=['GET'])
 def api_chat_stream(agent_id):
-    """SSE endpoint — pushes live thinking/tool events for a session to the browser."""
+    """SSE endpoint — pushes live thinking/tool events for a session to the browser.
+    DEPRECATED: Use unified GET /api/realtime/stream?chat=1 instead."""
+    import logging as _log_depr
+    _log_depr.getLogger(__name__).warning(
+        "DEPRECATED endpoint /api/agents/<agent_id>/chat/stream used — "
+        "migrate to /api/realtime/stream?chat=1")
     session_id = request.args.get('session_id')
     if not session_id:
         return jsonify({'error': 'session_id required'}), 400
@@ -1717,10 +1722,12 @@ def api_chat_stream(agent_id):
 @agents_bp.route('/api/approvals/stream', methods=['GET'])
 def api_approvals_stream():
     """Global SSE endpoint — pushes ALL approval events (any agent, any session)
-    to every connected client. Unlike the per-session chat stream, there is no
-    session_id filtering — this is exactly the point: approval modals need to
-    appear on Dashboard, Settings, Skills, and any other page, not just /agents/:id.
-    """
+    to every connected client.
+    DEPRECATED: Use unified GET /api/realtime/stream?channels=approvals instead."""
+    import logging as _log_depr
+    _log_depr.getLogger(__name__).warning(
+        "DEPRECATED endpoint /api/approvals/stream used — "
+        "migrate to /api/realtime/stream?channels=approvals")
     from backend.event_stream import event_stream
 
     # Release the thread-local DB connection acquired by enforce_auth.
@@ -1884,8 +1891,8 @@ def api_agent_busy(agent_id):
 @agents_bp.route('/api/agents/status/stream', methods=['GET'])
 def api_agents_status_stream():
     """SSE endpoint — pushes real-time agent busy/idle status changes and
-    turn-complete notifications to every connected client. No session filtering —
-    the browser-side JS decides which agent to update.
+    turn-complete notifications to every connected client.
+    DEPRECATED: Use unified GET /api/realtime/stream?channels=status instead.
 
     Events:
         event: agent_busy_changed
@@ -1895,6 +1902,10 @@ def api_agents_status_stream():
         data: {"agent_id": "...", "agent_name": "...", "response": "...",
                "external_user_id": "...", "session_id": "..."}
     """
+    import logging as _log_depr
+    _log_depr.getLogger(__name__).warning(
+        "DEPRECATED endpoint /api/agents/status/stream used — "
+        "migrate to /api/realtime/stream?channels=status")
     import queue as _queue
     from backend.event_stream import event_stream
 

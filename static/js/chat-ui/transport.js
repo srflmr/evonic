@@ -41,6 +41,7 @@ export class SSEAdapter {
         this._log = log('sse');
         this._lastEventAt = 0;
         this._livenessInterval = null;
+        this._usingUnified = false; // true when using unified /api/realtime/stream
     }
 
     start(handler) {
@@ -62,6 +63,20 @@ export class SSEAdapter {
     }
 
     _connect(url) {
+        // Rewrite legacy chat stream URLs to unified realtime endpoint
+        if (url.indexOf('/api/agents/') !== -1 && url.indexOf('/chat/stream') !== -1) {
+            const u = new URL(url, window.location.origin);
+            const agentId = this._agentId || (url.match(/\/agents\/([^/?]+)\//) || [])[1] || '';
+            const sessionId = this._sessionId || u.searchParams.get('session_id') || '';
+            const after = this._lastSeq;
+            let newUrl = '/api/realtime/stream?chat=1';
+            if (agentId) newUrl += '&agent_id=' + encodeURIComponent(agentId);
+            if (sessionId) newUrl += '&session_id=' + encodeURIComponent(sessionId);
+            if (after > 0) newUrl += '&after=' + after;
+            this._usingUnified = true;
+            url = newUrl;
+        }
+
         this._log.info('open', url);
         const es = new EventSource(url);
         this._es = es;
@@ -76,9 +91,19 @@ export class SSEAdapter {
                 this._log.warn('liveness timeout — no event for', elapsed, 'ms, forcing reconnect');
                 console.warn('[sse] liveness timeout, elapsed=', elapsed, '_lastSeq=', this._lastSeq);
                 if (this._es) { this._es.close(); this._es = null; }
-                const u = new URL(url, window.location.origin);
-                if (this._lastSeq > 0) u.searchParams.set('after', this._lastSeq);
-                const resumeUrl = u.pathname + u.search;
+                let resumeUrl;
+                if (this._usingUnified) {
+                    const agentId = this._agentId || '';
+                    const sessionId = this._sessionId || '';
+                    resumeUrl = '/api/realtime/stream?chat=1';
+                    if (agentId) resumeUrl += '&agent_id=' + encodeURIComponent(agentId);
+                    if (sessionId) resumeUrl += '&session_id=' + encodeURIComponent(sessionId);
+                    if (this._lastSeq > 0) resumeUrl += '&after=' + this._lastSeq;
+                } else {
+                    const u = new URL(url, window.location.origin);
+                    if (this._lastSeq > 0) u.searchParams.set('after', this._lastSeq);
+                    resumeUrl = u.pathname + u.search;
+                }
                 this._connect(resumeUrl);
             }
         }, LIVENESS_TIMEOUT_MS);
@@ -107,9 +132,19 @@ export class SSEAdapter {
             setTimeout(() => {
                 if (this._intentionallyStopped) return;
                 if (this._es) return; // another stream already started
-                const u = new URL(url, window.location.origin);
-                if (this._lastSeq > 0) u.searchParams.set('after', this._lastSeq);
-                const resumeUrl = u.pathname + u.search;
+                let resumeUrl;
+                if (this._usingUnified) {
+                    const agentId = this._agentId || '';
+                    const sessionId = this._sessionId || '';
+                    resumeUrl = '/api/realtime/stream?chat=1';
+                    if (agentId) resumeUrl += '&agent_id=' + encodeURIComponent(agentId);
+                    if (sessionId) resumeUrl += '&session_id=' + encodeURIComponent(sessionId);
+                    if (this._lastSeq > 0) resumeUrl += '&after=' + this._lastSeq;
+                } else {
+                    const u = new URL(url, window.location.origin);
+                    if (this._lastSeq > 0) u.searchParams.set('after', this._lastSeq);
+                    resumeUrl = u.pathname + u.search;
+                }
                 this._log.info('reconnecting from seq', this._lastSeq, resumeUrl);
                 console.warn('[sse] reconnecting _lastSeq=', this._lastSeq, '_fillingGap=', this._fillingGap, '_pendingQueue=', this._pendingQueue.length, 'url=', resumeUrl);
                 this._connect(resumeUrl);

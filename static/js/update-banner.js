@@ -106,10 +106,28 @@
         }
     }
 
-    // -- SSE connection ---------------------------------------------------
+    // -- RealtimeClient connection (unified SSE) -----------------------------------
 
     function connectSSE() {
         if (sse) return;
+
+        // Use RealtimeClient if available
+        if (typeof RealtimeClient !== 'undefined') {
+            var rt = window._evUpdateRT = window._evUpdateRT || new RealtimeClient({
+                channels: 'update'
+            });
+            rt.on('update', 'status', function(data) {
+                renderBannerState(data);
+            });
+            rt.on('update', 'done', function() {
+                if (sse) { sse.close(); sse = null; }
+            });
+            rt.start();
+            sse = { close: function() { rt.stop(); } };
+            return;
+        }
+
+        // Fallback: old EventSource
         sse = new EventSource('/api/system/update/stream');
         sse.addEventListener('status', function(e) {
             var data = JSON.parse(e.data);

@@ -152,7 +152,12 @@ def api_workplace_status(workplace_id):
 
 @workplaces_bp.route('/api/workplaces/<workplace_id>/events', methods=['GET'])
 def api_workplace_events(workplace_id):
-    """SSE stream for real-time workplace status changes (connector connect/disconnect, status)."""
+    """SSE stream for real-time workplace status changes (connector connect/disconnect, status).
+    DEPRECATED: Use unified GET /api/realtime/stream?workplace=<id> instead."""
+    import logging as _log_depr
+    _log_depr.getLogger(__name__).warning(
+        "DEPRECATED endpoint /api/workplaces/<id>/events used — "
+        "migrate to /api/realtime/stream?workplace=<id>")
     workplace = db.get_workplace(workplace_id)
     if not workplace:
         return jsonify({'error': 'Not found'}), 404

@@ -307,41 +307,58 @@ document.addEventListener('click', function (e) {
     }
 });
 
-/** Subscribe to SSE for real-time busy state updates and turn-complete notifications */
+/** Subscribe via RealtimeClient for real-time busy state updates and turn-complete notifications */
 var _statusSSE = null;
 function subscribeBusySSE() {
-    try {
-        _statusSSE = new EventSource('/api/agents/status/stream');
-        _statusSSE.addEventListener('agent_busy_changed', function (e) {
-            try {
-                var payload = JSON.parse(e.data);
-                var avatar = document.querySelector(
-                    '#agent-sidebar .agent-avatar[data-agent-id="' + CSS.escape(payload.agent_id) + '"]'
-                );
-                if (avatar) {
-                    avatar.setAttribute('data-busy', payload.busy ? 'true' : 'false');
-                }
-            } catch (_) {}
-        });
-        _statusSSE.addEventListener('agent_turn_complete', function (e) {
-            try {
-                var payload = JSON.parse(e.data);
-                // Don't show bubble if user is already viewing this agent's page
-                if (window.location.pathname === '/agents/' + payload.agent_id) return;
-                showBubblePopup(payload.agent_id, payload.agent_name, payload.response, payload.session_id, payload.external_user_id);
-            } catch (_) {}
-        });
-        _statusSSE.addEventListener('error', function () {
-            // EventSource will auto-reconnect; no action needed
-        });
-    } catch (_) {
-        // EventSource not supported — polling fallback already active
+    if (typeof RealtimeClient === 'undefined') {
+        // Fallback: use old EventSource if RealtimeClient not loaded
+        try {
+            _statusSSE = new EventSource('/api/agents/status/stream');
+            _statusSSE.addEventListener('agent_busy_changed', function (e) {
+                try {
+                    var payload = JSON.parse(e.data);
+                    var avatar = document.querySelector(
+                        '#agent-sidebar .agent-avatar[data-agent-id="' + CSS.escape(payload.agent_id) + '"]'
+                    );
+                    if (avatar) {
+                        avatar.setAttribute('data-busy', payload.busy ? 'true' : 'false');
+                    }
+                } catch (_) {}
+            });
+            _statusSSE.addEventListener('agent_turn_complete', function (e) {
+                try {
+                    var payload = JSON.parse(e.data);
+                    if (window.location.pathname === '/agents/' + payload.agent_id) return;
+                    showBubblePopup(payload.agent_id, payload.agent_name, payload.response, payload.session_id, payload.external_user_id);
+                } catch (_) {}
+            });
+            _statusSSE.addEventListener('error', function () {});
+        } catch (_) {}
+        return;
     }
+
+    var rt = window._evRealtime = window._evRealtime || new RealtimeClient({
+        channels: 'status'
+    });
+    rt.on('status', 'agent_busy_changed', function (payload) {
+        var avatar = document.querySelector(
+            '#agent-sidebar .agent-avatar[data-agent-id="' + CSS.escape(payload.agent_id) + '"]'
+        );
+        if (avatar) {
+            avatar.setAttribute('data-busy', payload.busy ? 'true' : 'false');
+        }
+    });
+    rt.on('status', 'agent_turn_complete', function (payload) {
+        if (window.location.pathname === '/agents/' + payload.agent_id) return;
+        showBubblePopup(payload.agent_id, payload.agent_name, payload.response, payload.session_id, payload.external_user_id);
+    });
+    rt.start();
 }
 
-// Close SSE on page unload to free HTTP connections during navigation
+// Close SSE/RealtimeClient on page unload to free HTTP connections during navigation
 window.addEventListener('beforeunload', function () {
-    if (_statusSSE) { _statusSSE.close(); _statusSSE = null; }
+    if (_statusSSE instanceof EventSource) { _statusSSE.close(); _statusSSE = null; }
+    if (window._evRealtime) { window._evRealtime.stop(); }
 });
 
 /** Toggle sidebar collapsed state */

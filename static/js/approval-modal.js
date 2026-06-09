@@ -244,15 +244,36 @@ document.addEventListener('evonic:approval-resolved', function(e) {
     }
 });
 
-// Global SSE listener: connect to the shared /api/approvals/stream endpoint.
-// This pushes ALL approval events (any agent, any session) — the event data
-// already carries agent_id, so no URL-parsing gymnastics are needed.
-// The modal appears regardless of which page the user is on.
+// Global realtime listener: subscribe via RealtimeClient to the unified stream.
+// This receives approval events (any agent, any session) via the 'approvals' channel.
 (function() {
     var _sse = null;
 
     function _connectSSE() {
         if (_sse) return;
+
+        // Use RealtimeClient if available
+        if (typeof RealtimeClient !== 'undefined') {
+            var rt = window._evApprovalRT = window._evApprovalRT || new RealtimeClient({
+                channels: 'approvals'
+            });
+            rt.on('approvals', 'approval_required', function(data) {
+                if (!data.approval_id) return;
+                _currentData = data;
+                populateModal(data);
+                openModal();
+            });
+            rt.on('approvals', 'approval_resolved', function(data) {
+                if (_currentData && data.approval_id === _currentData.approval_id) {
+                    closeModal();
+                }
+            });
+            rt.start();
+            _sse = { close: function() { rt.stop(); } };
+            return;
+        }
+
+        // Fallback: old EventSource
         try {
             _sse = new EventSource('/api/approvals/stream');
         } catch (e) {
@@ -277,7 +298,6 @@ document.addEventListener('evonic:approval-resolved', function(e) {
         _sse.onerror = function() {
             _sse.close();
             _sse = null;
-            // Reconnect after a short delay
             setTimeout(_startSSE, 3000);
         };
     }
@@ -298,9 +318,10 @@ document.addEventListener('evonic:approval-resolved', function(e) {
             _startSSE();
         }
     });
-    // Close SSE on page unload to free HTTP connections during navigation
+    // Close SSE/RealtimeClient on page unload to free HTTP connections during navigation
     window.addEventListener('beforeunload', function() {
         if (_sse) { _sse.close(); _sse = null; }
+        if (window._evApprovalRT) { window._evApprovalRT.stop(); }
     });
 })();
 })();

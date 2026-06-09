@@ -65,8 +65,12 @@ def api_update_restart():
 
 @update_bp.route('/api/system/update/stream', methods=['GET'])
 def api_update_stream():
-    """SSE endpoint for real-time update progress. Follows the same pattern
-    as the approval stream in routes/agents.py."""
+    """SSE endpoint for real-time update progress.
+    DEPRECATED: Use unified GET /api/realtime/stream?channels=update instead."""
+    import logging as _log_depr
+    _log_depr.getLogger(__name__).warning(
+        "DEPRECATED endpoint /api/system/update/stream used — "
+        "migrate to /api/realtime/stream?channels=update")
     # Release the thread-local DB connection — this SSE thread is long-lived.
     from models.db import db
     db.close()

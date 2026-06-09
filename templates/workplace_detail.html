@@ -617,12 +617,14 @@ $(document).ready(function() {
 let homeEventSource = null;
 
 function startWorkplaceEventStream() {
-    if (homeEventSource) homeEventSource.close();
-    homeEventSource = new EventSource('/api/workplaces/' + HOME_ID + '/events');
+    if (homeEventSource) {
+        if (typeof homeEventSource.close === 'function') homeEventSource.close();
+        homeEventSource = null;
+    }
 
     function onConnectorEvent(e) {
         try {
-            const data = JSON.parse(e.data);
+            const data = typeof e.data !== 'undefined' ? (typeof e.data === 'string' ? JSON.parse(e.data) : e.data) : e;
             // Reload full workplace data to refresh connector section
             $.get('/api/workplaces/' + HOME_ID, function(h) {
                 homeData = h;
@@ -630,6 +632,24 @@ function startWorkplaceEventStream() {
             });
         } catch (_) {}
     }
+
+    // Use RealtimeClient if available
+    if (typeof RealtimeClient !== 'undefined') {
+        var rt = new RealtimeClient({
+            channels: '', // no global channels
+            workplace: HOME_ID
+        });
+        rt.on('workplace', 'connector_connected', onConnectorEvent);
+        rt.on('workplace', 'connector_disconnected', onConnectorEvent);
+        rt.on('workplace', 'connector_paired', onConnectorEvent);
+        rt.on('workplace', 'workplace_status_changed', onConnectorEvent);
+        rt.start();
+        homeEventSource = { close: function() { rt.stop(); } };
+        return;
+    }
+
+    // Fallback: old EventSource
+    homeEventSource = new EventSource('/api/workplaces/' + HOME_ID + '/events');
 
     homeEventSource.addEventListener('connector_connected',    onConnectorEvent);
     homeEventSource.addEventListener('connector_disconnected', onConnectorEvent);
