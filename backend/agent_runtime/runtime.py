@@ -89,15 +89,35 @@ def _should_wrap_user_message(agent: dict) -> bool:
     return global_val != '0'
 
 
-def _apply_wrapper_prefix(messages: list, enabled: bool) -> None:
+def _apply_wrapper_prefix(messages: list, enabled: bool,
+                          is_stale: bool = False,
+                          stale_threshold: int = 25200) -> None:
     """Apply message wrapper prefix to user messages in-place.
 
     Wraps: (a) the LAST (current) user message when it has >= 4 words,
            (b) historical messages explicitly marked with _wrapped=True.
     Cleans up the _wrapped key after use.
+
+    When is_stale is True, appends a staleness-awareness note to the wrapper
+    prefix prompting the agent to assess whether conversation history is
+    still relevant.
     """
     if not enabled or not messages:
         return
+
+    # Build effective wrapper prefix — may include staleness notice
+    effective_prefix = WRAPPER_PREFIX
+    if is_stale:
+        hours = max(1, stale_threshold // 3600)
+        staleness_note = (
+            f"[STALENESS NOTICE] The previous message in this session was sent "
+            f"more than {hours} hour{'s' if hours != 1 else ''} ago. "
+            f"Consider whether the conversation history is still relevant. "
+            f"If topics have shifted, suggest the user run /clear to reset "
+            f"context.\n\n"
+        )
+        effective_prefix = WRAPPER_PREFIX + staleness_note
+
     for i, msg in enumerate(messages):
         if msg.get('role') == 'user':
             _wrapped = msg.pop('_wrapped', None)
@@ -115,7 +135,7 @@ def _apply_wrapper_prefix(messages: list, enabled: bool) -> None:
                     if is_current and len(_text.split()) < 4:
                         continue
                     if _text_part_idx is not None:
-                        content[_text_part_idx]['text'] = WRAPPER_PREFIX + _text
+                        content[_text_part_idx]['text'] = effective_prefix + _text
                 else:
                     # Plain string content
                     # Skip wrapper injection for short current-turn messages
@@ -124,7 +144,7 @@ def _apply_wrapper_prefix(messages: list, enabled: bool) -> None:
                     # wrapper would waste tokens.
                     if is_current and len(content.split()) < 4:
                         continue
-                    msg['content'] = WRAPPER_PREFIX + content
+                    msg['content'] = effective_prefix + content
 
 
 def _db_retry(
