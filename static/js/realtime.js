@@ -14,8 +14,8 @@
  *     chatThrottle: 100,
  *   });
  *
- *   rt.on('agent_busy_changed', (data) => { ... });
- *   rt.on('approval_required', (data) => { ... });
+ *   rt.on('status', 'agent_busy_changed', (data) => { ... });
+ *   rt.on('approvals', 'approval_required', (data) => { ... });
  *   rt.start();
  *   rt.stop();
  */
@@ -56,15 +56,21 @@ var RealtimeClient = (function () {
 
     // ---- Public API ----
 
-    RealtimeClient.prototype.on = function (channel, handler) {
+    RealtimeClient.prototype.on = function (channel, event, handler) {
+        // Primary API: on(channel, event, handler). Back-compat: on(channel, handler)
+        // registers a channel-wide listener (event '*').
+        if (typeof event === 'function') { handler = event; event = '*'; }
         if (!this._handlers[channel]) this._handlers[channel] = [];
-        this._handlers[channel].push(handler);
+        this._handlers[channel].push({ event: event, handler: handler });
     };
 
-    RealtimeClient.prototype.off = function (channel, handler) {
+    RealtimeClient.prototype.off = function (channel, event, handler) {
+        if (typeof event === 'function') { handler = event; event = '*'; }
         var list = this._handlers[channel];
         if (!list) return;
-        this._handlers[channel] = list.filter(function (h) { return h !== handler; });
+        this._handlers[channel] = list.filter(function (h) {
+            return !(h.event === event && h.handler === handler);
+        });
     };
 
     RealtimeClient.prototype.start = function () {
@@ -101,7 +107,8 @@ var RealtimeClient = (function () {
         Object.keys(this._pauseBuffer).forEach(function (ch) {
             var buf = self._pauseBuffer[ch];
             while (buf && buf.length) {
-                self._dispatch(ch, buf.shift());
+                var item = buf.shift();
+                self._dispatch(ch, item.evtName, item.data);
             }
         });
     };
@@ -226,7 +233,7 @@ var RealtimeClient = (function () {
         if (evtName === 'channel_disabled') {
             var ch = data.channel;
             console.warn('[realtime] channel disabled:', ch);
-            this._dispatch('channel_disabled', data);
+            this._dispatch('channel_disabled', 'channel_disabled', data);
             return;
         }
 
@@ -236,21 +243,27 @@ var RealtimeClient = (function () {
         if (this._paused && (channel === 'chat' || channel === 'workplace')) {
             if (!this._pauseBuffer[channel]) this._pauseBuffer[channel] = [];
             if (this._pauseBuffer[channel].length < 100) {
-                this._pauseBuffer[channel].push(data);
+                this._pauseBuffer[channel].push({ evtName: evtName, data: data });
             }
             return;
         }
 
-        this._dispatch(channel, data);
+        this._dispatch(channel, evtName, data);
     };
 
-    RealtimeClient.prototype._dispatch = function (channel, data) {
+    RealtimeClient.prototype._dispatch = function (channel, evtName, data) {
         var handlers = this._handlers[channel];
         if (!handlers || !handlers.length) return;
-        // Double try/catch isolation: each handler gets its own try/catch
+        // Double try/catch isolation: each handler gets its own try/catch.
+        // A handler fires when its registered event matches the SSE event name,
+        // tolerating the channel prefix (e.g. event 'status' on channel 'update'
+        // matches SSE event 'update_status'), or when it is a channel-wide ('*').
         for (var i = 0; i < handlers.length; i++) {
+            var h = handlers[i];
+            if (h.event !== '*' && h.event !== evtName &&
+                (channel + '_' + h.event) !== evtName) continue;
             try {
-                handlers[i](data);
+                h.handler(data);
             } catch (e) {
                 console.error('[realtime] handler error on channel', channel, e);
             }
