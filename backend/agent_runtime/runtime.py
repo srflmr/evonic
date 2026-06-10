@@ -855,9 +855,11 @@ class AgentRuntime:
         from backend.tools.lib.process_tracker import process_tracker
         process_tracker.kill(session_id)
 
-    def summarize_session(self, agent: dict, session_id: str) -> None:
-        """Trigger summarization for a session. Public API for slash commands."""
-        _sum.maybe_summarize(
+    def summarize_session(self, agent: dict, session_id: str) -> bool:
+        """Trigger summarization for a session. Public API for slash commands.
+
+        Returns True if a summary was actually generated and persisted."""
+        return _sum.maybe_summarize(
             agent, session_id,
             self._llm_serializer._summarize_guard,
             self._llm_serializer._summarize_active,

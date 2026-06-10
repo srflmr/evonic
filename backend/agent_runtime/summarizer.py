@@ -88,26 +88,33 @@ Write the updated factual summary. Remember: the current date is {current_dateti
 def maybe_summarize(agent: dict, session_id: str,
                     summarize_guard: threading.Lock,
                     summarize_active: set,
-                    llm_lock: threading.Lock) -> None:
-    """Concurrency guard: prevents duplicate summarization for the same session."""
+                    llm_lock: threading.Lock) -> bool:
+    """Concurrency guard: prevents duplicate summarization for the same session.
+
+    Returns True if a summary was actually generated and persisted, False otherwise.
+    """
     # LOCK ORDERING: _summarize_guard → llm_lock. _summarize_guard is acquired
     # first (here), then llm_lock is acquired inside the summarization call.
     # Never reverse this order.
     with summarize_guard:
         if session_id in summarize_active:
-            return
+            return False
         summarize_active.add(session_id)
     try:
-        _do_summarize(agent, session_id, llm_lock)
+        return _do_summarize(agent, session_id, llm_lock)
     except Exception as e:
         print(f"[AgentRuntime] Summarization error (non-fatal): {e}")
+        return False
     finally:
         with summarize_guard:
             summarize_active.discard(session_id)
 
 
-def _do_summarize(agent: dict, session_id: str, llm_lock: threading.Lock) -> None:
-    """Core summarization logic with chunking and truncation protection."""
+def _do_summarize(agent: dict, session_id: str, llm_lock: threading.Lock) -> bool:
+    """Core summarization logic with chunking and truncation protection.
+
+    Returns True if a summary was generated and persisted, False otherwise.
+    """
     from models.chatlog import chatlog_manager, _SUMMARY_COUNT_TYPES
     agent_id = agent['id']
     threshold = agent.get('summarize_threshold', 3)
@@ -117,28 +124,31 @@ def _do_summarize(agent: dict, session_id: str, llm_lock: threading.Lock) -> Non
     _has_jsonl = chatlog.get_last_entry() is not None
 
     if _has_jsonl:
-        _do_summarize_jsonl(agent, session_id, llm_lock, chatlog,
-                            threshold, tail_size, _SUMMARY_COUNT_TYPES)
+        return _do_summarize_jsonl(agent, session_id, llm_lock, chatlog,
+                                   threshold, tail_size, _SUMMARY_COUNT_TYPES)
     else:
-        _do_summarize_sqlite(agent, session_id, llm_lock, threshold, tail_size)
+        return _do_summarize_sqlite(agent, session_id, llm_lock, threshold, tail_size)
 
 
 def _do_summarize_jsonl(agent: dict, session_id: str, llm_lock: threading.Lock,
                         chatlog, threshold: int, tail_size: int,
-                        summary_count_types) -> None:
-    """Summarize using JSONL as the message source."""
+                        summary_count_types) -> bool:
+    """Summarize using JSONL as the message source.
+
+    Returns True if a summary was generated and persisted, False otherwise.
+    """
     agent_id = agent['id']
 
     total = chatlog.count_entries(types=summary_count_types)
     if total < threshold:
-        return
+        return False
 
     summary_record = db.get_summary(session_id, agent_id=agent_id)
 
     # Get all conversation entries (user, final, intermediate) for cut-point calculation
     all_entries = chatlog.get_all_for_session(types=summary_count_types)
     if len(all_entries) <= tail_size:
-        return
+        return False
 
     # Cut: summarize everything except the last tail_size entries
     cut_index = len(all_entries) - tail_size
@@ -146,14 +156,14 @@ def _do_summarize_jsonl(agent: dict, session_id: str, llm_lock: threading.Lock,
     if cut_index > 0 and all_entries[cut_index - 1].get('type') == 'user':
         cut_index -= 1
     if cut_index <= 0:
-        return
+        return False
 
     last_summarized_entry = all_entries[cut_index - 1]
     new_last_ts = last_summarized_entry['ts']
 
     # Skip if summary already covers this point
     if summary_record and (summary_record.get('last_message_ts') or 0) >= new_last_ts:
-        return
+        return False
 
     # Get entries to fold into summary
     if summary_record and summary_record.get('last_message_ts'):
@@ -169,7 +179,7 @@ def _do_summarize_jsonl(agent: dict, session_id: str, llm_lock: threading.Lock,
         existing_summary = None
 
     if not entries_to_summarize:
-        return
+        return False
 
     prompt_template = agent.get('summarize_prompt') or DEFAULT_SUMMARIZE_PROMPT
 
@@ -252,35 +262,40 @@ def _do_summarize_jsonl(agent: dict, session_id: str, llm_lock: threading.Lock,
             'message_count': summarized_count,
             'tail_messages': tail_messages,
         })
+        return True
+
+    return False
 
 
 def _do_summarize_sqlite(agent: dict, session_id: str, llm_lock: threading.Lock,
-                         threshold: int, tail_size: int) -> None:
-    """Summarize using SQLite as the message source (pre-JSONL fallback)."""
+                         threshold: int, tail_size: int) -> bool:
+    """Summarize using SQLite as the message source (pre-JSONL fallback).
+
+    Returns True if a summary was generated and persisted, False otherwise."""
     agent_id = agent['id']
 
     total = db.get_message_count(session_id, agent_id=agent_id)
     if total < threshold:
-        return
+        return False
 
     summary_record = db.get_summary(session_id, agent_id=agent_id)
 
     all_messages = db.get_session_messages(session_id, limit=9999, agent_id=agent_id)
     if len(all_messages) <= tail_size:
-        return
+        return False
 
     cut_index = len(all_messages) - tail_size
     cut_index = _adjust_cut_for_tool_chain(all_messages, cut_index)
     if cut_index > 0 and all_messages[cut_index - 1].get('role') == 'user':
         cut_index -= 1
     if cut_index <= 0:
-        return
+        return False
 
     last_summarized_msg = all_messages[cut_index - 1]
     new_last_message_id = last_summarized_msg['id']
 
     if summary_record and summary_record['last_message_id'] >= new_last_message_id:
-        return
+        return False
 
     if summary_record:
         msgs_to_summarize = db.get_messages_between(
@@ -292,7 +307,7 @@ def _do_summarize_sqlite(agent: dict, session_id: str, llm_lock: threading.Lock,
         existing_summary = None
 
     if not msgs_to_summarize:
-        return
+        return False
 
     prompt_template = agent.get('summarize_prompt') or DEFAULT_SUMMARIZE_PROMPT
 
@@ -372,6 +387,10 @@ def _do_summarize_sqlite(agent: dict, session_id: str, llm_lock: threading.Lock,
             'message_count': summarized_count,
             'tail_messages': tail_messages,
         })
+
+        return True
+
+    return False
 
 
 def _adjust_cut_for_tool_chain(messages: list, cut_index: int) -> int:

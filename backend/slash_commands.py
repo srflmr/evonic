@@ -203,8 +203,11 @@ def _register_builtins():
             return "Error: Agent not found."
 
         # Trigger summarization for this session
-        agent_runtime.summarize_session(agent, session_id)
-        return "Session summary has been regenerated."
+        updated = agent_runtime.summarize_session(agent, session_id)
+        if updated:
+            return "Session summary has been regenerated."
+        else:
+            return "Summary is already up to date, or there are not enough messages to summarize."
 
     command_registry.register(
         "summary",
