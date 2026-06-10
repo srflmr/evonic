@@ -1,0 +1,61 @@
+{
+  "id": "list_artifacts",
+  "name": "List Artifacts",
+  "description": "List and search your artifact files. Supports filename filtering, content searching (text files only), type filtering, sorting, and result limiting.",
+  "system_prompt": "## Artifact Listing\nYou can list and search your artifact files with the **list_artifacts** tool:\n- `filter`: case-insensitive substring match on filename (e.g. `filter=\"report\"`)\n- `grep`: case-insensitive content search inside text/document files only — skipped for images, videos, sound, and binary data\n- `type`: filter by category — `document`, `text`, `image`, `sound`, `video`, `data`, or leave empty for all\n- `sort`: `newest` (default), `updated`, `alpha`, `alpha_desc`\n- `limit`: maximum results (default 50, max 200)\n\nUse this tool when you need to find artifacts you previously saved with `save_artifact`.",
+  "function": {
+    "name": "list_artifacts",
+    "description": "List and search your artifact files. Supports filename filtering, content searching (text files only), type filtering, sorting, and result limiting.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "filter": {
+          "type": "string",
+          "description": "Case-insensitive substring filter on filename. Example: 'report' matches report.md, report-2026.pdf, etc."
+        },
+        "grep": {
+          "type": "string",
+          "description": "Case-insensitive content search. Only searches inside text and document files (txt, md, json, csv, log, source code, etc.). Skipped for images, videos, sound, and binary data."
+        },
+        "type": {
+          "type": "string",
+          "description": "Filter by file category. One of: document, text, image, sound, video, data. Omit or use empty string for all types."
+        },
+        "sort": {
+          "type": "string",
+          "description": "Sort order. One of: newest (default, by modification time), updated (same as newest), alpha (alphabetical A-Z), alpha_desc (alphabetical Z-A)."
+        },
+        "limit": {
+          "type": "integer",
+          "description": "Maximum number of results to return. Default 50, maximum 200."
+        }
+      },
+      "required": []
+    }
+  },
+  "mock_response": {
+    "files": [
+      {
+        "filename": "report.md",
+        "size": 1024,
+        "modified": 1718035200.0,
+        "category": "document"
+      },
+      {
+        "filename": "analysis.json",
+        "size": 512,
+        "modified": 1718035200.0,
+        "category": "text"
+      },
+      {
+        "filename": "chart.png",
+        "size": 2048,
+        "modified": 1718035200.0,
+        "category": "image"
+      }
+    ],
+    "total": 3,
+    "filter": "report"
+  },
+  "mock_response_type": "json"
+}

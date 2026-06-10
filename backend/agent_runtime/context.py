@@ -197,6 +197,7 @@ def _build_static_prompt(agent: Dict[str, Any]) -> str:
 
     # Inject system_prompt from assigned tool definitions
     assigned_ids = set(db.get_agent_tools(eid))
+
     if assigned_ids:
         seen_fn_names = set()
         for tool_def in tool_registry.get_all_tool_defs():

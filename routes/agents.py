@@ -72,6 +72,17 @@ WORKSPACE_DIR = os.path.join(BASE_DIR, 'shared', 'agents')
 SLUG_RE = re.compile(r'^[a-z0-9_]+$')
 USER_ID_RE = re.compile(r'^[a-zA-Z0-9_\-\.@]{1,128}$')
 
+# Tools managed exclusively by the artifacts_enabled agent setting.
+# These cannot be toggled manually in the Tools tab — they are read-only.
+ARTIFACT_TOOLS = frozenset({
+    'save_artifact',
+    'list_artifacts',
+    'read_attachment',
+    'cleanup_attachments',
+    'portal_copy',
+    'copy_status',
+})
+
 
 def _validate_user_id(user_id: str) -> str:
     """Validate and normalize a user_id parameter.
@@ -241,10 +252,11 @@ def api_create_agent():
         _write_system_prompt(agent_id, data.get('system_prompt', ''))
         # Create artifacts directory
         _artifacts_dir(agent_id)
-        # Add save_artifact tool for agents with artifacts enabled
+        # Add artifact tools for agents with artifacts enabled
         artifacts_enabled = data.get('artifacts_enabled')
         if artifacts_enabled is None or artifacts_enabled:
-            db.add_agent_tool(agent_id, 'save_artifact')
+            for tool_id in ARTIFACT_TOOLS:
+                db.add_agent_tool(agent_id, tool_id)
         # Create notes.md template if it does not already exist
         _notes_md = os.path.join(_kb_dir(agent_id), 'notes.md')
         if not os.path.isfile(_notes_md):
@@ -270,15 +282,17 @@ def api_update_agent(agent_id):
     _apply_sandbox_workplace_policy(data, target_workplace_id)
     if 'system_prompt' in data:
         _write_system_prompt(agent_id, data['system_prompt'])
-    # Handle artifacts_enabled toggle: manage save_artifact tool
+    # Handle artifacts_enabled toggle: manage all artifact tools
     if 'artifacts_enabled' in data:
         old_artifacts = existing.get('artifacts_enabled', True) if existing.get('artifacts_enabled') is not None else True
         new_artifacts = bool(data['artifacts_enabled'])
         if new_artifacts != old_artifacts:
             if new_artifacts:
-                db.add_agent_tool(agent_id, 'save_artifact')
+                for tool_id in ARTIFACT_TOOLS:
+                    db.add_agent_tool(agent_id, tool_id)
             else:
-                db.remove_agent_tool(agent_id, 'save_artifact')
+                for tool_id in ARTIFACT_TOOLS:
+                    db.remove_agent_tool(agent_id, tool_id)
     db.update_agent(agent_id, data)
     agent = db.get_agent(agent_id)
     agent['system_prompt'] = _read_system_prompt(agent_id, fallback=agent.get('system_prompt', ''))
@@ -368,6 +382,19 @@ def api_get_agent_tools(agent_id):
 def api_set_agent_tools(agent_id):
     data = request.get_json()
     tool_ids = data.get('tools', [])
+    # Enforce artifacts_enabled lock: artifact tools are managed exclusively
+    # by the agent's artifacts_enabled setting, not via manual toggle.
+    agent = db.get_agent(agent_id)
+    if agent:
+        artifacts_enabled = agent.get('artifacts_enabled', True)
+        if artifacts_enabled:
+            # Ensure all artifact tools are present — silently re-add if omitted
+            for tool_id in ARTIFACT_TOOLS:
+                if tool_id not in tool_ids:
+                    tool_ids.append(tool_id)
+        else:
+            # Ensure no artifact tools are present — silently strip if added
+            tool_ids = [tid for tid in tool_ids if tid not in ARTIFACT_TOOLS]
     db.set_agent_tools(agent_id, tool_ids)
     return jsonify({'success': True, 'tools': tool_ids})
 
@@ -1544,8 +1571,8 @@ def api_chat_stream(agent_id):
             try:
                 payload = transform(data)
                 if payload is not None:
-                    payload['seq'] = data.get('_seq')
-                    q.put_nowait((sse_event_name, payload, data.get('_seq')))
+                    payload['seq'] = data.get('_chat_seq')
+                    q.put_nowait((sse_event_name, payload, data.get('_chat_seq')))
             except queue.Full:
                 pass
         return handler
@@ -1682,9 +1709,9 @@ def api_chat_stream(agent_id):
         if sse_name_transform:
             sse_name, transform = sse_name_transform
             payload = transform(entry['data'])
-            payload['seq'] = entry['seq']
+            payload['seq'] = entry['chat_seq']
             try:
-                q.put_nowait((sse_name, payload, entry['seq']))
+                q.put_nowait((sse_name, payload, entry['chat_seq']))
             except queue.Full:
                 break
 
@@ -1824,6 +1851,9 @@ def api_chat_events(agent_id):
         'approval_required': ('approval_required', lambda d: {'approval_id': d.get('approval_id', ''), 'agent_id': d.get('agent_id', ''), 'source_agent_id': d.get('source_agent_id', ''), 'source_agent_name': d.get('source_agent_name', ''), 'tool': d.get('tool_name', ''), 'args': d.get('tool_args', {}), 'approval_info': d.get('approval_info', {}), 'reasons': d.get('reasons', []), 'score': d.get('score')}),
         'approval_resolved': ('approval_resolved', lambda d: {'approval_id': d.get('approval_id', ''), 'decision': d.get('decision', ''), 'timed_out': d.get('timed_out', False)}),
         'llm_retry':         ('retry',             lambda d: {'retry_count': d.get('retry_count', 0), 'max_retries': d.get('max_retries', 0), 'error_type': d.get('error_type', ''), 'message': d.get('user_message', '')}),
+        'message_injected':  ('message_injected',  lambda d: {'message': d.get('message', '')}),
+        'message_injection_applied': ('message_injection_applied', lambda d: {'content': d.get('content', ''), 'count': d.get('count', 1)}),
+        'session_clear':     ('session_clear',     lambda d: {'session_id': d.get('session_id', ''), 'agent_id': d.get('agent_id', '')}),
         'turn_split':        ('turn_split',        lambda d: {}),
     }
 
@@ -1837,8 +1867,8 @@ def api_chat_events(agent_id):
         if event_name in _TRANSFORM_MAP:
             sse_name, transform = _TRANSFORM_MAP[event_name]
             payload = transform(entry['data'])
-            payload['seq'] = entry['seq']
-            events.append({'event': sse_name, 'seq': entry['seq'], 'data': payload})
+            payload['seq'] = entry['chat_seq']
+            events.append({'event': sse_name, 'seq': entry['chat_seq'], 'data': payload})
 
     return jsonify({'events': events})
 
