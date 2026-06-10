@@ -1545,11 +1545,10 @@ def api_chat_session(agent_id):
 @agents_bp.route('/api/agents/<agent_id>/chat/stream', methods=['GET'])
 def api_chat_stream(agent_id):
     """SSE endpoint — pushes live thinking/tool events for a session to the browser.
-    DEPRECATED: Use unified GET /api/realtime/stream?chat=1 instead."""
-    import logging as _log_depr
-    _log_depr.getLogger(__name__).warning(
-        "DEPRECATED endpoint /api/agents/<agent_id>/chat/stream used — "
-        "migrate to /api/realtime/stream?chat=1")
+
+    Still the active chat transport: the chat UI bundle has not been migrated to the
+    unified GET /api/realtime/stream?chat=1 (the unified chat path needs its own
+    seq-correctness work first). Kept intentionally; do not remove."""
     session_id = request.args.get('session_id')
     if not session_id:
         return jsonify({'error': 'session_id required'}), 400

@@ -17,7 +17,6 @@ Handlers are called asynchronously in a thread pool and must not block.
 Events are logged to logs/events.log (configurable via EVENT_LOG_FILE in .env).
 """
 
-import bisect
 import collections
 import itertools
 import logging
@@ -28,6 +27,27 @@ from datetime import datetime, timezone
 from typing import Callable, Dict, List, Optional
 
 _logger = logging.getLogger(__name__)
+
+# Event types that the per-session chat SSE stream forwards to the browser.
+# A per-session "chat seq" is assigned ONLY to these (see EventStream.emit), so the
+# sequence the browser sees is contiguous and gap-detection never misfires on
+# unrelated/global events. Keep in sync with the live stream + gap-fill transforms
+# in routes/agents.py.
+CHAT_FORWARDED_EVENTS = frozenset({
+    'turn_begin',
+    'llm_thinking',
+    'tool_call_started',
+    'tool_executed',
+    'llm_response_chunk',
+    'turn_complete',
+    'approval_required',
+    'approval_resolved',
+    'llm_retry',
+    'message_injected',
+    'message_injection_applied',
+    'session_clear',
+    'turn_split',
+})
 
 
 class EventStream:
@@ -46,6 +66,9 @@ class EventStream:
         self._buffer_lock = threading.Lock()
         self._global_buffer: collections.deque = collections.deque(maxlen=1000)
         self._session_buffers: Dict[str, collections.deque] = {}
+        # Per-session monotonic counter over CHAT_FORWARDED_EVENTS only, so the
+        # browser's chat stream sees a contiguous (gap-free) sequence.
+        self._session_chat_seq: Dict[str, int] = {}
         self._web_listeners: Dict[str, int] = {}
 
     def _get_log_file(self) -> str:
@@ -119,8 +142,15 @@ class EventStream:
         data['_event'] = event_name
         # Store in ring buffers for gap-fill queries
         session_id = data.get('session_id')
+        chat_seq = None
         entry = {'seq': seq, 'event': event_name, 'data': data}
         with self._buffer_lock:
+            # Assign a contiguous per-session chat seq for forwarded events only.
+            if session_id and event_name in CHAT_FORWARDED_EVENTS:
+                chat_seq = self._session_chat_seq.get(session_id, 0) + 1
+                self._session_chat_seq[session_id] = chat_seq
+                data['_chat_seq'] = chat_seq
+                entry['chat_seq'] = chat_seq
             self._global_buffer.append(entry)
             if session_id:
                 if session_id not in self._session_buffers:
@@ -134,27 +164,26 @@ class EventStream:
             self._executor.submit(self._safe_call, event_name, cb, data)
 
     def get_events_in_range(self, session_id: str, after_seq: int, up_to_seq: int) -> list:
-        """Return buffered events for session_id where after_seq < seq <= up_to_seq."""
+        """Return chat-forwarded events for session_id where
+        after_seq < chat_seq <= up_to_seq (chat_seq is the per-session chat seq)."""
         with self._buffer_lock:
             buf = self._session_buffers.get(session_id, collections.deque())
             if not buf:
                 return []
-            events = list(buf)
-            seqs = [e['seq'] for e in events]
-            lo = bisect.bisect_right(seqs, after_seq)
-            hi = bisect.bisect_right(seqs, up_to_seq)
-            return events[lo:hi]
+            return [e for e in buf
+                    if 'chat_seq' in e and after_seq < e['chat_seq'] <= up_to_seq]
 
     def get_session_events(self, session_id: str, after_seq: int = 0) -> list:
-        """Return all buffered events for session_id with seq > after_seq."""
+        """Return chat-forwarded events for session_id with chat_seq > after_seq."""
         with self._buffer_lock:
             buf = self._session_buffers.get(session_id, collections.deque())
-            return [e for e in buf if e['seq'] > after_seq]
+            return [e for e in buf if 'chat_seq' in e and e['chat_seq'] > after_seq]
 
     def cleanup_session_buffer(self, session_id: str):
         """Remove per-session buffer (called after turn completes)."""
         with self._buffer_lock:
             self._session_buffers.pop(session_id, None)
+            self._session_chat_seq.pop(session_id, None)
 
     def register_web_listener(self, session_id: str):
         with self._lock:
