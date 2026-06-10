@@ -98,6 +98,7 @@ def maybe_summarize(agent: dict, session_id: str,
     # Never reverse this order.
     with summarize_guard:
         if session_id in summarize_active:
+            print(f"[AgentRuntime] Summarize skipped: already in progress for session {session_id}")
             return False
         summarize_active.add(session_id)
     try:
@@ -141,6 +142,7 @@ def _do_summarize_jsonl(agent: dict, session_id: str, llm_lock: threading.Lock,
 
     total = chatlog.count_entries(types=summary_count_types)
     if total < threshold:
+        print(f"[AgentRuntime] Summarize skipped: only {total} message(s), threshold is {threshold}")
         return False
 
     summary_record = db.get_summary(session_id, agent_id=agent_id)
@@ -148,6 +150,7 @@ def _do_summarize_jsonl(agent: dict, session_id: str, llm_lock: threading.Lock,
     # Get all conversation entries (user, final, intermediate) for cut-point calculation
     all_entries = chatlog.get_all_for_session(types=summary_count_types)
     if len(all_entries) <= tail_size:
+        print(f"[AgentRuntime] Summarize skipped: only {len(all_entries)} entry(s), tail_size is {tail_size}")
         return False
 
     # Cut: summarize everything except the last tail_size entries
@@ -156,6 +159,7 @@ def _do_summarize_jsonl(agent: dict, session_id: str, llm_lock: threading.Lock,
     if cut_index > 0 and all_entries[cut_index - 1].get('type') == 'user':
         cut_index -= 1
     if cut_index <= 0:
+        print(f"[AgentRuntime] Summarize skipped: cut_index={cut_index}, nothing to summarize")
         return False
 
     last_summarized_entry = all_entries[cut_index - 1]
@@ -163,6 +167,7 @@ def _do_summarize_jsonl(agent: dict, session_id: str, llm_lock: threading.Lock,
 
     # Skip if summary already covers this point
     if summary_record and (summary_record.get('last_message_ts') or 0) >= new_last_ts:
+        print(f"[AgentRuntime] Summarize skipped: summary already up to date (last_message_ts={summary_record.get('last_message_ts')} >= new_last_ts={new_last_ts})")
         return False
 
     # Get entries to fold into summary
@@ -179,6 +184,7 @@ def _do_summarize_jsonl(agent: dict, session_id: str, llm_lock: threading.Lock,
         existing_summary = None
 
     if not entries_to_summarize:
+        print(f"[AgentRuntime] Summarize skipped: no new entries to summarize between existing summary and new cut point")
         return False
 
     prompt_template = agent.get('summarize_prompt') or DEFAULT_SUMMARIZE_PROMPT
@@ -230,6 +236,7 @@ def _do_summarize_jsonl(agent: dict, session_id: str, llm_lock: threading.Lock,
         summarized_count += len(chunk)
 
     if current_summary and summarized_up_to_ts > ((summary_record.get('last_message_ts') or 0) if summary_record else 0):
+        print(f"[AgentRuntime] Summarize OK: {summarized_count} message(s) covered, last_message_ts={summarized_up_to_ts}")
         db.upsert_summary(session_id, current_summary, 0,
                           summarized_count, agent_id=agent_id,
                           last_message_ts=summarized_up_to_ts)
@@ -276,12 +283,14 @@ def _do_summarize_sqlite(agent: dict, session_id: str, llm_lock: threading.Lock,
 
     total = db.get_message_count(session_id, agent_id=agent_id)
     if total < threshold:
+        print(f"[AgentRuntime] Summarize skipped (sqlite): only {total} message(s), threshold is {threshold}")
         return False
 
     summary_record = db.get_summary(session_id, agent_id=agent_id)
 
     all_messages = db.get_session_messages(session_id, limit=9999, agent_id=agent_id)
     if len(all_messages) <= tail_size:
+        print(f"[AgentRuntime] Summarize skipped (sqlite): only {len(all_messages)} message(s), tail_size is {tail_size}")
         return False
 
     cut_index = len(all_messages) - tail_size
@@ -289,12 +298,14 @@ def _do_summarize_sqlite(agent: dict, session_id: str, llm_lock: threading.Lock,
     if cut_index > 0 and all_messages[cut_index - 1].get('role') == 'user':
         cut_index -= 1
     if cut_index <= 0:
+        print(f"[AgentRuntime] Summarize skipped (sqlite): cut_index={cut_index}, nothing to summarize")
         return False
 
     last_summarized_msg = all_messages[cut_index - 1]
     new_last_message_id = last_summarized_msg['id']
 
     if summary_record and summary_record['last_message_id'] >= new_last_message_id:
+        print(f"[AgentRuntime] Summarize skipped (sqlite): summary already up to date (last_message_id={summary_record['last_message_id']} >= {new_last_message_id})")
         return False
 
     if summary_record:
@@ -307,6 +318,7 @@ def _do_summarize_sqlite(agent: dict, session_id: str, llm_lock: threading.Lock,
         existing_summary = None
 
     if not msgs_to_summarize:
+        print(f"[AgentRuntime] Summarize skipped (sqlite): no new messages to summarize")
         return False
 
     prompt_template = agent.get('summarize_prompt') or DEFAULT_SUMMARIZE_PROMPT
@@ -358,6 +370,7 @@ def _do_summarize_sqlite(agent: dict, session_id: str, llm_lock: threading.Lock,
         summarized_count += len(chunk)
 
     if current_summary and summarized_up_to > (summary_record['last_message_id'] if summary_record else 0):
+        print(f"[AgentRuntime] Summarize OK (sqlite): {summarized_count} message(s) covered, last_message_id={summarized_up_to}")
         db.upsert_summary(session_id, current_summary, summarized_up_to,
                           summarized_count, agent_id=agent_id)
 
