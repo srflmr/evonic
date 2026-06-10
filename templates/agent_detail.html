@@ -1429,7 +1429,11 @@ function showTab(name) {
     // server-rendered form — saving it would write stale values into the new
     // agent. Do one real navigation to re-render it.
     if (window._softSwitched && name === 'general') {
-        window.location.href = '/agents/' + encodeURIComponent(AGENT_ID) + '#general';
+        // URL is already /agents/<id>#chat after a soft switch, so changing only
+        // the hash won't reload. Set the hash, then force a real reload so the
+        // server re-renders Settings for the current agent.
+        location.hash = 'general';
+        location.reload();
         return;
     }
     $('.tab-content').addClass('hidden');
