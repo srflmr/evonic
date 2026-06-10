@@ -311,3 +311,6 @@ CHANGELOG.md
 
 # Agent artifacts (generated reports, review outputs)
 artifacts/
+
+# PROMPTPurify ONNX model (downloaded via download_model.sh)
+backend/promptpurify/model.int8.onnx

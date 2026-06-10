@@ -9,10 +9,16 @@ Signature matches plugin_hooks.register_tool_guard():
 """
 from typing import Optional
 
-import re
 import logging
+import re
+import threading
 
 _logger = logging.getLogger(__name__)
+
+# Lazy-loaded L5e ML classifier (PROMPTPurify)
+_l5e_runner = None
+_l5e_lock = threading.Lock()
+_l5e_unavailable = False
 
 # ───────────────────────────────────────────────────────────────────────
 # Severity Levels
@@ -794,6 +800,111 @@ def _detect_injection(text: str) -> tuple[bool, str, str, float, str]:
     return (True, severity, rule_name, risk_score, reason)
 
 
+# ────────────────────────────────────────────────────────────────────────────────────
+# ML Layer — PROMPTPurify L5e (second pass after regex guard)
+# ────────────────────────────────────────────────────────────────────────────────────
+
+# ML score → severity mapping thresholds
+_ML_BLOCK_THRESHOLD  = 0.95  # >= 0.95 -> CRITICAL (block)
+_ML_WARN_THRESHOLD   = 0.85  # >= 0.85 -> HIGH (warn/advisory)
+_ML_MEDIUM_THRESHOLD = 0.70  # >= 0.70 -> MEDIUM
+_ML_LOW_THRESHOLD    = 0.50  # >= 0.50 -> LOW
+
+
+def _get_ml_runner():
+    """Lazy-load the L5e ML runner. Returns None if unavailable."""
+    global _l5e_runner, _l5e_unavailable
+
+    if _l5e_unavailable:
+        return None
+    if _l5e_runner is not None:
+        return _l5e_runner
+
+    with _l5e_lock:
+        if _l5e_runner is not None:
+            return _l5e_runner
+        try:
+            from backend.promptpurify.l5e_runner import L5eRunner
+
+            _l5e_runner = L5eRunner()
+            _logger.info(
+                "PROMPTPurify L5e ML classifier loaded: version=%s",
+                _l5e_runner.version,
+            )
+            return _l5e_runner
+        except Exception as e:
+            _l5e_unavailable = True
+            _logger.warning(
+                "PROMPTPurify L5e ML classifier unavailable: %s", e
+            )
+            return None
+
+
+def _ml_detect_injection(text: str):
+    """
+    Run the ML classifier on text as a second pass after regex detection.
+
+    The ML model catches novel/creative attacks that regex misses.
+    It uses a self-pretrained ELECTRA-small transformer (~13.7M params)
+    to classify text as injection or benign.
+
+    Returns:
+        (is_injected, severity, rule_name, risk_score, reason)
+    """
+    if not text or not isinstance(text, str):
+        return (False, "", "", 0.0, "")
+
+    runner = _get_ml_runner()
+    if runner is None:
+        return (False, "", "", 0.0, "")
+
+    try:
+        score = runner.score(text)
+    except Exception as e:
+        _logger.debug("ML inference failed: %s", e)
+        return (False, "", "", 0.0, "")
+
+    if score >= _ML_BLOCK_THRESHOLD:
+        return (
+            True,
+            "CRITICAL",
+            "ml_classifier_critical",
+            min(score, 1.0),
+            f"ML classifier score: {score:.4f} (threshold: {_ML_BLOCK_THRESHOLD}) "
+            f"— likely prompt injection detected by PROMPTPurify L5e model.",
+        )
+    elif score >= _ML_WARN_THRESHOLD:
+        return (
+            True,
+            "HIGH",
+            "ml_classifier_high",
+            score,
+            f"ML classifier score: {score:.4f} (threshold: {_ML_WARN_THRESHOLD}) "
+            f"— possible prompt injection detected by PROMPTPurify L5e model.",
+        )
+    elif score >= _ML_MEDIUM_THRESHOLD:
+        return (
+            True,
+            "MEDIUM",
+            "ml_classifier_medium",
+            score,
+            f"ML classifier score: {score:.4f} (threshold: {_ML_MEDIUM_THRESHOLD}) "
+            f"— borderline prompt injection detected by PROMPTPurify L5e model.",
+        )
+    elif score >= _ML_LOW_THRESHOLD:
+        return (
+            True,
+            "LOW",
+            "ml_classifier_low",
+            score,
+            f"ML classifier score: {score:.4f} (threshold: {_ML_LOW_THRESHOLD}) "
+            f"— low confidence prompt injection detected by PROMPTPurify L5e model.",
+        )
+
+    return (False, "", "", 0.0, "")
+
+
+
 # ───────────────────────────────────────────────────────────────────────
 # Main Guard Function — matches register_tool_guard signature
 # ───────────────────────────────────────────────────────────────────────
@@ -835,7 +946,7 @@ def injection_tool_guard(agent_id: str, tool_name: str, args: dict) -> Optional[
     if not texts:
         return None
 
-    # Scan each text chunk
+    # Scan each text chunk (regex first pass)
     for text in texts:
         is_injected, severity, rule_name, risk_score, reason = _detect_injection(text)
         if not is_injected:
@@ -881,5 +992,61 @@ def injection_tool_guard(agent_id: str, tool_name: str, args: dict) -> Optional[
             agent_id, tool_name, severity, score_pct, rule_name,
         )
         return {"block": True, "error": error_msg}
+
+    # ML second pass (PROMPTPurify L5e) — catches novel attacks regex misses
+    ml_enabled = config.get("injection_guard_ml_enabled", False)
+    if ml_enabled:
+        ml_runner = _get_ml_runner()
+        if ml_runner is not None:
+            for text in texts:
+                is_injected, severity, rule_name, risk_score, reason = (
+                    _ml_detect_injection(text)
+                )
+                if not is_injected:
+                    continue
+
+                sev_order = _SEVERITY_ORDER.get(severity, 0)
+                if sev_order < min_sev_order:
+                    continue
+
+                score_pct = int(risk_score * 100)
+                error_msg = (
+                    f"Prompt injection detected in tool arguments "
+                    f"(severity: {severity}, score: {score_pct}%). "
+                    f"{reason}"
+                )
+
+                if mode == "log":
+                    _logger.warning(
+                        "INJECTION_ML_LOG agent=%s tool=%s severity=%s "
+                        "score=%d rule=%s",
+                        agent_id, tool_name, severity, score_pct, rule_name,
+                    )
+                    return None
+
+                if mode == "warn":
+                    _logger.warning(
+                        "INJECTION_ML_WARN agent=%s tool=%s severity=%s "
+                        "score=%d rule=%s",
+                        agent_id, tool_name, severity, score_pct, rule_name,
+                    )
+                    return {
+                        "block": True,
+                        "error": (
+                            f"[WARN] {error_msg}\n"
+                            f"This tool call has been blocked by the "
+                            f"PROMPTPurify ML injection guard (mode: warn). "
+                            f"Contact your administrator to adjust the "
+                            f"guard policy if this is a false positive."
+                        ),
+                    }
+
+                # Default: block mode
+                _logger.warning(
+                    "INJECTION_ML_BLOCK agent=%s tool=%s severity=%s "
+                    "score=%d rule=%s",
+                    agent_id, tool_name, severity, score_pct, rule_name,
+                )
+                return {"block": True, "error": error_msg}
 
     return None
