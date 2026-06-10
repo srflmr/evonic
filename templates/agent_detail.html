@@ -161,12 +161,11 @@ html.dark #channel-detail-modal .hover\:bg-indigo-100:hover { background: #312e8
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
             </a>
             <h2 id="agent-header-name" class="text-xl font-bold text-gray-800 dark:text-gray-100">{{ agent.name }}</h2>
-            {% if not agent.is_super %}
-            <span id="agent-header-id-badge" class="text-xs text-gray-400 bg-gray-100 dark:bg-gray-700 dark:text-gray-400 px-2 py-0.5 rounded font-mono">{{ agent.id }}</span>
-            {% endif %}
+            {# Always rendered (hidden for super) so softSwitchAgent can toggle without a full reload #}
+            <span id="agent-header-id-badge" class="text-xs text-gray-400 bg-gray-100 dark:bg-gray-700 dark:text-gray-400 px-2 py-0.5 rounded font-mono{{ ' hidden' if agent.is_super else '' }}">{{ agent.id }}</span>
         </div>
-        {% if not agent.is_super %}
-        <div class="relative" id="gear-dropdown-wrap">
+        {# Always rendered (hidden for super) so softSwitchAgent can toggle without a full reload #}
+        <div class="relative{{ ' hidden' if agent.is_super else '' }}" id="gear-dropdown-wrap">
             <button onclick="toggleGearDropdown()" class="flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-500 hover:text-gray-700 hover:bg-gray-100 dark:hover:bg-gray-700 dark:text-gray-400 dark:hover:text-gray-200 rounded-md transition-colors" title="Agent actions" id="gear-btn">
                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
             </button>
@@ -185,7 +184,6 @@ html.dark #channel-detail-modal .hover\:bg-indigo-100:hover { background: #312e8
                 </button>
             </div>
         </div>
-        {% endif %}
     </div>
     <!-- Tabs -->
     <div class="flex gap-1 mb-6 border-b border-gray-200 dark:border-gray-700 overflow-x-auto flex-shrink-0" style="-webkit-overflow-scrolling: touch;">
@@ -193,9 +191,8 @@ html.dark #channel-detail-modal .hover\:bg-indigo-100:hover { background: #312e8
         <button class="tab-btn flex-shrink-0 whitespace-nowrap px-4 py-2.5 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700" onclick="showTab('general')" data-tab="general">Settings</button>
         <button class="tab-btn flex-shrink-0 whitespace-nowrap px-4 py-2.5 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700" onclick="showTab('knowledge')" data-tab="knowledge">Knowledge</button>
         <button class="tab-btn flex-shrink-0 whitespace-nowrap px-4 py-2.5 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700" onclick="showTab('tools')" data-tab="tools">Tools</button>
-        {% if not agent.is_super %}
-        <button class="tab-btn flex-shrink-0 whitespace-nowrap px-4 py-2.5 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700" onclick="showTab('skills')" data-tab="skills">Skills</button>
-        {% endif %}
+        {# Always rendered (hidden for super) so softSwitchAgent can toggle without a full reload #}
+        <button class="tab-btn flex-shrink-0 whitespace-nowrap px-4 py-2.5 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700{{ ' hidden' if agent.is_super else '' }}" onclick="showTab('skills')" data-tab="skills">Skills</button>
         <button class="tab-btn flex-shrink-0 whitespace-nowrap px-4 py-2.5 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700" onclick="showTab('channels')" data-tab="channels">Channels</button>
         <button class="tab-btn flex-shrink-0 whitespace-nowrap px-4 py-2.5 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700" onclick="showTab('portals')" data-tab="portals">Portals</button>
         {% if agent.artifacts_enabled %}
@@ -530,8 +527,7 @@ html.dark #channel-detail-modal .hover\:bg-indigo-100:hover { background: #312e8
         </div>
     </div>
 
-    <!-- Skills Tab -->
-    {% if not agent.is_super %}
+    <!-- Skills Tab (always rendered; button hidden for super so it's unreachable there) -->
     <div id="tab-skills" class="tab-content hidden flex-1 min-h-0 overflow-y-auto">
         <div class="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-600 p-6 max-w-3xl">
             <h3 class="text-base font-semibold text-gray-800 dark:text-gray-100 mb-1">Skills</h3>
@@ -543,7 +539,6 @@ html.dark #channel-detail-modal .hover\:bg-indigo-100:hover { background: #312e8
             <span id="skills-save-status" class="mt-2 inline-block text-sm text-green-600 hidden">Saved!</span>
         </div>
     </div>
-    {% endif %}
 
     <!-- Channels Tab -->
     <div id="tab-channels" class="tab-content hidden flex-1 min-h-0 overflow-y-auto">
@@ -4796,10 +4791,11 @@ window.softSwitchAgent = async function (newId, opts = {}) {
         data = await res.json();
     } catch (e) { return false; }
 
-    // Structural guard: these flags change which tabs/panels were server-rendered.
-    const hasSkillsTab = !!document.querySelector('[data-tab="skills"]');
+    // Structural guard: the artifacts tab and agent-state panels are
+    // conditionally server-rendered and NOT toggled here — fall back to a full
+    // nav when they differ. (is_super differences ARE handled below: the ID
+    // badge / gear menu / Skills tab are always rendered and toggled.)
     const hasArtifactsTab = !!document.querySelector('[data-tab="artifacts"]');
-    if (!!data.is_super === hasSkillsTab) return false; // skills tab exists only for non-super
     if (!!data.artifacts_enabled !== hasArtifactsTab) return false;
     if (!!data.enable_agent_state !== ENABLE_AGENT_STATE) return false;
 
@@ -4829,6 +4825,12 @@ window.softSwitchAgent = async function (newId, opts = {}) {
     // --- Update server-rendered header bits ---
     const nameEl = document.getElementById('agent-header-name');
     if (nameEl) nameEl.textContent = data.name || newId;
+    // Toggle super-only structural elements (always present in the DOM now)
+    const isSuper = !!data.is_super;
+    ['#agent-header-id-badge', '#gear-dropdown-wrap', '[data-tab="skills"]'].forEach(function (sel) {
+        const el = document.querySelector(sel);
+        if (el) el.classList.toggle('hidden', isSuper); // shown for regular, hidden for super
+    });
     const idBadge = document.getElementById('agent-header-id-badge');
     if (idBadge) idBadge.textContent = newId;
     const chatName = document.getElementById('chat-panel-agent-name');
