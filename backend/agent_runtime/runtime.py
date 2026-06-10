@@ -855,6 +855,15 @@ class AgentRuntime:
         from backend.tools.lib.process_tracker import process_tracker
         process_tracker.kill(session_id)
 
+    def summarize_session(self, agent: dict, session_id: str) -> None:
+        """Trigger summarization for a session. Public API for slash commands."""
+        _sum.maybe_summarize(
+            agent, session_id,
+            self._llm_serializer._summarize_guard,
+            self._llm_serializer._summarize_active,
+            self._llm_serializer._llm_lock,
+        )
+
     def handle_message(self, agent_id: str, external_user_id: str,
                        message: str, channel_id: Optional[str] = None,
                        image_url: Optional[str] = None,
@@ -1589,6 +1598,11 @@ class AgentRuntime:
                 for _tid in _all_skill_ids:
                     if _tid not in _existing:
                         assigned_tool_ids.append(_tid)
+
+            # Agents with save_artifact automatically get list_artifacts.
+            # No DB assignment needed — every artifacts-enabled agent can search their files.
+            if 'save_artifact' in assigned_tool_ids and 'list_artifacts' not in assigned_tool_ids:
+                assigned_tool_ids.append('list_artifacts')
 
             # Resolve workspace: workplace config takes priority over agent.workspace.
             # For tunnel workplaces, never fall back to the agent's /workspace path —
