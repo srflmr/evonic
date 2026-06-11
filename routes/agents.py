@@ -262,6 +262,26 @@ def api_create_agent():
         if not os.path.isfile(_notes_md):
             with open(_notes_md, 'w', encoding='utf-8') as _f:
                 _f.write(_NOTES_MD_TEMPLATE)
+
+        # Copy default knowledge base files from defaults/ directory
+        import shutil as _shutil
+        _defaults_dir = os.path.join(BASE_DIR, 'defaults')
+
+        # evonic.md (from super_agent_kb_evonic.md)
+        _src = os.path.join(_defaults_dir, 'super_agent_kb_evonic.md')
+        if os.path.isfile(_src):
+            _shutil.copy2(_src, os.path.join(_kb_dir(agent_id), 'evonic.md'))
+
+        # reminder-and-schedule-creation-rules.md (scheduler/reminder guide)
+        _src = os.path.join(_defaults_dir, 'reminder-and-schedule-creation-rules.md')
+        if os.path.isfile(_src):
+            _shutil.copy2(_src, os.path.join(_kb_dir(agent_id), 'reminder-and-schedule-creation-rules.md'))
+
+        # evonet.md (Evonet connector reference)
+        _src = os.path.join(_defaults_dir, 'evonet.md')
+        if os.path.isfile(_src):
+            _shutil.copy2(_src, os.path.join(_kb_dir(agent_id), 'evonet.md'))
+
         agent = db.get_agent(agent_id)
         agent['system_prompt'] = _read_system_prompt(agent_id, fallback=agent.get('system_prompt', ''))
         return jsonify({'success': True, 'agent': _sanitize_agent(agent)})
