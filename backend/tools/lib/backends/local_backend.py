@@ -54,7 +54,8 @@ class LocalBackend(ExecutionBackend):
                  run_as_user: str = None):
         self._session_id = session_id
         self._workspace = workspace
-        self._run_as_user = run_as_user.strip() if run_as_user else None
+        stripped = (run_as_user or '').strip()
+        self._run_as_user = stripped if stripped else None  # strictly None or non-empty
 
     def _cwd(self) -> str:
         return os.path.abspath(self._workspace or SANDBOX_WORKSPACE)
@@ -101,7 +102,7 @@ class LocalBackend(ExecutionBackend):
         run_env = dict(os.environ)
         run_env.update(env)
         t0 = time.time()
-        cmd = ['sudo', '-u', self._run_as_user, 'bash', '-s'] if self._run_as_user else ['bash', '-s']
+        cmd = ['sudo', '-u', self._run_as_user, 'bash', '-s'] if self._run_as_user is not None else ['bash', '-s']
         proc = subprocess.Popen(
             cmd,
             stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
@@ -149,7 +150,7 @@ class LocalBackend(ExecutionBackend):
         existing = run_env.get('PYTHONPATH', '')
         run_env['PYTHONPATH'] = f"{_HELPERS_PARENT_DIR}{os.pathsep}{existing}".rstrip(os.pathsep)
         t0 = time.time()
-        cmd = ['sudo', '-u', self._run_as_user, 'python3', '-'] if self._run_as_user else ['python3', '-']
+        cmd = ['sudo', '-u', self._run_as_user, 'python3', '-'] if self._run_as_user is not None else ['python3', '-']
         proc = subprocess.Popen(
             cmd,
             stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
@@ -194,7 +195,7 @@ class LocalBackend(ExecutionBackend):
 
     def status(self) -> dict:
         info = {'backend': 'local', 'workspace': self._cwd()}
-        if self._run_as_user:
+        if self._run_as_user is not None:
             info['run_as_user'] = self._run_as_user
         return info
 
@@ -212,7 +213,7 @@ class LocalBackend(ExecutionBackend):
         *result* is the decoded stdout, or the raw dict parsed from a
         JSON line printed by the snippet.
         """
-        if not self._run_as_user:
+        if self._run_as_user is None:
             return {'error': 'run_as_user not set'}
         try:
             proc = subprocess.run(
@@ -239,7 +240,7 @@ class LocalBackend(ExecutionBackend):
             return {'error': str(e)}
 
     def file_exists(self, path: str) -> bool:
-        if not self._run_as_user:
+        if self._run_as_user is None:
             return os.path.exists(path)
         code = (
             "import os, json; "
@@ -251,7 +252,7 @@ class LocalBackend(ExecutionBackend):
         return False
 
     def file_stat(self, path: str) -> dict:
-        if not self._run_as_user:
+        if self._run_as_user is None:
             if not os.path.exists(path):
                 return {'exists': False}
             size = os.path.getsize(path)
@@ -277,7 +278,7 @@ class LocalBackend(ExecutionBackend):
         return {'exists': False, 'size': 0, 'is_binary': False}
 
     def read_file(self, path: str) -> dict:
-        if not self._run_as_user:
+        if self._run_as_user is None:
             try:
                 with open(path, 'r', encoding='utf-8', errors='replace') as f:
                     return {'content': f.read()}
@@ -308,7 +309,7 @@ class LocalBackend(ExecutionBackend):
         return {'error': r.get('error', 'Unknown error')}
 
     def write_file(self, path: str, content: str, create_dirs: bool = True) -> dict:
-        if not self._run_as_user:
+        if self._run_as_user is None:
             try:
                 if create_dirs:
                     parent = os.path.dirname(path)
@@ -349,7 +350,7 @@ class LocalBackend(ExecutionBackend):
 
     def cat_file_bytes(self, path: str) -> dict:
         """Read a file as raw bytes directly from the host filesystem."""
-        if not self._run_as_user:
+        if self._run_as_user is None:
             try:
                 with open(path, 'rb') as f:
                     return {'bytes': f.read()}
@@ -384,7 +385,7 @@ class LocalBackend(ExecutionBackend):
 
     def delete_file(self, path: str) -> dict:
         """Delete a file from the host filesystem."""
-        if not self._run_as_user:
+        if self._run_as_user is None:
             try:
                 os.remove(path)
                 return {'ok': True}
@@ -414,7 +415,7 @@ class LocalBackend(ExecutionBackend):
         return {'error': r.get('error', 'Unknown error')}
 
     def make_dirs(self, path: str) -> dict:
-        if not self._run_as_user:
+        if self._run_as_user is None:
             try:
                 os.makedirs(path, exist_ok=True)
                 return {'ok': True}
