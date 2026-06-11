@@ -825,7 +825,31 @@ def _exec_assign_skills(args: dict) -> dict:
         return {'message': f"All {len(skill_ids)} skill(s) are already assigned to agent '{agent_id}'. No changes made."}
     merged = current_skills + new_skills
     db.set_agent_skills(agent_id, merged)
-    return {'success': True, 'message': f"Added {len(new_skills)} new skill(s) to agent '{agent_id}' ({len(skill_ids)} requested, {len(skill_ids) - len(new_skills)} already assigned). Total: {len(merged)} skill(s)."}
+
+    # Auto-assign tools for non-lazy skills
+    from backend.skills_manager import skills_manager
+    current_tools = db.get_agent_tools(agent_id)
+    total_tools_added = 0
+    for skill_id in new_skills:
+        skill = skills_manager.get_skill(skill_id)
+        if not skill:
+            continue
+        if skill.get('lazy_tools', False):
+            continue  # skip lazy skills — tools loaded on demand via use_skill
+        tool_defs = skills_manager.get_skill_tool_defs(skill_id)
+        for td in tool_defs:
+            fn_name = td['function']['name'] if isinstance(td, dict) and 'function' in td else td.get('name', '')
+            tool_id = f"skill:{skill_id}:{fn_name}" if fn_name else ''
+            if tool_id and tool_id not in current_tools:
+                current_tools.append(tool_id)
+                total_tools_added += 1
+    if total_tools_added > 0:
+        db.set_agent_tools(agent_id, current_tools)
+
+    msg = f"Added {len(new_skills)} new skill(s) to agent '{agent_id}' ({len(skill_ids)} requested, {len(skill_ids) - len(new_skills)} already assigned). Total: {len(merged)} skill(s)."
+    if total_tools_added > 0:
+        msg += f" Auto-assigned {total_tools_added} tool(s) from non-lazy skills."
+    return {'success': True, 'message': msg}
 
 
 def _exec_unassign_skill(args: dict) -> dict:
