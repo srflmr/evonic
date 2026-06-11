@@ -301,6 +301,11 @@ def start_server(port=None, host=None, debug=None, daemon=False):
             os.execv(release_py, [release_py, release_app])
             # execv replaces the process; lines below unreachable.
 
+    # We already hold the single-instance flock (acquired above via
+    # _acquire_pid_lock). app.py runs in THIS same process, so tell its
+    # module-level guard to skip re-acquiring the lock — a second flock on the
+    # same file from the same process would self-conflict and abort startup.
+    os.environ["EVONIC_PID_LOCK_HELD"] = "1"
     try:
         from app import app
     except ModuleNotFoundError as e:
