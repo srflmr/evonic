@@ -33,6 +33,23 @@ class SettingsMixin:
         self._settings_cache[key] = value
         return value
 
+    def get_settings_by_prefix(self, prefix: str) -> dict:
+        """Get all settings whose key starts with prefix, in a single query.
+
+        Returns {full_key: value}. LIKE wildcards in the prefix are escaped
+        so ids containing '_' or '%' can't cross-match other keys.
+        """
+        escaped = (prefix.replace('\\', '\\\\')
+                         .replace('%', '\\%')
+                         .replace('_', '\\_'))
+        with self._connect() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT key, value FROM app_settings WHERE key LIKE ? ESCAPE '\\'",
+                (escaped + '%',)
+            )
+            return {row[0]: row[1] for row in cursor.fetchall()}
+
     def set_setting(self, key: str, value: str):
         """Set an app-level setting. Invalidates the cache for this key."""
         with self._connect() as conn:
