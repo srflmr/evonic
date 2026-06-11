@@ -735,6 +735,7 @@ def api_get_general_settings():
         'max_concurrent_llm_global': int(db.get_setting('max_concurrent_llm_global', '1')),
         'agent_queue_workers': int(db.get_setting('agent_queue_workers', str(config.AGENT_QUEUE_WORKERS))),
         'max_tool_iterations': int(db.get_setting('max_tool_iterations', str(config.AGENT_MAX_TOOL_ITERATIONS))),
+        'agent_sidebar_limit': int(db.get_setting('agent_sidebar_limit', str(config.AGENT_SIDEBAR_LIMIT))),
         'theme': db.get_setting('theme', 'system'),
     })
 
@@ -840,6 +841,16 @@ def api_batch_save():
             results['max_tool_iterations'] = value
         except (ValueError, TypeError) as e:
             errors.append(f'max_tool_iterations: {e}')
+
+    # Agent Sidebar Limit
+    if 'agent_sidebar_limit' in settings:
+        try:
+            raw_value = int(settings['agent_sidebar_limit'])
+            value = max(1, min(500, raw_value))
+            db.set_setting('agent_sidebar_limit', str(value))
+            results['agent_sidebar_limit'] = value
+        except (ValueError, TypeError) as e:
+            errors.append(f'agent_sidebar_limit: {e}')
 
     # Theme
     if 'theme' in settings:
