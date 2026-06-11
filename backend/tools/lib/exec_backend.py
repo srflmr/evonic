@@ -201,7 +201,9 @@ class BackendRegistry:
             backend = DockerBackend(session_id, agent_id=agent_id, workspace=workspace)
         else:
             from backend.tools.lib.backends.local_backend import LocalBackend
-            backend = LocalBackend(session_id=session_id, workspace=workspace)
+            run_as_user = (agent_context or {}).get('run_as_user') or None
+            backend = LocalBackend(session_id=session_id, workspace=workspace,
+                                   run_as_user=run_as_user)
 
         # Don't store default backends — they're ephemeral and session-keyed
         # internally by DockerBackend itself. Only explicit overrides are stored.

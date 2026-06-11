@@ -136,6 +136,10 @@ _TOOL_DEFS = [
                     "enabled": {
                         "type": "boolean",
                         "description": "Whether the agent is enabled"
+                    },
+                    "run_as_user": {
+                        "type": "string",
+                        "description": "Linux username to run bash/python as when sandbox is disabled. Set to empty string to clear. Only super agents can change this."
                     }
                 },
                 "required": ["agent_id"]
@@ -424,7 +428,7 @@ def _exec_create_agent(args: dict) -> dict:
         return {'error': str(e)}
 
 
-def _exec_update_agent(args: dict) -> dict:
+def _exec_update_agent(args: dict, agent_context: dict = None) -> dict:
     agent_id = (args.get('agent_id') or '').strip()
     if not agent_id:
         return {'error': 'agent_id is required.'}
@@ -433,6 +437,14 @@ def _exec_update_agent(args: dict) -> dict:
         return {'error': f"Agent '{agent_id}' not found."}
     if agent.get('is_super') and args.get('enabled') is False:
         return {'error': 'Super agent cannot be disabled.'}
+
+    # Security: only super agents can set/clear run_as_user.
+    # Prevent non-super agents from escalating by clearing their own run_as_user.
+    if 'run_as_user' in args:
+        caller_is_super = (agent_context or {}).get('is_super', False) if agent_context else True
+        if not caller_is_super:
+            return {'error': 'Only super agents can change run_as_user.'}
+
     update_data = {k: v for k, v in args.items() if k != 'agent_id'}
     if 'system_prompt' in update_data:
         _write_system_prompt(agent_id, update_data.pop('system_prompt'))

@@ -43,11 +43,18 @@ _ensure_evonic_symlink()
 
 
 class LocalBackend(ExecutionBackend):
-    """Executes bash/python directly on the host (no sandboxing)."""
+    """Executes bash/python directly on the host (no sandboxing).
 
-    def __init__(self, session_id: str = '', workspace: str = None):
+    When *run_as_user* is set, all commands and file operations are
+    executed via ``sudo -u <run_as_user>`` to provide per-agent
+    process-level user isolation without Docker sandbox overhead.
+    """
+
+    def __init__(self, session_id: str = '', workspace: str = None,
+                 run_as_user: str = None):
         self._session_id = session_id
         self._workspace = workspace
+        self._run_as_user = run_as_user.strip() if run_as_user else None
 
     def _cwd(self) -> str:
         return os.path.abspath(self._workspace or SANDBOX_WORKSPACE)
@@ -94,8 +101,9 @@ class LocalBackend(ExecutionBackend):
         run_env = dict(os.environ)
         run_env.update(env)
         t0 = time.time()
+        cmd = ['sudo', '-u', self._run_as_user, 'bash', '-s'] if self._run_as_user else ['bash', '-s']
         proc = subprocess.Popen(
-            ['bash', '-s'],
+            cmd,
             stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
             text=True, cwd=self._cwd(), env=run_env,
         )
@@ -141,8 +149,9 @@ class LocalBackend(ExecutionBackend):
         existing = run_env.get('PYTHONPATH', '')
         run_env['PYTHONPATH'] = f"{_HELPERS_PARENT_DIR}{os.pathsep}{existing}".rstrip(os.pathsep)
         t0 = time.time()
+        cmd = ['sudo', '-u', self._run_as_user, 'python3', '-'] if self._run_as_user else ['python3', '-']
         proc = subprocess.Popen(
-            ['python3', '-'],
+            cmd,
             stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
             text=True, cwd=self._cwd(), env=run_env,
         )
@@ -184,88 +193,243 @@ class LocalBackend(ExecutionBackend):
         return {'result': 'ok', 'detail': 'LocalBackend has no resources to destroy.'}
 
     def status(self) -> dict:
-        return {'backend': 'local', 'workspace': self._cwd()}
+        info = {'backend': 'local', 'workspace': self._cwd()}
+        if self._run_as_user:
+            info['run_as_user'] = self._run_as_user
+        return info
 
     # ------------------------------------------------------------------
-    # File I/O — direct host filesystem (same as original tool behavior)
+    # File I/O — direct host filesystem (same as original tool behavior).
+    # When run_as_user is set, all file ops are delegated via
+    # ``sudo -u <user> python3 -c "..."`` so they execute as the target
+    # user instead of the Evonic server process user.
     # ------------------------------------------------------------------
+
+    def _sudo_subprocess(self, python_code: str, timeout: int = 10) -> dict:
+        """Run a short Python snippet as *run_as_user* via sudo.
+
+        Returns ``{'ok': True, 'result': ...}`` or ``{'error': str}``.
+        *result* is the decoded stdout, or the raw dict parsed from a
+        JSON line printed by the snippet.
+        """
+        if not self._run_as_user:
+            return {'error': 'run_as_user not set'}
+        try:
+            proc = subprocess.run(
+                ['sudo', '-u', self._run_as_user, 'python3', '-c', python_code],
+                capture_output=True, text=True, timeout=timeout,
+            )
+            if proc.returncode != 0:
+                err = proc.stderr.strip() or proc.stdout.strip() or 'unknown error'
+                return {'error': err}
+            stdout = proc.stdout.strip()
+            # Try JSON parse; if not valid JSON, return as plain string
+            if stdout:
+                try:
+                    import json
+                    return {'ok': True, 'result': json.loads(stdout)}
+                except (json.JSONDecodeError, ValueError):
+                    return {'ok': True, 'result': stdout}
+            return {'ok': True, 'result': ''}
+        except subprocess.TimeoutExpired:
+            return {'error': 'sudo file operation timed out'}
+        except FileNotFoundError:
+            return {'error': 'sudo command not found on this system'}
+        except Exception as e:
+            return {'error': str(e)}
 
     def file_exists(self, path: str) -> bool:
-        return os.path.exists(path)
+        if not self._run_as_user:
+            return os.path.exists(path)
+        code = (
+            "import os, json; "
+            "print(json.dumps(os.path.exists(" + repr(path) + ")))"
+        )
+        r = self._sudo_subprocess(code)
+        if r.get('ok'):
+            return bool(r.get('result'))
+        return False
 
     def file_stat(self, path: str) -> dict:
-        if not os.path.exists(path):
-            return {'exists': False}
-        size = os.path.getsize(path)
-        is_binary = False
-        if size > 0:
-            try:
-                with open(path, 'rb') as f:
-                    is_binary = b'\x00' in f.read(8192)
-            except Exception:
-                pass
-        return {'exists': True, 'size': size, 'is_binary': is_binary}
+        if not self._run_as_user:
+            if not os.path.exists(path):
+                return {'exists': False}
+            size = os.path.getsize(path)
+            is_binary = False
+            if size > 0:
+                try:
+                    with open(path, 'rb') as f:
+                        is_binary = b'\x00' in f.read(8192)
+                except Exception:
+                    pass
+            return {'exists': True, 'size': size, 'is_binary': is_binary}
+        code = (
+            "import os, json; p=" + repr(path) + "; "
+            "print(json.dumps({'exists': os.path.exists(p), "
+            "'size': os.path.getsize(p) if os.path.isfile(p) else 0, "
+            "'is_binary': (lambda: (__import__('os').path.getsize(p) > 0 and "
+            "b'\\x00' in open(p, 'rb').read(8192)) if "
+            "__import__('os').path.isfile(p) else False)()}))"
+        )
+        r = self._sudo_subprocess(code)
+        if r.get('ok') and isinstance(r.get('result'), dict):
+            return r['result']
+        return {'exists': False, 'size': 0, 'is_binary': False}
 
     def read_file(self, path: str) -> dict:
-        try:
-            with open(path, 'r', encoding='utf-8', errors='replace') as f:
-                return {'content': f.read()}
-        except PermissionError:
-            return {'error': 'Permission denied — cannot read this file.'}
-        except IsADirectoryError:
-            return {'error': f'Path is a directory, not a file: {path}'}
-        except UnicodeDecodeError:
-            return {'error': 'File contains non-UTF-8 characters.'}
-        except Exception as e:
-            return {'error': str(e)}
+        if not self._run_as_user:
+            try:
+                with open(path, 'r', encoding='utf-8', errors='replace') as f:
+                    return {'content': f.read()}
+            except PermissionError:
+                return {'error': 'Permission denied — cannot read this file.'}
+            except IsADirectoryError:
+                return {'error': f'Path is a directory, not a file: {path}'}
+            except UnicodeDecodeError:
+                return {'error': 'File contains non-UTF-8 characters.'}
+            except Exception as e:
+                return {'error': str(e)}
+        code = (
+            "p=" + repr(path) + "; "
+            "try:\n"
+            " f=open(p,'r',encoding='utf-8',errors='replace')\n"
+            " print(f.read()); f.close()\n"
+            "except PermissionError: print('__ERR__Permission denied')\n"
+            "except IsADirectoryError: print('__ERR__Path is a directory')\n"
+            "except UnicodeDecodeError: print('__ERR__Non-UTF-8 file')\n"
+            "except Exception as e: print('__ERR__'+str(e))"
+        )
+        r = self._sudo_subprocess(code)
+        if r.get('ok'):
+            content = r.get('result', '')
+            if isinstance(content, str) and content.startswith('__ERR__'):
+                return {'error': content[7:]}
+            return {'content': content}
+        return {'error': r.get('error', 'Unknown error')}
 
     def write_file(self, path: str, content: str, create_dirs: bool = True) -> dict:
-        try:
-            if create_dirs:
-                parent = os.path.dirname(path)
-                if parent:
-                    os.makedirs(parent, exist_ok=True)
-            with open(path, 'w', encoding='utf-8') as f:
-                f.write(content)
+        if not self._run_as_user:
+            try:
+                if create_dirs:
+                    parent = os.path.dirname(path)
+                    if parent:
+                        os.makedirs(parent, exist_ok=True)
+                with open(path, 'w', encoding='utf-8') as f:
+                    f.write(content)
+                return {'ok': True}
+            except PermissionError:
+                return {'error': f'Permission denied writing: {path}'}
+            except IsADirectoryError:
+                return {'error': f'Path is a directory, not a file: {path}'}
+            except Exception as e:
+                return {'error': str(e)}
+        import base64
+        encoded = base64.b64encode(content.encode('utf-8')).decode('ascii')
+        code = (
+            "import os, base64; p=" + repr(path) + "; "
+            "cd=" + repr(create_dirs) + "; "
+            "data=base64.b64decode(" + repr(encoded) + ").decode('utf-8'); "
+            "try:\n"
+            " if cd:\n"
+            "  d=os.path.dirname(p)\n"
+            "  if d: os.makedirs(d,exist_ok=True)\n"
+            " f=open(p,'w',encoding='utf-8'); f.write(data); f.close()\n"
+            " print('__OK__')\n"
+            "except PermissionError: print('__ERR__Permission denied')\n"
+            "except IsADirectoryError: print('__ERR__Path is a directory')\n"
+            "except Exception as e: print('__ERR__'+str(e))"
+        )
+        r = self._sudo_subprocess(code)
+        if r.get('ok'):
+            result = r.get('result', '')
+            if isinstance(result, str) and result.startswith('__ERR__'):
+                return {'error': result[7:]}
             return {'ok': True}
-        except PermissionError:
-            return {'error': f'Permission denied writing: {path}'}
-        except IsADirectoryError:
-            return {'error': f'Path is a directory, not a file: {path}'}
-        except Exception as e:
-            return {'error': str(e)}
+        return {'error': r.get('error', 'Unknown error')}
 
     def cat_file_bytes(self, path: str) -> dict:
         """Read a file as raw bytes directly from the host filesystem."""
-        try:
-            with open(path, 'rb') as f:
-                return {'bytes': f.read()}
-        except PermissionError:
-            return {'error': 'Permission denied — cannot read this file.'}
-        except FileNotFoundError:
-            return {'error': f'File not found: {path}'}
-        except IsADirectoryError:
-            return {'error': f'Path is a directory, not a file: {path}'}
-        except Exception as e:
-            return {'error': str(e)}
+        if not self._run_as_user:
+            try:
+                with open(path, 'rb') as f:
+                    return {'bytes': f.read()}
+            except PermissionError:
+                return {'error': 'Permission denied — cannot read this file.'}
+            except FileNotFoundError:
+                return {'error': f'File not found: {path}'}
+            except IsADirectoryError:
+                return {'error': f'Path is a directory, not a file: {path}'}
+            except Exception as e:
+                return {'error': str(e)}
+        import base64
+        code = (
+            "import base64; p=" + repr(path) + "; "
+            "try:\n"
+            " data=open(p,'rb').read()\n"
+            " print(base64.b64encode(data).decode('ascii'))\n"
+            "except PermissionError: print('__ERR__Permission denied')\n"
+            "except FileNotFoundError: print('__ERR__File not found')\n"
+            "except IsADirectoryError: print('__ERR__Path is a directory')\n"
+            "except Exception as e: print('__ERR__'+str(e))"
+        )
+        r = self._sudo_subprocess(code)
+        if r.get('ok'):
+            result = r.get('result', '')
+            if isinstance(result, str):
+                if result.startswith('__ERR__'):
+                    return {'error': result[7:]}
+                return {'bytes': base64.b64decode(result)}
+            return {'error': 'Unexpected result format'}
+        return {'error': r.get('error', 'Unknown error')}
 
     def delete_file(self, path: str) -> dict:
         """Delete a file from the host filesystem."""
-        try:
-            os.remove(path)
+        if not self._run_as_user:
+            try:
+                os.remove(path)
+                return {'ok': True}
+            except FileNotFoundError:
+                return {'error': f'File not found: {path}'}
+            except PermissionError:
+                return {'error': f'Permission denied: {path}'}
+            except IsADirectoryError:
+                return {'error': f'Path is a directory, not a file: {path}'}
+            except Exception as e:
+                return {'error': str(e)}
+        code = (
+            "import os; p=" + repr(path) + "; "
+            "try:\n"
+            " os.remove(p); print('__OK__')\n"
+            "except FileNotFoundError: print('__ERR__File not found')\n"
+            "except PermissionError: print('__ERR__Permission denied')\n"
+            "except IsADirectoryError: print('__ERR__Path is a directory')\n"
+            "except Exception as e: print('__ERR__'+str(e))"
+        )
+        r = self._sudo_subprocess(code)
+        if r.get('ok'):
+            result = r.get('result', '')
+            if isinstance(result, str) and result.startswith('__ERR__'):
+                return {'error': result[7:]}
             return {'ok': True}
-        except FileNotFoundError:
-            return {'error': f'File not found: {path}'}
-        except PermissionError:
-            return {'error': f'Permission denied: {path}'}
-        except IsADirectoryError:
-            return {'error': f'Path is a directory, not a file: {path}'}
-        except Exception as e:
-            return {'error': str(e)}
+        return {'error': r.get('error', 'Unknown error')}
 
     def make_dirs(self, path: str) -> dict:
-        try:
-            os.makedirs(path, exist_ok=True)
+        if not self._run_as_user:
+            try:
+                os.makedirs(path, exist_ok=True)
+                return {'ok': True}
+            except Exception as e:
+                return {'error': str(e)}
+        code = (
+            "import os; p=" + repr(path) + "; "
+            "try:\n"
+            " os.makedirs(p,exist_ok=True); print('__OK__')\n"
+            "except Exception as e: print('__ERR__'+str(e))"
+        )
+        r = self._sudo_subprocess(code)
+        if r.get('ok'):
+            result = r.get('result', '')
+            if isinstance(result, str) and result.startswith('__ERR__'):
+                return {'error': result[7:]}
             return {'ok': True}
-        except Exception as e:
-            return {'error': str(e)}
+        return {'error': r.get('error', 'Unknown error')}
