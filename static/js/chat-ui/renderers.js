@@ -7,6 +7,7 @@
  */
 
 import { Lightbox } from './lightbox.js';
+import { setupImageForLazy, createLazyImage, retrofitImageForLazy } from './lazy-image.js';
 
 // ── Sanitizer ─────────────────────────────────────────────────────────────────
 
@@ -506,7 +507,7 @@ function _buildSysBalloon(tag, content, tagColorClass, fullColorClass, truncateL
  * @returns {jQuery}  the wrapper div with data-msg-role
  */
 function _wrapImageWithDownload($img) {
-    const imageUrl = $img.attr('src');
+    const imageUrl = $img.attr('src') || $img.attr('data-src');
     if (!imageUrl) return;
     // Lazy-load images to prevent flooding HTTP connections on page with many images
     $img.attr('loading', 'lazy');
@@ -658,9 +659,10 @@ export function buildMessageBubble(role, content, opts = {}, cfg = {}) {
         // Render image attachment if present
         const meta = opts.metadata || {};
         if (meta.image_url) {
-            const $img = $('<img>').attr('src', meta.image_url).attr('loading', 'lazy');
+            const $img = createLazyImage(meta.image_url);
             $bubble.append($img);
             _wrapImageWithDownload($img);
+            setupImageForLazy($img);
         }
         // Render non-image file badge
         if (meta.attachment_info && !meta.attachment_info.is_image) {
@@ -691,7 +693,11 @@ export function buildMessageBubble(role, content, opts = {}, cfg = {}) {
         $bubble = $('<div class="chat-prose rounded-2xl px-4 py-2.5 text-sm break-words text-blue-800 border border-blue-200 dark:bg-blue-950 dark:text-blue-200 dark:border-blue-800">');
         $bubble.attr('role', 'article');
         $bubble.html(rendered);
-        $bubble.find('img').each(function() { _wrapImageWithDownload($(this)); });
+        $bubble.find('img').each(function() {
+            const $img = $(this);
+            _wrapImageWithDownload($img);
+            retrofitImageForLazy($img);
+        });
     } else {
         // assistant: markdown with sanitizer
         const rendered = typeof marked !== 'undefined'
@@ -700,7 +706,11 @@ export function buildMessageBubble(role, content, opts = {}, cfg = {}) {
         $bubble = $('<div class="chat-prose rounded-2xl px-4 py-2.5 border-gray-300 text-sm break-words">').addClass(assistantBubbleClass);
         $bubble.attr('role', 'article');
         $bubble.html(rendered);
-        $bubble.find('img').each(function() { _wrapImageWithDownload($(this)); });
+        $bubble.find('img').each(function() {
+            const $img = $(this);
+            _wrapImageWithDownload($img);
+            retrofitImageForLazy($img);
+        });
     }
 
     const $inner = $('<div class="max-w-[80%] min-w-0">').append($bubble);

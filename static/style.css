@@ -1048,3 +1048,40 @@ html.dark .avatar-fallback {
     color: #a5b4fc;
     background-color: #312e81;
 }
+
+/* ==================== Chat Image Lazy Load ==================== */
+/* Skeleton shimmer placeholder — appears before IntersectionObserver loads the image */
+@keyframes chat-img-shimmer {
+    0%   { background-position: -400px 0; }
+    100% { background-position: 400px 0; }
+}
+
+.chat-img-skeleton {
+    border-radius: 0.5rem;
+    background: linear-gradient(
+        90deg,
+        #e5e7eb 25%,
+        #f3f4f6 50%,
+        #e5e7eb 75%
+    );
+    background-size: 400px 100%;
+    animation: chat-img-shimmer 1.5s ease-in-out infinite;
+    /* sits inside the position:relative wrapper — 
+       img is stacked on top (opacity:0 until load) */
+}
+
+html.dark .chat-img-skeleton {
+    background: linear-gradient(
+        90deg,
+        #1e293b 25%,
+        #334155 50%,
+        #1e293b 75%
+    );
+    background-size: 400px 100%;
+}
+
+/* Image in loading state — invisible until onload fires */
+.chat-img-loading {
+    opacity: 0;
+    transition: opacity 0.35s ease;
+}

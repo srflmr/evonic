@@ -431,6 +431,145 @@ const Lightbox = (function() {
     };
 })();
 
+// ── lazy-image.js ───────────────────────────────────────────────
+
+let _observer = null;
+let _observerRoot = null;
+
+function _findScrollContainer($img) {
+    const $c = $img.closest('#chat-messages, .chat-messages, [data-chat-container]');
+    return $c.length ? $c : $(document.body);
+}
+
+function _getObserver($scrollContainer) {
+    const root = $scrollContainer[0];
+    if (_observer && _observerRoot === root) return _observer;
+
+    // Dispose previous observer if container changed
+    if (_observer) {
+        _observer.disconnect();
+        _observer = null;
+        _observerRoot = null;
+    }
+
+    _observer = new IntersectionObserver((entries) => {
+        for (const entry of entries) {
+            if (!entry.isIntersecting) continue;
+
+            const img = entry.target;
+            const $img = $(img);
+            const src = $img.attr('data-src');
+            if (!src) {
+                _observer.unobserve(img);
+                continue;
+            }
+
+            // Remove from observer — single-shot
+            _observer.unobserve(img);
+
+            // Set src to trigger load
+            $img.attr('src', src);
+
+            // Handle cached (already-loaded) images
+            if (img.complete) {
+                _onImageReady($img);
+            } else {
+                $img.one('load', function () { _onImageReady($(this)); });
+                $img.one('error', function () { _onImageError($(this)); });
+            }
+        }
+    }, {
+        root,
+        rootMargin: '300px',
+        threshold: 0,
+    });
+
+    _observerRoot = root;
+    return _observer;
+}
+
+function _onImageReady($img) {
+    const skeleton = $img[0]._lazySkeleton;
+    if (skeleton) {
+        $(skeleton).remove();
+        delete $img[0]._lazySkeleton;
+    }
+    $img.removeClass('chat-img-loading')
+        .css({ opacity: '1', transition: 'opacity 0.35s ease' });
+}
+
+function _onImageError($img) {
+    const skeleton = $img[0]._lazySkeleton;
+    if (skeleton) {
+        $(skeleton).remove();
+        delete $img[0]._lazySkeleton;
+    }
+    $img.removeClass('chat-img-loading')
+        .css({ opacity: '1' });
+}
+
+function setupImageForLazy($img, $scrollContainer) {
+    if (!$img.length) return;
+    const imageUrl = $img.attr('data-src');
+    if (!imageUrl) return;
+
+    if (!$scrollContainer) $scrollContainer = _findScrollContainer($img);
+
+    // Ensure the image is hidden until loaded
+    $img.addClass('chat-img-loading').css('opacity', '0');
+
+    // Build skeleton — use image's computed max dimensions as skeleton size
+    const $wrapper = $img.parent();
+    const skeleton = $('<div>')
+        .addClass('chat-img-skeleton')
+        .css({
+            width: $img.css('max-width') || '400px',
+            height: $img.css('max-height') || '300px',
+        });
+
+    // Insert skeleton as first child of the wrapper so the download button
+    // (appended later by _wrapImageWithDownload) still renders on top.
+    $wrapper.prepend(skeleton);
+
+    // Stash skeleton reference on the DOM element for cleanup
+    $img[0]._lazySkeleton = skeleton[0];
+
+    const observer = _getObserver($scrollContainer);
+    observer.observe($img[0]);
+}
+
+function initLazyImages($scrollContainer, $scope) {
+    const $root = $scope || $scrollContainer;
+    if (!$scrollContainer) $scrollContainer = _findScrollContainer($root);
+    $root.find('img[data-src]').each(function () {
+        // Skip if already being observed or already loaded
+        if (this._lazyObserved) return;
+        this._lazyObserved = true;
+        setupImageForLazy($(this), $scrollContainer);
+    });
+}
+
+function createLazyImage(imageUrl) {
+    return $('<img>')
+        .attr('data-src', imageUrl)
+        .attr('alt', 'Attached image');
+}
+
+function disposeLazyObserver() {
+    if (_observer) {
+        _observer.disconnect();
+        _observer = null;
+        _observerRoot = null;
+    }
+}
+
+function retrofitImageForLazy($img, $scrollContainer) {
+    const src = $img.attr('src');
+    if (!src || src.startsWith('data:')) return;
+    $img.removeAttr('src').attr('data-src', src);
+    setupImageForLazy($img, $scrollContainer || _findScrollContainer($img));
+}
+
 // ── renderers.js ────────────────────────────────────────────────
 
 // ── Sanitizer ─────────────────────────────────────────────────────────────────
@@ -917,7 +1056,7 @@ function _buildSysBalloon(tag, content, tagColorClass, fullColorClass, truncateL
 }
 
 function _wrapImageWithDownload($img) {
-    const imageUrl = $img.attr('src');
+    const imageUrl = $img.attr('src') || $img.attr('data-src');
     if (!imageUrl) return;
     // Lazy-load images to prevent flooding HTTP connections on page with many images
     $img.attr('loading', 'lazy');
@@ -1069,9 +1208,10 @@ function buildMessageBubble(role, content, opts = {}, cfg = {}) {
         // Render image attachment if present
         const meta = opts.metadata || {};
         if (meta.image_url) {
-            const $img = $('<img>').attr('src', meta.image_url).attr('loading', 'lazy');
+            const $img = createLazyImage(meta.image_url);
             $bubble.append($img);
             _wrapImageWithDownload($img);
+            setupImageForLazy($img);
         }
         // Render non-image file badge
         if (meta.attachment_info && !meta.attachment_info.is_image) {
@@ -1102,7 +1242,11 @@ function buildMessageBubble(role, content, opts = {}, cfg = {}) {
         $bubble = $('<div class="chat-prose rounded-2xl px-4 py-2.5 text-sm break-words text-blue-800 border border-blue-200 dark:bg-blue-950 dark:text-blue-200 dark:border-blue-800">');
         $bubble.attr('role', 'article');
         $bubble.html(rendered);
-        $bubble.find('img').each(function() { _wrapImageWithDownload($(this)); });
+        $bubble.find('img').each(function() {
+            const $img = $(this);
+            _wrapImageWithDownload($img);
+            retrofitImageForLazy($img);
+        });
     } else {
         // assistant: markdown with sanitizer
         const rendered = typeof marked !== 'undefined'
@@ -1111,7 +1255,11 @@ function buildMessageBubble(role, content, opts = {}, cfg = {}) {
         $bubble = $('<div class="chat-prose rounded-2xl px-4 py-2.5 border-gray-300 text-sm break-words">').addClass(assistantBubbleClass);
         $bubble.attr('role', 'article');
         $bubble.html(rendered);
-        $bubble.find('img').each(function() { _wrapImageWithDownload($(this)); });
+        $bubble.find('img').each(function() {
+            const $img = $(this);
+            _wrapImageWithDownload($img);
+            retrofitImageForLazy($img);
+        });
     }
 
     const $inner = $('<div class="max-w-[80%] min-w-0">').append($bubble);
@@ -1175,6 +1323,7 @@ class SSEAdapter {
         this._log = log('sse');
         this._lastEventAt = 0;
         this._livenessInterval = null;
+        this._usingUnified = false; // true when using unified /api/realtime/stream
     }
 
     start(handler) {
@@ -1196,6 +1345,20 @@ class SSEAdapter {
     }
 
     _connect(url) {
+        // Rewrite legacy chat stream URLs to unified realtime endpoint
+        if (url.indexOf('/api/agents/') !== -1 && url.indexOf('/chat/stream') !== -1) {
+            const u = new URL(url, window.location.origin);
+            const agentId = this._agentId || (url.match(/\/agents\/([^/?]+)\//) || [])[1] || '';
+            const sessionId = this._sessionId || u.searchParams.get('session_id') || '';
+            const after = this._lastSeq;
+            let newUrl = '/api/realtime/stream?chat=1';
+            if (agentId) newUrl += '&agent_id=' + encodeURIComponent(agentId);
+            if (sessionId) newUrl += '&session_id=' + encodeURIComponent(sessionId);
+            if (after > 0) newUrl += '&after=' + after;
+            this._usingUnified = true;
+            url = newUrl;
+        }
+
         this._log.info('open', url);
         const es = new EventSource(url);
         this._es = es;
@@ -1210,9 +1373,19 @@ class SSEAdapter {
                 this._log.warn('liveness timeout — no event for', elapsed, 'ms, forcing reconnect');
                 console.warn('[sse] liveness timeout, elapsed=', elapsed, '_lastSeq=', this._lastSeq);
                 if (this._es) { this._es.close(); this._es = null; }
-                const u = new URL(url, window.location.origin);
-                if (this._lastSeq > 0) u.searchParams.set('after', this._lastSeq);
-                const resumeUrl = u.pathname + u.search;
+                let resumeUrl;
+                if (this._usingUnified) {
+                    const agentId = this._agentId || '';
+                    const sessionId = this._sessionId || '';
+                    resumeUrl = '/api/realtime/stream?chat=1';
+                    if (agentId) resumeUrl += '&agent_id=' + encodeURIComponent(agentId);
+                    if (sessionId) resumeUrl += '&session_id=' + encodeURIComponent(sessionId);
+                    if (this._lastSeq > 0) resumeUrl += '&after=' + this._lastSeq;
+                } else {
+                    const u = new URL(url, window.location.origin);
+                    if (this._lastSeq > 0) u.searchParams.set('after', this._lastSeq);
+                    resumeUrl = u.pathname + u.search;
+                }
                 this._connect(resumeUrl);
             }
         }, LIVENESS_TIMEOUT_MS);
@@ -1241,9 +1414,19 @@ class SSEAdapter {
             setTimeout(() => {
                 if (this._intentionallyStopped) return;
                 if (this._es) return; // another stream already started
-                const u = new URL(url, window.location.origin);
-                if (this._lastSeq > 0) u.searchParams.set('after', this._lastSeq);
-                const resumeUrl = u.pathname + u.search;
+                let resumeUrl;
+                if (this._usingUnified) {
+                    const agentId = this._agentId || '';
+                    const sessionId = this._sessionId || '';
+                    resumeUrl = '/api/realtime/stream?chat=1';
+                    if (agentId) resumeUrl += '&agent_id=' + encodeURIComponent(agentId);
+                    if (sessionId) resumeUrl += '&session_id=' + encodeURIComponent(sessionId);
+                    if (this._lastSeq > 0) resumeUrl += '&after=' + this._lastSeq;
+                } else {
+                    const u = new URL(url, window.location.origin);
+                    if (this._lastSeq > 0) u.searchParams.set('after', this._lastSeq);
+                    resumeUrl = u.pathname + u.search;
+                }
                 this._log.info('reconnecting from seq', this._lastSeq, resumeUrl);
                 console.warn('[sse] reconnecting _lastSeq=', this._lastSeq, '_fillingGap=', this._fillingGap, '_pendingQueue=', this._pendingQueue.length, 'url=', resumeUrl);
                 this._connect(resumeUrl);

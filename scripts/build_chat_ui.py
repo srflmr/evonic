@@ -22,6 +22,7 @@ OUT_FILE = os.path.join(ROOT, 'static', 'js', 'chat-ui.js')
 MODULE_ORDER = [
     'debug.js',
     'lightbox.js',
+    'lazy-image.js',
     'renderers.js',
     'transport.js',
     'turn.js',
