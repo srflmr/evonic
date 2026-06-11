@@ -581,7 +581,7 @@ html.dark #channel-detail-modal .hover\:bg-indigo-100:hover { background: #312e8
                     <svg class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
                     </svg>
-                    <input type="text" id="artifacts-search" placeholder="Search artifacts..." oninput="filterArtifacts()"
+                    <input type="search" id="artifacts-search" name="artifacts_search_filter" placeholder="Search artifacts..." oninput="filterArtifacts()" autocomplete="off" readonly onfocus="this.removeAttribute('readonly')"
                         class="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-md text-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/10 dark:bg-gray-700 dark:text-gray-100">
                 </div>
                 <select id="artifacts-sort" onchange="_artifactsPage=1; loadArtifacts()"
@@ -3069,7 +3069,8 @@ async function restoreActiveReasoning() {
         // replayed again — which would create a duplicate thinking bubble for turn 1.
         const lastDoneIdx = events.reduce((idx, ev, i) => ev.event === 'done' ? i : idx, -1);
         const lastSplitIdx = events.reduce((idx, ev, i) => ev.event === 'turn_split' ? i : idx, -1);
-        const cutIdx = Math.max(lastDoneIdx, lastSplitIdx);
+        const lastClearIdx = events.reduce((idx, ev, i) => ev.event === 'session_clear' ? i : idx, -1);
+        const cutIdx = Math.max(lastDoneIdx, lastSplitIdx, lastClearIdx);
         const replayEvents = cutIdx >= 0 ? events.slice(cutIdx + 1) : events;
         if (!replayEvents.length) return;
 

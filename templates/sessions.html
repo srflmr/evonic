@@ -106,9 +106,9 @@ html.dark #plan-modal .recap-prose pre { background: #1e293b; }
 
     <!-- Mobile: autocomplete search bar -->
     <div class="md:hidden p-3 bg-white border-b border-gray-200 relative dark:bg-gray-800">
-        <input type="text" id="mobile-search" placeholder="Search session (agent or user ID)..."
+        <input type="search" id="mobile-search" name="mobile_search_filter" placeholder="Search session (agent or user ID)..."
                class="w-full p-2.5 border border-gray-300 rounded-lg text-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/10"
-               oninput="onMobileSearch(this.value)" onfocus="showMobileDropdown()" autocomplete="off">
+               oninput="onMobileSearch(this.value)" onfocus="this.removeAttribute('readonly');showMobileDropdown()" autocomplete="off" readonly>
         <div id="mobile-dropdown" class="hidden absolute left-3 right-3 top-full mt-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg max-h-64 overflow-y-auto z-50"></div>
     </div>
 
@@ -116,9 +116,9 @@ html.dark #plan-modal .recap-prose pre { background: #1e293b; }
         <!-- Desktop: session sidebar -->
         <div id="sidebar" class="hidden md:flex flex-col w-[320px] border-r border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 flex-shrink-0">
             <div id="SidebarSearch" class="p-3 border-b border-gray-100 dark:border-gray-600">
-                <input type="text" id="sidebar-search" placeholder="Search agent or user ID..."
+                <input type="search" id="sidebar-search" name="sidebar_search_filter" placeholder="Search agent or user ID..."
                        class="w-full p-2 border border-gray-200 rounded-lg text-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/10"
-                       oninput="debouncedLoadSessions(this.value)" autocomplete="off">
+                       oninput="debouncedLoadSessions(this.value)" autocomplete="off" readonly onfocus="this.removeAttribute('readonly')">
             </div>
             <div id="session-list" class="flex-1 overflow-y-auto"></div>
         </div>

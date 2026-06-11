@@ -478,6 +478,12 @@ class SchemaMixin:
             cursor.execute("UPDATE agents SET inject_agent_id = 1 WHERE inject_agent_id = 0 OR inject_agent_id IS NULL")
             cursor.execute("UPDATE agents SET inject_datetime = 1 WHERE inject_datetime = 0 OR inject_datetime IS NULL")
 
+            # Migration: add run_as_user for per-agent local execution user isolation
+            try:
+                cursor.execute("ALTER TABLE agents ADD COLUMN run_as_user TEXT DEFAULT NULL")
+            except sqlite3.OperationalError:
+                pass
+
             # Agent Variables (per-agent key-value config used by tools/skills)
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS agent_variables (

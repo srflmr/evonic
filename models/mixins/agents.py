@@ -40,8 +40,9 @@ class AgentMixin:
                 INSERT INTO agents (id, name, description, system_prompt, is_super, enabled,
                     vision_enabled, inject_agent_id, inject_datetime, send_intermediate_responses, enable_agent_state,
                     workspace, agent_messaging_enabled, sandbox_enabled, summarize_tail, artifacts_enabled,
-                    message_wrapper_enabled, fallback_model_id, model_id, audio_enabled, video_enabled)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    message_wrapper_enabled, fallback_model_id, model_id, audio_enabled, video_enabled,
+                    run_as_user)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 agent['id'], agent.get('name', agent['id']),
                 agent.get('description', ''), agent.get('system_prompt', ''),
@@ -62,6 +63,7 @@ class AgentMixin:
                 agent.get('model_id'),
                 1 if agent.get('audio_enabled') else 0,
                 1 if agent.get('video_enabled') else 0,
+                agent.get('run_as_user'),
             ))
             conn.commit()
         return agent['id']
@@ -75,7 +77,8 @@ class AgentMixin:
                    'avatar_path', 'disable_parallel_tool_execution', 'disable_turn_prefetch',
                    'agent_messaging_enabled', 'workplace_id',
                    'attachments_enabled', 'attachment_max_size_mb', 'artifacts_enabled',
-                   'fallback_model_id', 'audio_enabled', 'video_enabled'}
+                   'fallback_model_id', 'audio_enabled', 'video_enabled',
+                   'run_as_user'}
         updates = {k: v for k, v in data.items() if k in allowed}
         if not updates:
             return False

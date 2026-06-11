@@ -35,9 +35,9 @@
         <div class="flex items-center gap-1 flex-1 min-w-[180px] max-w-xs">
             <div class="relative w-full">
                 <i data-lucide="search" class="w-3.5 h-3.5 text-gray-400 absolute left-2.5 top-1/2 -translate-y-1/2"></i>
-                <input type="text" id="log-search-input"
+                <input type="search" id="log-search-input" name="log_search_filter"
                        placeholder="Search logs..."
-                       oninput="logViewer.filterSearch(this.value)"
+                       oninput="logViewer.filterSearch(this.value)" autocomplete="off" readonly onfocus="this.removeAttribute('readonly')"
                        class="w-full pl-8 pr-3 py-1.5 text-sm border border-gray-200 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-indigo-300" />
             </div>
         </div>
