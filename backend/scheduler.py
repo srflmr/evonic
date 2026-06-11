@@ -425,7 +425,10 @@ class Scheduler:
                 result = self._action_session_prompt(action_config)
                 action_summary = f"Sent prompt to agent '{action_config.get('agent_id', '?')}'"
                 if result and isinstance(result, dict):
-                    action_output = result.get('response')
+                    action_output, result_is_error = self._format_session_result(result)
+                    if result_is_error:
+                        status = 'error'
+                        error_message = error_message or 'Agent turn reported an error (see output below)'
             elif action_type == 'webhook':
                 result = self._action_webhook(action_config)
                 method = action_config.get('method', 'POST').upper()
@@ -659,8 +662,79 @@ class Scheduler:
             external_user_id=external_user_id,
             message=message,
             channel_id=channel_id,
+            # Run synchronously so we capture the full turn result (response +
+            # tool outputs) for the schedule log. Without this, an agent with
+            # message_buffer_seconds set would buffer the prompt and return
+            # immediately with response=None — nothing to troubleshoot with.
+            skip_buffer=True,
         )
         return result
+
+    @staticmethod
+    def _format_session_result(result: dict) -> tuple:
+        """Build a troubleshooting-friendly action_output from a handle_message
+        result, plus an is_error flag.
+
+        Captures the agent's text response and a compact trace of every tool
+        call (name, args preview, result/error preview) so a failed scheduled
+        run can be diagnosed from the schedule log alone.
+
+        Returns (output_text_or_None, is_error).
+        """
+        ARG_CAP = 400      # max chars per tool args preview
+        RESULT_CAP = 400   # max chars per tool result preview
+        TOTAL_CAP = 8000   # max chars for the whole output block
+
+        def _preview(value, cap):
+            try:
+                text = value if isinstance(value, str) else json.dumps(value, ensure_ascii=False, default=str)
+            except Exception:
+                text = str(value)
+            text = text.replace('\n', ' ').strip()
+            if len(text) > cap:
+                text = text[:cap] + f"… (+{len(text) - cap} chars)"
+            return text
+
+        is_error = bool(result.get('error'))
+        parts = []
+
+        # Non-actionable dispatch states — explain why nothing ran synchronously.
+        if result.get('response') is None:
+            for flag, note in (
+                ('buffered', "Prompt was buffered by the agent (message_buffer_seconds) — LLM result not captured synchronously."),
+                ('injected', "Prompt was injected into an already-active session loop — processed asynchronously, result not captured here."),
+                ('async', "Prompt was queued asynchronously (fire-and-forget) — result not captured here."),
+            ):
+                if result.get(flag):
+                    parts.append(f"[{note}]")
+
+        response_text = result.get('response')
+        if response_text:
+            parts.append(str(response_text).strip())
+        elif not parts:
+            parts.append("(no text response)")
+
+        tool_trace = result.get('tool_trace') or []
+        if tool_trace:
+            parts.append(f"\n── Tools executed ({len(tool_trace)}) ──")
+            for i, entry in enumerate(tool_trace, 1):
+                name = entry.get('tool', '?')
+                args_preview = _preview(entry.get('args'), ARG_CAP)
+                res = entry.get('result')
+                res_has_error = isinstance(res, dict) and (res.get('error') or res.get('is_error'))
+                if res_has_error:
+                    is_error = True
+                    res_preview = "ERROR: " + _preview(res.get('error') or res, RESULT_CAP)
+                else:
+                    res_preview = _preview(res, RESULT_CAP)
+                parts.append(f"{i}. {name}({args_preview}) → {res_preview}")
+
+        output = "\n".join(parts).strip()
+        if not output:
+            return None, is_error
+        if len(output) > TOTAL_CAP:
+            output = output[:TOTAL_CAP] + f"\n… (output truncated, +{len(output) - TOTAL_CAP} chars)"
+        return output, is_error
 
     def _action_webhook(self, config: dict) -> dict:
         method = config.get('method', 'POST').upper()
