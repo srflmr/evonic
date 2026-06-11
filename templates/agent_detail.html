@@ -2222,7 +2222,7 @@ async function toggleSkill(skillId) {
         // Activating — check if non-lazy skill needs confirmation
         const skill = allSkillsDefs.find(s => s.id === skillId);
         if (skill && skill.lazy_tools !== true) {
-            if (!confirm('This skill is eagerly loaded (non-lazy). Activating it will automatically add all its tools to the agent. If you want to pick specific tools instead, use the Tools tab.')) {
+            if (!await showConfirm({title: 'Activate Skill', message: 'This skill is eagerly loaded (non-lazy). Activating it will automatically add all its tools to the agent. If you want to pick specific tools instead, use the Tools tab.', confirmText: 'Activate'})) {
                 // User cancelled — revert the checkbox visually
                 renderSkillsList();
                 return;
