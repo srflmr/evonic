@@ -3787,18 +3787,18 @@ function closeMobileChatSummary() {
 let _refreshSessionStateTimer = null;
 const _refreshSessionStateImpl = async function() {
     try {
-        // Fetch both session summary and agent state in parallel
+        // One round trip: /chat/state?include=summary returns agent state
+        // with the session summary attached.
         const sid = _chatSessionId ? `&session_id=${encodeURIComponent(_chatSessionId)}` : '';
-        const [sumRes, stateRes] = await Promise.all([
-            fetch(`/api/agents/${AGENT_ID}/chat/summary?user_id=web_test${sid}`),
-            fetch(`/api/agents/${AGENT_ID}/chat/state?user_id=web_test${sid}`)
-        ]);
-        const data = await sumRes.json();
-        const stateData = stateRes.ok ? await stateRes.json() : {};
+        const res = await fetch(`/api/agents/${AGENT_ID}/chat/state?user_id=web_test${sid}&include=summary`);
+        if (!res.ok) return;
+        const stateData = await res.json();
+        const data = stateData.summary || { summary: null };
+        delete stateData.summary;
 
         // Reuse the payload for the agent-state panel — refreshAgentState()
         // would re-fetch the exact same /chat/state endpoint.
-        if (ENABLE_AGENT_STATE && stateRes.ok) {
+        if (ENABLE_AGENT_STATE) {
             renderAgentState(AGENT_ID, 'web_test', ['agent-state-content', 'mobile-agent-state-content'], _chatSessionId, stateData);
         }
 
