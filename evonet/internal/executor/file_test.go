@@ -323,11 +323,11 @@ func TestHandleReadFile_Directory(t *testing.T) {
 	if resp.OK {
 		t.Fatal("expected error for directory path, got OK")
 	}
-	if resp.Error == nil {
-		t.Fatal("expected non-nil error for directory path")
+	if resp.Error == "" {
+		t.Fatal("expected non-empty error for directory path")
 	}
-	if !strings.Contains(*resp.Error, "directory") {
-		t.Errorf("expected directory error message, got: %s", *resp.Error)
+	if !strings.Contains(resp.Error, "directory") {
+		t.Errorf("expected directory error message, got: %s", resp.Error)
 	}
 }
 
@@ -341,10 +341,10 @@ func TestHandleReadFileB64_Directory(t *testing.T) {
 	if resp.OK {
 		t.Fatal("expected error for directory path, got OK")
 	}
-	if resp.Error == nil {
-		t.Fatal("expected non-nil error for directory path")
+	if resp.Error == "" {
+		t.Fatal("expected non-empty error for directory path")
 	}
-	if !strings.Contains(*resp.Error, "directory") {
-		t.Errorf("expected directory error message, got: %s", *resp.Error)
+	if !strings.Contains(resp.Error, "directory") {
+		t.Errorf("expected directory error message, got: %s", resp.Error)
 	}
 }

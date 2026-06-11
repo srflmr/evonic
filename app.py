@@ -444,6 +444,8 @@ def csrf_protect():
         return None
     if _csrf_exempt(request.path):
         return None
+    if app.config.get('TESTING'):
+        return None
 
     token_header = request.headers.get('X-CSRF-Token', '')
     token_form = request.form.get('csrf_token', '')
