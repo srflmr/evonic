@@ -68,8 +68,8 @@ html.dark {
 
 /* ── Avatar Items ── */
 #agent-sidebar .agent-avatar {
-    width: 44px;
-    height: 44px;
+    width: 30px;
+    height: 30px;
     border-radius: 50%;
     display: flex;
     align-items: center;
@@ -86,10 +86,14 @@ html.dark {
     box-shadow: 0 0 12px var(--sidebar-avatar-shadow-hover);
 }
 
+#agent-sidebar .agent-avatar.selected {
+    box-shadow: 0 0 0 2px var(--sidebar-bg), 0 0 0 4px #3b82f6;
+}
+
 #agent-sidebar .agent-avatar span {
     color: #fff;
     font-weight: 700;
-    font-size: 16px;
+    font-size: 11px;
     text-transform: uppercase;
     line-height: 1;
     pointer-events: none;
@@ -117,6 +121,12 @@ html.dark {
     transition: opacity 0.2s ease;
 }
 
+/* Static dot: task done but user hasn't opened the chat yet */
+#agent-sidebar .agent-avatar[data-unread="true"]::after {
+    opacity: 1;
+}
+
+/* Pulsing overrides static when agent becomes busy again */
 #agent-sidebar .agent-avatar[data-busy="true"]::after {
     animation: agent-busy-pulse 1.4s ease-in-out infinite;
 }

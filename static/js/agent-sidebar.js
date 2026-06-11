@@ -30,17 +30,60 @@ function _sidebarAvatarColor(agentId) {
     return _AVATAR_COLORS[_sidebarHash(agentId) % _AVATAR_COLORS.length];
 }
 
+/** --- Unread state (persists across page navigations via sessionStorage) --- */
+var _UNREAD_KEY = 'evonic_unread_agents';
+
+function _getUnreadSet() {
+    try {
+        return new Set(JSON.parse(sessionStorage.getItem(_UNREAD_KEY) || '[]'));
+    } catch (_) { return new Set(); }
+}
+
+function _markUnread(agentId) {
+    try {
+        var s = _getUnreadSet();
+        s.add(agentId);
+        sessionStorage.setItem(_UNREAD_KEY, JSON.stringify(Array.from(s)));
+    } catch (_) {}
+}
+
+function _clearUnread(agentId) {
+    try {
+        var s = _getUnreadSet();
+        s.delete(agentId);
+        sessionStorage.setItem(_UNREAD_KEY, JSON.stringify(Array.from(s)));
+    } catch (_) {}
+    var avatar = document.querySelector(
+        '#agent-sidebar .agent-avatar[data-agent-id="' + CSS.escape(agentId) + '"]'
+    );
+    if (avatar) avatar.removeAttribute('data-unread');
+}
+
+/** Update which avatar has the .selected ring based on current URL */
+function _updateSelectedAvatar() {
+    var match = window.location.pathname.match(/^\/agents\/([^/]+)/);
+    var currentId = match ? decodeURIComponent(match[1]) : null;
+    document.querySelectorAll('#agent-sidebar .agent-avatar').forEach(function (el) {
+        el.classList.toggle('selected', currentId !== null && el.getAttribute('data-agent-id') === currentId);
+    });
+}
+
 /**
  * Navigate to an agent's chat tab. On agent detail pages softSwitchAgent()
  * swaps the page in place without a full reload; everywhere else (and on
  * soft-switch failure) fall back to a normal navigation.
  */
 function _navigateToAgentChat(agentId) {
+    _clearUnread(agentId);
     var dest = '/agents/' + encodeURIComponent(agentId) + '#chat';
     if (typeof window.softSwitchAgent === 'function') {
         // softSwitchAgent manages its own loading bar across the in-place swap
         window.softSwitchAgent(agentId).then(function (ok) {
-            if (!ok) window.location = dest;
+            if (ok) {
+                _updateSelectedAvatar();
+            } else {
+                window.location = dest;
+            }
         });
     } else {
         // Full navigation: show the bar until the new page replaces it
@@ -76,6 +119,7 @@ function renderSidebar(agents) {
         avatar.className = 'agent-avatar';
         avatar.setAttribute('data-agent-id', agent.id);
         avatar.setAttribute('data-busy', agent.busy ? 'true' : 'false');
+        if (_getUnreadSet().has(agent.id)) avatar.setAttribute('data-unread', 'true');
         avatar.setAttribute('title', agent.name);
 
         if (agent.avatar_path) {
@@ -120,6 +164,7 @@ function renderSidebar(agents) {
 
     // Apply saved sidebar state after all elements (including burger) are rendered
     _applySidebarState();
+    _updateSelectedAvatar();
 }
 
 /** Create and position tooltip */
@@ -350,6 +395,9 @@ function subscribeBusySSE() {
                 try {
                     var payload = JSON.parse(e.data);
                     if (window.location.pathname === '/agents/' + payload.agent_id) return;
+                    _markUnread(payload.agent_id);
+                    var av = document.querySelector('#agent-sidebar .agent-avatar[data-agent-id="' + CSS.escape(payload.agent_id) + '"]');
+                    if (av) av.setAttribute('data-unread', 'true');
                     showBubblePopup(payload.agent_id, payload.agent_name, payload.response, payload.session_id, payload.external_user_id);
                 } catch (_) {}
             });
@@ -371,6 +419,9 @@ function subscribeBusySSE() {
     });
     rt.on('status', 'agent_turn_complete', function (payload) {
         if (window.location.pathname === '/agents/' + payload.agent_id) return;
+        _markUnread(payload.agent_id);
+        var av = document.querySelector('#agent-sidebar .agent-avatar[data-agent-id="' + CSS.escape(payload.agent_id) + '"]');
+        if (av) av.setAttribute('data-unread', 'true');
         showBubblePopup(payload.agent_id, payload.agent_name, payload.response, payload.session_id, payload.external_user_id);
     });
     rt.start();
@@ -421,6 +472,9 @@ function _applySidebarState() {
         if (burger) burger.classList.add('collapsed');
     }
 }
+
+// Update selected ring when browser navigates back/forward (soft-switch uses pushState)
+window.addEventListener('popstate', _updateSelectedAvatar);
 
 /** Initialize the sidebar */
 function initSidebar() {
