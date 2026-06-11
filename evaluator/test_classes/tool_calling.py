@@ -25,8 +25,8 @@ class ToolCallingTest(BaseTest):
             1: {"tool": "calculator", "result": 1000},
             2: {"tool": "database_query", "row_count": 8},
             3: {"tool": "api_call", "status": "success"},
-            4: {"tool": "file_create", "status": "created"},
-            5: {"multi_step": True, "tools_used": ["database_query", "calculator", "file_create"]}
+            4: {"tool": "write_file", "status": "created"},
+            5: {"multi_step": True, "tools_used": ["database_query", "calculator", "write_file"]}
         }
         return expected.get(self.level, {})
     

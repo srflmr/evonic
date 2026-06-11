@@ -176,53 +176,7 @@ class ToolFramework:
                     }
                 }
             },
-            {
-                "type": "function",
-                "function": {
-                    "name": "file_create",
-                    "description": "Create a new file with content",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "filename": {
-                                "type": "string",
-                                "description": "Name of the file to create"
-                            },
-                            "content": {
-                                "type": "string",
-                                "description": "Content to write to the file"
-                            }
-                        },
-                        "required": ["filename", "content"]
-                    }
-                }
-            },
-            {
-                "type": "function",
-                "function": {
-                    "name": "file_edit",
-                    "description": "Edit an existing file",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "filename": {
-                                "type": "string",
-                                "description": "Name of the file to edit"
-                            },
-                            "operation": {
-                                "type": "string",
-                                "enum": ["append", "prepend", "replace"],
-                                "description": "Edit operation"
-                            },
-                            "content": {
-                                "type": "string",
-                                "description": "Content to add or replace"
-                            }
-                        },
-                        "required": ["filename", "operation", "content"]
-                    }
-                }
-            }
+
         ]
     
     def execute_tool(self, tool_call: Dict[str, Any]) -> Dict[str, Any]:
@@ -237,10 +191,6 @@ class ToolFramework:
                 result = self._database_query(arguments)
             elif function_name == "api_call":
                 result = self._api_call(arguments)
-            elif function_name == "file_create":
-                result = self._file_create(arguments)
-            elif function_name == "file_edit":
-                result = self._file_edit(arguments)
             elif function_name == "get_weather":
                 result = self._get_weather(arguments)
             elif function_name == "search_restaurants":
@@ -329,56 +279,6 @@ class ToolFramework:
             return {"response": mock_responses[url], "status": "success"}
         else:
             return {"error": f"Mock API endpoint not found: {url}", "status": "not_found"}
-    
-    def _file_create(self, args: Dict[str, Any]) -> Dict[str, Any]:
-        """Create a new file"""
-        filename = args["filename"]
-        content = args["content"]
-        
-        # Restrict to safe directory
-        safe_dir = "/tmp/llm_eval_files/"
-        import os
-        os.makedirs(safe_dir, exist_ok=True)
-        
-        filepath = os.path.join(safe_dir, filename)
-        
-        try:
-            with open(filepath, 'w') as f:
-                f.write(content)
-            return {"filepath": filepath, "status": "created"}
-        except Exception as e:
-            return {"error": f"File creation error: {str(e)}"}
-    
-    def _file_edit(self, args: Dict[str, Any]) -> Dict[str, Any]:
-        """Edit an existing file"""
-        filename = args["filename"]
-        operation = args["operation"]
-        content = args["content"]
-        
-        safe_dir = "/tmp/llm_eval_files/"
-        import os
-        filepath = os.path.join(safe_dir, filename)
-        
-        if not os.path.exists(filepath):
-            return {"error": "File does not exist"}
-        
-        try:
-            if operation == "append":
-                with open(filepath, 'a') as f:
-                    f.write(content)
-            elif operation == "prepend":
-                with open(filepath, 'r+') as f:
-                    existing = f.read()
-                    f.seek(0)
-                    f.write(content + existing)
-            elif operation == "replace":
-                with open(filepath, 'w') as f:
-                    f.write(content)
-            
-            return {"filepath": filepath, "operation": operation, "status": "success"}
-            
-        except Exception as e:
-            return {"error": f"File edit error: {str(e)}"}
     
     def _get_weather(self, args: Dict[str, Any]) -> Dict[str, Any]:
         """Get mock weather data"""

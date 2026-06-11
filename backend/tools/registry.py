@@ -188,7 +188,7 @@ class ToolRegistry:
             # Agent state guard: block write tools when in plan mode or state-blocked
             # Exception: /_self/ paths are always allowed (agent's own config dir).
             from backend.tools._workspace import is_self_path
-            _self_path_args = {'write_file', 'str_replace', 'patch', 'file_edit', 'file_create'}
+            _self_path_args = {'write_file', 'str_replace', 'patch'}
             _is_self_target = (
                 function_name in _self_path_args
                 and any(is_self_path(str(v)) for v in arguments.values())
@@ -514,7 +514,7 @@ def _builtin_set_mode_factory(agent_context: dict):
             "name": "set_mode",
             "description": (
                 "Transition the agent's working mode. "
-                "Use 'plan' during planning — write tools (write_file, patch, file_edit, file_create) are blocked. "
+                "Use 'plan' during planning — write tools (write_file, str_replace, patch) are blocked. "
                 "Use 'execute' after the user approves the plan — write tools become available. "
                 "Always present your plan to the user and wait for approval before switching to 'execute'."
             ),

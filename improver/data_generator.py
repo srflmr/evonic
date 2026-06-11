@@ -26,7 +26,7 @@ Guidelines:
 - Include varied phrasings and contexts for the same concept
 - For math: show step-by-step reasoning in Indonesian
 - For SQL: use realistic villa/customer service schemas
-- For tool calling: use the available tools (calculator, database_query, file_create, file_edit)
+- For tool calling: use the available tools (calculator, database_query, write_file)
 - For reasoning: include logical step-by-step thinking
 
 Respond with a JSON array of training examples. Each element should be a valid \
