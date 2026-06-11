@@ -1860,6 +1860,20 @@ def api_chat_events(agent_id):
         raw = event_stream.get_session_events(session_id, after_seq)
     else:
         raw = event_stream.get_events_in_range(session_id, after_seq, up_to_seq)
+
+    # Strip boundary events (turn_complete, session_clear) on fresh requests so
+    # restoreActiveReasoning() never replays completed turns or past session_clear
+    # events that would create a stale thinking bubble. Mirror the SSE stream logic
+    # at lines 1668-1674. Only strip when after_seq==0; on gap-fill reconnects
+    # (after_seq>0), the client hasn't seen these events and needs them.
+    if after_seq == 0:
+        last_boundary = -1
+        for i, e in enumerate(raw):
+            if e['event'] in ('turn_complete', 'session_clear'):
+                last_boundary = i
+        if last_boundary >= 0:
+            raw = raw[last_boundary + 1:]
+
     events = []
     for entry in raw:
         event_name = entry['event']

@@ -3069,7 +3069,8 @@ async function restoreActiveReasoning() {
         // replayed again — which would create a duplicate thinking bubble for turn 1.
         const lastDoneIdx = events.reduce((idx, ev, i) => ev.event === 'done' ? i : idx, -1);
         const lastSplitIdx = events.reduce((idx, ev, i) => ev.event === 'turn_split' ? i : idx, -1);
-        const cutIdx = Math.max(lastDoneIdx, lastSplitIdx);
+        const lastClearIdx = events.reduce((idx, ev, i) => ev.event === 'session_clear' ? i : idx, -1);
+        const cutIdx = Math.max(lastDoneIdx, lastSplitIdx, lastClearIdx);
         const replayEvents = cutIdx >= 0 ? events.slice(cutIdx + 1) : events;
         if (!replayEvents.length) return;
 
