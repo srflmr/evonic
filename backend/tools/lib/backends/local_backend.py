@@ -102,7 +102,7 @@ class LocalBackend(ExecutionBackend):
         run_env = dict(os.environ)
         run_env.update(env)
         t0 = time.time()
-        cmd = ['sudo', '-u', self._run_as_user, 'bash', '-s'] if self._run_as_user is not None else ['bash', '-s']
+        cmd = ['sudo', '-E', '-u', self._run_as_user, 'bash', '-s'] if self._run_as_user is not None else ['bash', '-s']
         proc = subprocess.Popen(
             cmd,
             stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
@@ -150,7 +150,7 @@ class LocalBackend(ExecutionBackend):
         existing = run_env.get('PYTHONPATH', '')
         run_env['PYTHONPATH'] = f"{_HELPERS_PARENT_DIR}{os.pathsep}{existing}".rstrip(os.pathsep)
         t0 = time.time()
-        cmd = ['sudo', '-u', self._run_as_user, 'python3', '-'] if self._run_as_user is not None else ['python3', '-']
+        cmd = ['sudo', '-E', '-u', self._run_as_user, 'python3', '-'] if self._run_as_user is not None else ['python3', '-']
         proc = subprocess.Popen(
             cmd,
             stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
