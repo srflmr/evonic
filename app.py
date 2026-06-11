@@ -25,42 +25,47 @@ _log = logging.getLogger(__name__)
 # Single-instance guard: acquire exclusive flock on PID file.
 # Prevents a second Evonic server process from starting when invoked
 # directly via ``python app.py`` (bypassing the CLI guard).
+#
+# Skipped when EVONIC_TESTING=1 (set by unit_tests/conftest.py) because
+# the guard relies on a process-level flock that is not compatible with
+# pytest's module import/reload patterns.
 # ---------------------------------------------------------------------------
-_APP_ROOT = os.path.dirname(os.path.abspath(__file__))
-_PID_FILE = os.path.join(_APP_ROOT, "shared", "run", "evonic.pid")
-_PID_DIR = os.path.dirname(_PID_FILE)
+if not os.environ.get('EVONIC_TESTING'):
+    _APP_ROOT = os.path.dirname(os.path.abspath(__file__))
+    _PID_FILE = os.path.join(_APP_ROOT, "shared", "run", "evonic.pid")
+    _PID_DIR = os.path.dirname(_PID_FILE)
 
-os.makedirs(_PID_DIR, exist_ok=True)
-try:
-    _lock_fd = os.open(_PID_FILE, os.O_CREAT | os.O_RDWR)
-except OSError as e:
-    _log.critical("Could not open PID file %s: %s", _PID_FILE, e)
-    sys.exit(1)
-
-try:
-    fcntl.flock(_lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-except IOError:
-    # Another instance holds the lock — another app.py or CLI foreground
-    # process is already running. Read the current PID for a friendly message.
-    os.close(_lock_fd)
+    os.makedirs(_PID_DIR, exist_ok=True)
     try:
-        with open(_PID_FILE) as _f:
-            _existing_pid = _f.read().strip()
-    except Exception:
-        _existing_pid = None
-    msg = "Another Evonic server instance is already running"
-    if _existing_pid:
-        msg += f" (PID: {_existing_pid})"
-    _log.critical(msg)
-    print(f"\nError: {msg}")
-    print("Use 'evonic stop' to stop the running server, then try again.")
-    sys.exit(1)
+        _lock_fd = os.open(_PID_FILE, os.O_CREAT | os.O_RDWR)
+    except OSError as e:
+        _log.critical("Could not open PID file %s: %s", _PID_FILE, e)
+        sys.exit(1)
 
-# Write our PID so ``evonic status`` / ``evonic stop`` can find us.
-# The flock fd stays open for the process lifetime — the OS releases the
-# lock automatically when this process exits.
-with open(_PID_FILE, "w") as _f:
-    _f.write(str(os.getpid()))
+    try:
+        fcntl.flock(_lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except IOError:
+        # Another instance holds the lock — another app.py or CLI foreground
+        # process is already running. Read the current PID for a friendly message.
+        os.close(_lock_fd)
+        try:
+            with open(_PID_FILE) as _f:
+                _existing_pid = _f.read().strip()
+        except Exception:
+            _existing_pid = None
+        msg = "Another Evonic server instance is already running"
+        if _existing_pid:
+            msg += f" (PID: {_existing_pid})"
+        _log.critical(msg)
+        print(f"\nError: {msg}")
+        print("Use 'evonic stop' to stop the running server, then try again.")
+        sys.exit(1)
+
+    # Write our PID so ``evonic status`` / ``evonic stop`` can find us.
+    # The flock fd stays open for the process lifetime — the OS releases the
+    # lock automatically when this process exits.
+    with open(_PID_FILE, "w") as _f:
+        _f.write(str(os.getpid()))
 # ---------------------------------------------------------------------------
 
 from models.db import db
