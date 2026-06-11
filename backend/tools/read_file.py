@@ -115,6 +115,9 @@ def execute(agent, args: dict) -> dict:
     file_path = args.get("file_path")
     offset = int(args.get("offset", 1))
 
+    if not file_path:
+        return "Error: file_path is required."
+
     # Heuristic safety check: block access to .ssh directory
     if not (agent or {}).get('_skip_safety') and (agent is None or agent.get("safety_checker_enabled", 1)):
         from backend.tools.safety_checker import check_ssh_path
