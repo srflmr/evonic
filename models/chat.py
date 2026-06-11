@@ -392,7 +392,7 @@ class AgentChatDB:
                           tool_calls=None, tool_call_id: str = None,
                           metadata: dict = None) -> int:
         tc_json = json.dumps(tool_calls) if tool_calls else None
-        meta_json = json.dumps(metadata) if metadata else None
+        meta_json = json.dumps(metadata, default=str) if metadata else None
         with self._connect() as conn:
             cursor = conn.cursor()
             cursor.execute("""
