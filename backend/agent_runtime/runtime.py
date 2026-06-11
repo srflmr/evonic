@@ -42,6 +42,7 @@ import atexit
 import re
 from config import AGENT_MAX_TOOL_RESULT_CHARS as MAX_TOOL_RESULT_CHARS
 from config import STALE_SESSION_INJECTION_ENABLED, STALE_SESSION_THRESHOLD_SECONDS
+from config import LONG_GAP_WEEKS
 
 _BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 _LOGS_DIR = os.path.join(_BASE_DIR, 'logs')
@@ -145,6 +146,44 @@ def _apply_wrapper_prefix(messages: list, enabled: bool,
                     if is_current and len(content.split()) < 4:
                         continue
                     msg['content'] = effective_prefix + content
+
+
+def _build_long_gap_context(chatlog, gap_weeks: int) -> Optional[str]:
+    """Build long-absence context when user hasn't messaged in >= gap_weeks.
+
+    Returns a formatted system context string for injection, or None if the
+    gap is below threshold or no user entries exist.
+    """
+    if gap_weeks <= 0:
+        return None
+    entry = chatlog.get_last_entry(types=frozenset({'user'}))
+    if not entry:
+        return None
+    last_ts = entry.get('ts', 0)
+    if not last_ts:
+        return None
+    elapsed_seconds = time.time() - (last_ts / 1000.0)
+    gap_seconds = gap_weeks * 7 * 24 * 3600
+    if elapsed_seconds < gap_seconds:
+        return None
+
+    weeks = int(elapsed_seconds // (7 * 24 * 3600))
+    days = int((elapsed_seconds % (7 * 24 * 3600)) // (24 * 3600))
+    from datetime import datetime
+    last_date = datetime.fromtimestamp(last_ts / 1000.0).strftime('%d %B %Y')
+
+    duration_str = f"{weeks} week{'s' if weeks > 1 else ''}"
+    if days > 0:
+        duration_str += f" and {days} day{'s' if days > 1 else ''}"
+
+    return (
+        "## Long Absence Notice\n"
+        f"This user has not sent a message in over {duration_str} "
+        f"(last message: {last_date}).\n"
+        "Be aware that they may need context recap, reminders about prior topics, "
+        "or a gentle catch-up rather than assuming they remember all previous details.\n"
+        "Use a courteous and understanding tone."
+    )
 
 
 def _db_retry(
@@ -1644,6 +1683,7 @@ class AgentRuntime:
                 'disable_parallel_tool_execution': agent.get('disable_parallel_tool_execution', 0),
                 'disable_turn_prefetch': agent.get('disable_turn_prefetch', 0),
                 'variables': db.get_agent_variables_dict(db_agent_id),
+                'run_as_user': agent.get('run_as_user'),
             }
         # Propagate agent_message_depth and from_agent_id from incoming message metadata
         if ctx.external_user_id.startswith("__agent__"):
@@ -1737,6 +1777,19 @@ class AgentRuntime:
                     _gap = time.time() - _prev_ts
                     if _gap > stale_threshold:
                         is_stale = True
+
+            # --- Long-gap absence injection ---
+            # Inject system context when user hasn't messaged in >= LONG_GAP_WEEKS.
+            # Uses standalone get_last_entry() (~0.1ms per turn) for simplicity.
+            _long_gap_ctx = _build_long_gap_context(chatlog, LONG_GAP_WEEKS)
+            if _long_gap_ctx:
+                # Dedup: avoid piling up multiple copies across turns
+                _already_injected = any(
+                    "## Long Absence Notice" in (m.get("content") or "")
+                    for m in messages[:10]
+                )
+                if not _already_injected:
+                    messages.insert(1, {"role": "system", "content": _long_gap_ctx})
 
         # Apply preference wrapper prefix to user messages if enabled
         _apply_wrapper_prefix(messages, _should_wrap_user_message(agent),

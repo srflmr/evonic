@@ -448,6 +448,12 @@ html.dark #channel-detail-modal .hover\:bg-indigo-100:hover { background: #312e8
                     </div>
 
                     <div>
+                        <label class="block mb-1 text-gray-600 dark:text-gray-300 text-sm font-medium">Run As User</label>
+                        <input type="text" id="agent-run-as-user" value="{{ agent.run_as_user or '' }}" placeholder="e.g. webdev" class="w-full p-2.5 border border-gray-300 rounded-md text-sm font-mono focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/10">
+                        <p class="text-xs text-gray-400 mt-1">Linux username to execute bash/python commands as (via <code>sudo -u</code>). Only applies when sandbox is disabled. Leave empty to run as the default process user. Only super agents can set this.</p>
+                    </div>
+
+                    <div>
                         <label class="block mb-1 text-gray-600 dark:text-gray-300 text-sm font-medium">Summarize Prompt</label>
                         <textarea id="agent-summarize-prompt" rows="10" class="w-full p-2.5 border border-gray-300 rounded-md text-sm font-mono focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/10">{{ agent.summarize_prompt or DEFAULT_SUMMARIZE_PROMPT }}</textarea>
                         <p class="text-xs text-gray-400 mt-1">Custom prompt for summarization. Use <code>{existing_summary_section}</code> and <code>{messages_text}</code> as placeholders.</p>
@@ -1688,6 +1694,7 @@ async function saveAdvanced() {
             artifacts_enabled: document.getElementById('agent-artifacts').checked ? 1 : 0,
             safety_checker_enabled: document.getElementById('agent-safety-checker').checked ? 1 : 0,
             message_wrapper_enabled: document.getElementById('agent-message-wrapper').checked ? 1 : 0,
+            run_as_user: document.getElementById('agent-run-as-user').value.trim() || null,
         })
     });
     const data = await res.json();

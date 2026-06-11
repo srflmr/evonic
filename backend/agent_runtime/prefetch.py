@@ -119,6 +119,7 @@ class TurnPrefetcher:
                 'disable_parallel_tool_execution': agent.get('disable_parallel_tool_execution', 0),
                 'disable_turn_prefetch': agent.get('disable_turn_prefetch', 0),
                 'variables': db.get_agent_variables_dict(agent_id),
+                'run_as_user': agent.get('run_as_user'),
             }
 
             # Re-load messages from JSONL (most expensive I/O, ~10-200ms)
