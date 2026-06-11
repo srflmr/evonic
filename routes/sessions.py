@@ -303,8 +303,8 @@ def api_force_summarize(session_id):
 
 @sessions_bp.route('/api/sessions/<session_id>', methods=['DELETE'])
 def api_delete_session(session_id):
-    db.delete_session(session_id)
-    return jsonify({'success': True})
+    result = db.delete_session(session_id)
+    return jsonify({'success': result})
 
 
 @sessions_bp.route('/api/sessions/clear-all', methods=['POST'])

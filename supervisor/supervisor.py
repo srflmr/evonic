@@ -425,6 +425,9 @@ def start_daemon(release_path: str, app_root: str) -> tuple:
     time.sleep(2)
     if proc.poll() is not None:
         log.error(f'Daemon exited immediately with code {proc.returncode}')
+        # Belt-and-suspenders: remove any stale PID file from a previous
+        # run so the CLI doesn't see a dead daemon as still running.
+        _remove_daemon_pid(app_root)
         return False, proc.pid
 
     log.info(f'Daemon started with PID {proc.pid}')

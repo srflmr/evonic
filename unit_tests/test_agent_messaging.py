@@ -39,6 +39,11 @@ _STUB_KEYS = [
 ]
 _saved_modules: dict = {}
 
+# Full snapshot of sys.modules taken before setup_module patches anything.
+# Used in teardown_module to flush every module that was imported (and
+# potentially cached a mock models.db) while this test file was active.
+_original_modules: dict = {}
+
 
 def setup_module(module):
     """Install sys.modules stubs before any test in this file runs.
@@ -47,6 +52,12 @@ def setup_module(module):
     do not see these stubs during pytest collection.
     """
     import backend as _backend_pkg
+
+    # Snapshot ALL of sys.modules before touching anything — teardown uses
+    # this to flush modules that may have been imported while our mocks
+    # were active, preventing MagicMock leaks into subsequent test files.
+    _original_modules.clear()
+    _original_modules.update(sys.modules)
 
     # Save originals (None means absent).
     for key in _STUB_KEYS:
@@ -75,15 +86,29 @@ def teardown_module(module):
     """Restore sys.modules to pre-test state so stubs don't leak."""
     import backend as _backend_pkg
 
+    # First, restore the explicitly stubbed keys to their originals.
     for key, saved in _saved_modules.items():
         if saved is None:
             sys.modules.pop(key, None)
         else:
             sys.modules[key] = saved
 
-    # Also remove backend.tools.agent_messaging so it can be re-imported
-    # fresh by subsequent test files without our stubs cached inside it.
-    sys.modules.pop('backend.tools.agent_messaging', None)
+    # Remove every module that was added to sys.modules while this test
+    # file was active.  Any module imported during the test may have
+    # cached a reference to the mock models.db or mock models package,
+    # which would cause "MagicMock is not JSON serializable" errors in
+    # later test files (e.g. test_history_api) when Flask routes call
+    # db methods that return MagicMock objects.
+    for key in list(sys.modules.keys()):
+        if key not in _original_modules:
+            del sys.modules[key]
+
+    # Now put back the original modules that our stubs overwrote — not
+    # just the explicitly listed keys, but also any module that was
+    # present before setup_module and then evicted during the test.
+    for key, value in _original_modules.items():
+        if key not in sys.modules:
+            sys.modules[key] = value
 
     # Restore backend.agent_runtime attribute if possible
     if 'backend.agent_runtime' in sys.modules:
