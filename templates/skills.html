@@ -358,7 +358,9 @@ function esc(s) {
     return d.innerHTML;
 }
 
-loadSkills();
+// DOMContentLoaded guarantees the deferred ui-toggle.js (mkToggle) has run
+// before the fetch callback renders — a fast API response can otherwise beat it.
+document.addEventListener('DOMContentLoaded', loadSkills);
 </script>
 
 <!-- Skillset Preview Modal -->

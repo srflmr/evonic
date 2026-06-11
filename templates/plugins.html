@@ -219,6 +219,8 @@ function esc(s) {
     return d.innerHTML;
 }
 
-loadPlugins();
+// DOMContentLoaded guarantees the deferred ui-toggle.js (mkToggle) has run
+// before the fetch callback renders — a fast API response can otherwise beat it.
+document.addEventListener('DOMContentLoaded', loadPlugins);
 </script>
 {% endblock %}

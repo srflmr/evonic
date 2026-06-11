@@ -711,6 +711,9 @@ function esc(s) {
 
 // ===================== INIT =====================
 
-loadAgents();
+// Wait for DOMContentLoaded: renderCard() needs mkToggle() from ui-toggle.js,
+// which is loaded with `defer` and only guaranteed to have run by then. A fast
+// /api/agents response can otherwise beat it and throw "mkToggle is not defined".
+document.addEventListener('DOMContentLoaded', loadAgents);
 </script>
 {% endblock %}
