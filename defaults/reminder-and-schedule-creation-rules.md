@@ -1,3 +1,7 @@
+---
+description: Guide for creating schedules, reminders, etc.
+---
+
 # How to Create Schedules
 
 This guide explains how to create scheduled jobs (reminders, recurring tasks, automations) using the `create_schedule` tool. It covers trigger types, action types, and when to use each combination.
