@@ -9,4 +9,3 @@ APScheduler>=3.10
 paramiko>=3.0
 tiktoken>=0.7
 tomli>=2.0
-exa-py>=2.13

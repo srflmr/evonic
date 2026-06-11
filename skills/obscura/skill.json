@@ -1,0 +1,10 @@
+{
+  "id": "obscura",
+  "name": "Obscura - Headless Browser",
+  "version": "1.0.0",
+  "description": "Knowledge for using obscura — a lightweight headless browser for web scraping, JS rendering, CDP server (Puppeteer/Playwright), and MCP server. No dependencies; single binary.",
+  "brief": "You can use the `obscura` headless browser for fetching pages, rendering JS, scraping URLs in parallel, running a CDP server, or an MCP server. Load this skill with `use_skill('obscura')`.",
+  "author": "Evonic",
+  "lazy_tools": true,
+  "variables": []
+}
