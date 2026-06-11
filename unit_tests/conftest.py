@@ -10,6 +10,10 @@ import tempfile
 import shutil
 import threading as _threading
 
+# Signal to app.py that we are running under test — skip the single-instance
+# flock guard.  Must be set at module level before app.py is ever imported.
+os.environ['EVONIC_TESTING'] = '1'
+
 # Add parent directory to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
