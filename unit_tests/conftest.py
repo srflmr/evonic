@@ -88,3 +88,15 @@ def ensure_super_agent(use_test_database):
             'system_prompt': '',
             'is_super': True,
         })
+
+
+@pytest.fixture(autouse=True)
+def enable_testing_mode():
+    """Set TESTING=True so the Werkzeug test client bypasses CSRF protection.
+
+    flask.Flask.test_client() does NOT automatically set TESTING=True,
+    so the CSRF before_request hook would block all POST/PUT/DELETE
+    requests from unit tests.  This fixture fixes that.
+    """
+    from app import app
+    app.config['TESTING'] = True

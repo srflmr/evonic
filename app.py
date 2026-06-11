@@ -444,7 +444,7 @@ def csrf_protect():
         return None
     if _csrf_exempt(request.path):
         return None
-    if app.config.get('TESTING'):
+    if app.testing or os.environ.get('PYTEST_CURRENT_TEST'):
         return None
 
     token_header = request.headers.get('X-CSRF-Token', '')
