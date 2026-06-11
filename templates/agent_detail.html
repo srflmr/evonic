@@ -1206,7 +1206,7 @@ html.dark #channel-detail-modal .hover\:bg-indigo-100:hover { background: #312e8
 </div>
 
 <script src="{{ url_for('static', filename='js/chat-ui.js') }}?v=43" defer></script>
-<script src="{{ url_for('static', filename='js/agent-state.js') }}?v=3" defer></script>
+<script src="{{ url_for('static', filename='js/agent-state.js') }}?v=4" defer></script>
 <script>
 function showToast(message, type = 'success') {
     const container = document.getElementById('toast-container');
@@ -1452,7 +1452,8 @@ function showTab(name) {
     if (name === 'channels') loadChannels();
     if (name === 'portals') loadPortals();
     if (name === 'artifacts') loadArtifacts();
-    if (name === 'chat' && !chatLoaded) { loadChatHistory(); refreshSessionState(); refreshAgentState(); }
+    if (name === 'general') loadGeneralTabData();
+    if (name === 'chat' && !chatLoaded) { loadChatHistory(); refreshSessionState(); }
 
     if (name === 'chat') {
         enterChatFullscreen();
@@ -1520,20 +1521,16 @@ async function loadVariables() {
     const list = document.getElementById('agent-variables-list');
     list.innerHTML = '';
     _agentVariables.forEach(v => addVariableRow(v.key, v.value, v.is_secret));
+    applyInjectionGuardState(_agentVariables);
 }
 
-async function loadInjectionGuardState() {
-    try {
-        const res = await fetch(`/api/agents/${AGENT_ID}/variables`);
-        const data = await res.json();
-        const vars = data.variables || [];
-        const enabledVar = vars.find(v => v.key === 'injection_guard_enabled');
-        const toggle = document.getElementById('agent-injection-guard');
-        if (toggle) {
-            toggle.checked = !enabledVar || enabledVar.value !== '0';
-        }
-    } catch (e) {
-        console.error('Failed to load injection guard state:', e);
+// Sets the toggle from already-loaded variables — shares loadVariables()'s
+// fetch instead of issuing a second /variables request.
+function applyInjectionGuardState(vars) {
+    const enabledVar = vars.find(v => v.key === 'injection_guard_enabled');
+    const toggle = document.getElementById('agent-injection-guard');
+    if (toggle) {
+        toggle.checked = !enabledVar || enabledVar.value !== '0';
     }
 }
 
@@ -3792,6 +3789,12 @@ const _refreshSessionStateImpl = async function() {
         const data = await sumRes.json();
         const stateData = stateRes.ok ? await stateRes.json() : {};
 
+        // Reuse the payload for the agent-state panel — refreshAgentState()
+        // would re-fetch the exact same /chat/state endpoint.
+        if (ENABLE_AGENT_STATE && stateRes.ok) {
+            renderAgentState(AGENT_ID, 'web_test', ['agent-state-content', 'mobile-agent-state-content'], _chatSessionId, stateData);
+        }
+
         // Build mode badge + plan file + tasks header from agent state
         let headerHtml = '';
         if (stateData.mode) {
@@ -3865,7 +3868,8 @@ async function refreshAgentState() {
 }
 
 document.addEventListener('evonic:agent-state-changed', function() {
-    refreshAgentState();
+    // refreshSessionState() also renders the agent-state panel from its
+    // shared /chat/state fetch, so no separate refreshAgentState() needed.
     refreshSessionState();
 });
 
@@ -3902,11 +3906,17 @@ async function loadAgentModelSelector() {
         console.error('[ModelSelector] Failed to load:', err);
     }
 }
-loadAgentModelSelector();
-loadVariables();
-loadPluginSettings();
-loadInjectionGuardState();
-loadAgentSafetyRules();
+// Settings-tab data loads lazily on first open of the tab (see showTab) so
+// the default chat view skips these 5 API calls on page load.
+let _generalTabLoaded = false;
+function loadGeneralTabData() {
+    if (_generalTabLoaded) return;
+    _generalTabLoaded = true;
+    loadAgentModelSelector();
+    loadVariables();
+    loadPluginSettings();
+    loadAgentSafetyRules();
+}
 
 // ==================== Workplace Selector ====================
 const CURRENT_HOME_ID = '{{ agent.workplace_id or "" }}';

@@ -668,12 +668,14 @@ class PluginManager:
         if not schema:
             return {}
         from models.db import db
+        # One prefix query for all settings instead of one query per field
+        prefix = f'plugin_agent_setting:{plugin_id}:{agent_id}:'
+        stored_map = db.get_settings_by_prefix(prefix)
         result = {}
         for s in schema:
             name = s['name']
             default = s.get('default', '')
-            key = f'plugin_agent_setting:{plugin_id}:{agent_id}:{name}'
-            stored = db.get_setting(key)
+            stored = stored_map.get(f'{prefix}{name}')
             if stored is None:
                 result[name] = default
             else:

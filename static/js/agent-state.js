@@ -169,17 +169,22 @@ function _renderAgentStateCore(containerIds, data) {
 
 /**
  * Public entry point. Fetches state API and renders.
+ * Pass `preloadedData` to render from an already-fetched state payload
+ * (avoids a duplicate /chat/state request when the caller has one).
  */
-async function renderAgentState(agentId, userId, containerIds, sessionId) {
+async function renderAgentState(agentId, userId, containerIds, sessionId, preloadedData) {
     if (!agentId) return;
     _stateAgentId = agentId;
     _stateSessionId = sessionId || null;
     try {
-        var url = '/api/agents/' + agentId + '/chat/state?user_id=' + encodeURIComponent(userId || 'web_test');
-        if (sessionId) url += '&session_id=' + encodeURIComponent(sessionId);
-        var res = await fetch(url);
-        if (!res.ok) { console.warn('[AgentState] API error:', res.status, res.statusText); return; }
-        var data = await res.json();
+        var data = preloadedData;
+        if (!data) {
+            var url = '/api/agents/' + agentId + '/chat/state?user_id=' + encodeURIComponent(userId || 'web_test');
+            if (sessionId) url += '&session_id=' + encodeURIComponent(sessionId);
+            var res = await fetch(url);
+            if (!res.ok) { console.warn('[AgentState] API error:', res.status, res.statusText); return; }
+            data = await res.json();
+        }
         _renderAgentStateCore(containerIds, data);
     } catch (e) { console.error('[AgentState] error:', e); }
 }

@@ -278,22 +278,42 @@ def _format_sse_comment(comment: str) -> str:
 # State snapshot (atomic subscribe)
 # ---------------------------------------------------------------------------
 
+# Agent busy-status snapshot, cached briefly so the multiple SSE connections
+# a page opens at load share one db.get_agents() read. Staleness is bounded:
+# changes after the snapshot arrive via agent_busy_changed events anyway.
+_status_snapshot_cache = {'ts': 0.0, 'events': None}
+_status_snapshot_lock = threading.Lock()
+_STATUS_SNAPSHOT_TTL = 2.0
+
+
+def _get_status_snapshot_events() -> list:
+    from models.db import db
+    now = time.monotonic()
+    with _status_snapshot_lock:
+        cached = _status_snapshot_cache['events']
+        if cached is not None and now - _status_snapshot_cache['ts'] < _STATUS_SNAPSHOT_TTL:
+            return cached
+        events = []
+        for agent in db.get_agents():
+            events.append(('agent_busy_changed', {
+                'agent_id': agent['id'],
+                'busy': agent.get('busy', False),
+                'session_id': agent.get('current_session_id', ''),
+            }))
+        _status_snapshot_cache['ts'] = now
+        _status_snapshot_cache['events'] = events
+        return events
+
+
 def _build_snapshot(channels: set, agent_id: str = None,
                     session_id: str = None,
                     workplace_id: str = None) -> list:
     """Capture current state snapshot for requested channels."""
     events = []
 
-    if 'status' in channels or 'status' in channels:
-        from models.db import db
+    if 'status' in channels:
         try:
-            agents = db.get_agents()
-            for agent in agents:
-                events.append(('agent_busy_changed', {
-                    'agent_id': agent['id'],
-                    'busy': agent.get('busy', False),
-                    'session_id': agent.get('current_session_id', ''),
-                }))
+            events.extend(_get_status_snapshot_events())
         except Exception as e:
             log.warning("realtime snapshot: failed to get agent statuses: %s", e)
 
