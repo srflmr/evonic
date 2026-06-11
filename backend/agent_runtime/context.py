@@ -748,6 +748,18 @@ def build_tools(agent: Dict[str, Any]) -> List[Dict[str, Any]]:
                     for old, new in replacements:
                         desc = desc.replace(old, new)
                     param_def['description'] = desc
+
+    # Strip empty description strings from all tool definitions.
+    # OpenAI function calling spec treats description as optional;
+    # removing empty strings saves tokens without losing information.
+    for tool in tools:
+        func = tool.get('function', {})
+        if isinstance(func.get('description'), str) and func['description'] == '':
+            del func['description']
+        for param_def in func.get('parameters', {}).get('properties', {}).values():
+            if isinstance(param_def, dict) and isinstance(param_def.get('description'), str) and param_def['description'] == '':
+                del param_def['description']
+
     return tools
 
 
