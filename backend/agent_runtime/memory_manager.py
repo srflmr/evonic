@@ -7,15 +7,27 @@ Extract→Deduplicate→Store→Retrieve pattern (inspired by Mem0):
 3. Store to per-agent SQLite memories table (FTS5-indexed, zero dependencies)
 4. Retrieve via FTS5 BM25 keyword search at context-build time
 
-No new pip dependencies — uses existing LLM client and SQLite FTS5 (Python stdlib).
+Primary + fallback architecture (evobrain + FTS5):
+- When EVONIC_MEMORY_ENGINE=evobrain, evobrain is primary, FTS5 is fallback.
+- On any evobrain failure (timeout, binary missing, bad JSON), falls back to FTS5.
+- Dual-write: store_memory() writes to both systems when evobrain is enabled.
+
+No new pip dependencies — uses existing LLM client, SQLite FTS5 (Python stdlib),
+and the evobrain static binary via subprocess.
 """
 
 import json
+import logging
 import threading
 from typing import List, Optional
 
 from models.db import db
 from backend.llm_client import llm_client, strip_thinking_tags
+from backend.agent_runtime.evobrain_client import (
+    get_engine, capture, search as evobrain_search, init_brain as evobrain_init
+)
+
+logger = logging.getLogger(__name__)
 
 _EXTRACT_PROMPT = """You are a long-term memory extractor for an AI assistant. Given a conversation summary, extract facts worth remembering in FUTURE conversations.
 
@@ -74,6 +86,46 @@ Fact: {content}
 Category: {category}
 
 Return only the dimension string (e.g. "user.language_preference") or null:"""
+
+
+def _try_evobrain_retrieval(agent_id: str, query: str, limit: int = 8) -> Optional[str]:
+    """Try to retrieve memories via evobrain hybrid search.
+
+    Returns a formatted markdown string (matching the FTS5 format), or None
+    if evobrain is unavailable, disabled, or returns no results.
+    """
+    engine = get_engine()
+    if engine != "evobrain":
+        return None
+    try:
+        result = evobrain_search(agent_id, query, limit)
+    except Exception:
+        logger.debug("evobrain search exception, falling back to FTS5")
+        return None
+    if not result or not isinstance(result.get("hits"), list) or not result["hits"]:
+        return None
+    lines = ["## Memory (Evobrain)",
+             "Facts remembered from past conversations:"]
+    for hit in result["hits"]:
+        src = f"{hit.get('source_dir', '?')}/{hit.get('slug', '?')}"
+        evidence = hit.get("evidence", "?")
+        snippet = (hit.get("snippet") or hit.get("title") or "").strip()
+        if snippet:
+            lines.append(f"- [{evidence}, {src}] {snippet}")
+    return "\n".join(lines)
+
+
+def _try_evobrain_store(agent_id: str, content: str, category: str) -> bool:
+    """Dual-write a memory to evobrain. Returns True if evobrain write succeeded."""
+    engine = get_engine()
+    if engine != "evobrain":
+        return False
+    try:
+        result = capture(agent_id, content, category)
+        return result is not None
+    except Exception:
+        logger.debug("evobrain capture exception")
+        return False
 
 
 def _extract_dimension(content: str, category: str,
@@ -255,13 +307,24 @@ def get_memories_for_context(agent_id: str, messages: list,
                               limit: int = 8) -> Optional[str]:
     """Retrieve relevant memories for injection into the LLM context.
 
-    Searches using the last user message as a FTS5 query. Falls back to
-    most-recent memories if no query or no FTS5 matches.
+    Primary + fallback architecture:
+    1. If EVONIC_MEMORY_ENGINE=evobrain: try evobrain hybrid search first.
+       On any failure, transparently fall back to FTS5 pipeline.
+    2. Otherwise: use FTS5 BM25 keyword search (existing behaviour).
 
     Returns a formatted markdown string or None if no memories exist.
     """
     try:
         query = _extract_last_user_query(messages)
+
+        # === Primary: evobrain ===
+        if get_engine() == "evobrain" and query:
+            evobrain_result = _try_evobrain_retrieval(agent_id, query, limit)
+            if evobrain_result:
+                return evobrain_result
+            logger.debug("evobrain retrieval returned nothing, falling back to FTS5")
+
+        # === Fallback: FTS5 ===
         memories: List[dict] = []
 
         if query:
@@ -291,7 +354,10 @@ def get_memories_for_context(agent_id: str, messages: list,
 
 def store_memory(agent_id: str, session_id: str, content: str,
                  category: str = 'general') -> dict:
-    """Directly store a memory with conflict detection. Used by the `remember` built-in tool."""
+    """Directly store a memory with conflict detection. Used by the `remember` built-in tool.
+
+    When EVONIC_MEMORY_ENGINE=evobrain, also dual-writes to the agent's evobrain.
+    """
     content = content.strip()
     if not content:
         return {"error": "Memory content cannot be empty."}
@@ -302,14 +368,46 @@ def store_memory(agent_id: str, session_id: str, content: str,
         if result['superseded']:
             resp["superseded_ids"] = result['superseded']
             resp["result"] = f"Memory stored (superseded {len(result['superseded'])} older memory/ies)."
+
+        # Dual-write to evobrain (non-blocking, best-effort)
+        if get_engine() == "evobrain":
+            evobrain_ok = _try_evobrain_store(agent_id, content, category)
+            if evobrain_ok:
+                resp["evobrain"] = "stored"
+            else:
+                logger.debug("evobrain dual-write failed for agent %s", agent_id)
+
         return resp
     except Exception as e:
         return {"error": f"Failed to store memory: {e}"}
 
 
 def search_memories(agent_id: str, query: str, limit: int = 10) -> dict:
-    """Search memories by keyword. Used by the `recall` built-in tool."""
+    """Search memories by keyword. Used by the `recall` built-in tool.
+
+    Primary + fallback: tries evobrain first if configured, falls back to FTS5.
+    """
     try:
+        # === Primary: evobrain ===
+        engine = get_engine()
+        if engine == "evobrain":
+            evobrain_result = evobrain_search(agent_id, query, limit)
+            if evobrain_result and isinstance(evobrain_result.get("hits"), list):
+                hits = evobrain_result["hits"]
+                if hits:
+                    return {
+                        "engine": "evobrain",
+                        "memories": [
+                            {"slug": h.get("slug"), "title": h.get("title"),
+                             "snippet": h.get("snippet"), "evidence": h.get("evidence"),
+                             "score": h.get("score"), "source_dir": h.get("source_dir"),
+                             "updated_at": h.get("updated_at")}
+                            for h in hits
+                        ],
+                        "count": len(hits),
+                    }
+
+        # === Fallback: FTS5 ===
         fts_query = _sanitize_fts_query(query)
         if fts_query:
             memories = db.search_memories(agent_id, fts_query, limit)
