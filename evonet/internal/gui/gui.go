@@ -27,6 +27,7 @@ import (
 
 	"github.com/evonic/evonet/internal/config"
 	"github.com/evonic/evonet/internal/executor"
+	"github.com/evonic/evonet/internal/version"
 	"github.com/evonic/evonet/internal/ws"
 )
 
@@ -55,7 +56,7 @@ func GUIAvailable() bool { return true }
 // Must be called from the main goroutine.
 func RunGUI(cfg *config.Config) {
 	a := app.New()
-	w := a.NewWindow("Evonet v1.1.0")
+	w := a.NewWindow("Evonet v" + version.Version)
 	w.Resize(fyne.NewSize(700, 420))
 
 	root := container.NewStack()
@@ -69,7 +70,7 @@ func RunGUI(cfg *config.Config) {
 // Must be called from the main goroutine.
 func ShowPairingDialog(prefilledServerURL string) {
 	a := app.New()
-	w := a.NewWindow("Evonet v1.1.0")
+	w := a.NewWindow("Evonet v" + version.Version)
 	w.Resize(fyne.NewSize(700, 420))
 
 	root := container.NewStack()
@@ -213,7 +214,7 @@ func showAboutDialog(w fyne.Window) {
 	desc.Alignment = fyne.TextAlignCenter
 	desc.Wrapping = fyne.TextWrapWord
 
-	version := widget.NewLabelWithStyle("Version 1.1.0 (GUI Mac)", fyne.TextAlignCenter, fyne.TextStyle{Italic: true})
+	versionLabel := widget.NewLabelWithStyle("Version "+version.Version+" (GUI Mac)", fyne.TextAlignCenter, fyne.TextStyle{Italic: true})
 
 	separator := widget.NewSeparator()
 
@@ -229,7 +230,7 @@ func showAboutDialog(w fyne.Window) {
 		title,
 		separator,
 		desc,
-		version,
+		versionLabel,
 		separator,
 		creator,
 		xLink,
@@ -316,7 +317,7 @@ func doPair(serverURL, code string) (*config.Config, error) {
 		"pairing_code": code,
 		"device_name":  hostname,
 		"platform":     runtime.GOOS,
-		"version":      "1.1.0",
+		"version":      version.Version,
 	}
 	body, _ := json.Marshal(payload)
 

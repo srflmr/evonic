@@ -14,6 +14,7 @@ import (
 	"strings"
 
 	"github.com/evonic/evonet/internal/config"
+	"github.com/evonic/evonet/internal/version"
 )
 
 // RunPair runs "evonet pair --code X7KQ2M [--server https://evonic.example.com]"
@@ -52,7 +53,7 @@ func RunPair(args []string) error {
 		"pairing_code": strings.ToUpper(*code),
 		"device_name":  hostname,
 		"platform":     runtime.GOOS,
-		"version":      "1.1.0",
+		"version":      version.Version,
 	}
 	body, _ := json.Marshal(payload)
 
