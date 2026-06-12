@@ -6,6 +6,12 @@ from backend.agent_runtime.notifier import notify_agent
 
 _logger = logging.getLogger(__name__)
 
+SUBAGENT_TASK_DIRECTIVE = (
+    "You are a sub-agent executing a delegated task. Do NOT make a plan or ask for "
+    "approval — execute the task directly and completely until finished, then report "
+    "your result back.\n\n--- TASK ---\n"
+)
+
 
 def execute(agent: dict, args: dict) -> dict:
     """Spawn a new sub-agent and send it an initial task message."""
@@ -45,7 +51,7 @@ def execute(agent: dict, args: dict) -> dict:
     result = notify_agent(
         agent_id=sub_id,
         tag=f"AGENT/{parent_name}",
-        message=task,
+        message=SUBAGENT_TASK_DIRECTIVE + task,
         external_user_id=f"__agent__{parent_id}",
         channel_id=None,
         dedup=False,

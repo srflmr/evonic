@@ -76,6 +76,12 @@ The following is the message from the user:\n
 ----begin-user-message----\n"""
 )
 
+SUBAGENT_EXECUTE_DIRECTIVE = (
+    "You are running as a sub-agent on a delegated task. Plan/approval cycles are "
+    "disabled for you. Do not produce a plan or wait for approval — execute the task "
+    "directly and run to completion, then report your final result."
+)
+
 
 def _should_wrap_user_message(agent: dict) -> bool:
     """Check if message wrapper is enabled for this agent.
@@ -1794,6 +1800,16 @@ class AgentRuntime:
         # Apply preference wrapper prefix to user messages if enabled
         _apply_wrapper_prefix(messages, _should_wrap_user_message(agent),
                               is_stale=is_stale, stale_threshold=stale_threshold)
+
+        # Sub-agents run delegated tasks with plan/approval disabled (see force-execute
+        # above). Tell the LLM explicitly so it doesn't emit a plan and stop.
+        if agent.get('is_subagent'):
+            _already_subagent_directive = any(
+                "running as a sub-agent on a delegated task" in (m.get("content") or "")
+                for m in messages[:5]
+            )
+            if not _already_subagent_directive:
+                messages.insert(1, {"role": "system", "content": SUBAGENT_EXECUTE_DIRECTIVE})
 
         # Call LLM with tool loop
         _inner_turn_start = time.time()
