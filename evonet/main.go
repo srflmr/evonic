@@ -25,6 +25,7 @@ import (
 	"github.com/evonic/evonet/cmd"
 	"github.com/evonic/evonet/internal/config"
 	"github.com/evonic/evonet/internal/gui"
+	"github.com/evonic/evonet/internal/version"
 )
 
 func main() {
@@ -64,6 +65,9 @@ func main() {
 		err = cmd.RunStatus(subargs)
 	case "unpair":
 		err = cmd.RunUnpair(subargs)
+	case "version", "--version", "-v":
+		fmt.Printf("evonet %s %s/%s\n", version.Version, runtime.GOOS, runtime.GOARCH)
+		return
 	case "help", "-h", "--help":
 		printUsage()
 		return
@@ -128,6 +132,7 @@ Usage:
   evonet run                                    Connect with auto-reconnect
   evonet status                                 Show pairing status
   evonet unpair                                 Clear pairing credentials
+  evonet version                                Show the Evonet version
 
 Options for start/run:
   --config <path>    Path to config.yaml (default: ~/.evonet/config.yaml)

@@ -6,6 +6,7 @@
     'use strict';
 
     var agentsCache = null;
+    var agentsPromise = null;   // deduplicate concurrent fetchAgents() calls
     var overlayEl = null;
     var inputEl = null;
     var dropdownEl = null;
@@ -18,18 +19,22 @@
 
     function fetchAgents() {
         if (agentsCache) return Promise.resolve(agentsCache);
-        return fetch('/api/agents')
+        if (agentsPromise) return agentsPromise;  // deduplicate concurrent calls
+        agentsPromise = fetch('/api/agents')
             .then(function (r) { return r.json(); })
             .then(function (data) {
                 agentsCache = (data.agents || []).filter(function (a) {
                     return a.id && a.name;
                 });
+                agentsPromise = null;
                 return agentsCache;
             })
             .catch(function () {
                 agentsCache = [];
+                agentsPromise = null;
                 return agentsCache;
             });
+        return agentsPromise;
     }
 
     function getInitial(name) {
@@ -41,7 +46,7 @@
         if (overlayEl) return;
 
         overlayEl = document.createElement('div');
-        overlayEl.className = 'fixed inset-0 z-[9999] flex items-start justify-center pt-[15vh]';
+        overlayEl.className = 'fixed inset-0 z-[9999] flex items-start justify-center pt-[22vh]';
         overlayEl.style.background = 'rgba(0,0,0,0.4)';
         overlayEl.style.backdropFilter = 'blur(2px)';
         overlayEl.addEventListener('click', function (e) {
@@ -49,7 +54,7 @@
         });
 
         var box = document.createElement('div');
-        box.className = 'w-full max-w-lg mx-4 bg-white dark:bg-gray-800 rounded-xl shadow-2xl border border-gray-200 dark:border-gray-700 overflow-hidden';
+        box.className = 'w-full mt-50 max-w-lg mx-4 bg-white dark:bg-gray-800 rounded-xl shadow-2xl border border-gray-200 dark:border-gray-700 overflow-hidden';
         box.addEventListener('click', function (e) { e.stopPropagation(); });
 
         // Search input row
@@ -63,7 +68,7 @@
         inputEl = document.createElement('input');
         inputEl.type = 'text';
         inputEl.placeholder = 'Search agents...';
-        inputEl.className = 'flex-1 bg-transparent border-none outline-none text-gray-900 dark:text-gray-100 text-base placeholder-gray-400 dark:placeholder-gray-500';
+        inputEl.className = 'flex-1 bg-transparent border-none outline-none text-gray-900 dark:text-gray-100 text-base placeholder-gray-400 dark:placeholder-gray-500 py-2';
         inputEl.setAttribute('autocomplete', 'off');
         inputEl.setAttribute('spellcheck', 'false');
 
@@ -77,6 +82,20 @@
         box.appendChild(inputRow);
         box.appendChild(dropdownEl);
         overlayEl.appendChild(box);
+
+        // Delegated mouseover on dropdown — update highlight without DOM rebuild
+        dropdownEl.addEventListener('mouseover', function (e) {
+            var item = e.target.closest('[data-index]');
+            if (!item) return;
+            var idx = parseInt(item.getAttribute('data-index'));
+            if (idx === selectedIndex) return;
+            var prev = dropdownEl.querySelector('[data-index].bg-blue-50');
+            if (prev) {
+                prev.classList.remove('bg-blue-50', 'dark:bg-blue-900/30');
+            }
+            selectedIndex = idx;
+            item.classList.add('bg-blue-50', 'dark:bg-blue-900/30');
+        });
 
         // Input events
         inputEl.addEventListener('input', onInput);
@@ -111,14 +130,19 @@
             return;
         }
 
-        fetchAgents().then(function (agents) {
-            filteredAgents = agents.filter(function (a) {
-                return a.name.toLowerCase().indexOf(query) !== -1 ||
-                       a.id.toLowerCase().indexOf(query) !== -1;
+        // Capture query in a closure so async callback always uses the
+        // correct value even when the user types quickly.
+        (function (q) {
+            fetchAgents().then(function (agents) {
+                filteredAgents = agents.filter(function (a) {
+                    var name = String(a.name || '').toLowerCase();
+                    var id   = String(a.id   || '').toLowerCase();
+                    return name.indexOf(q) !== -1 || id.indexOf(q) !== -1;
+                });
+                selectedIndex = filteredAgents.length > 0 ? 0 : -1;
+                renderDropdown(filteredAgents);
             });
-            selectedIndex = filteredAgents.length > 0 ? 0 : -1;
-            renderDropdown(filteredAgents);
-        });
+        })(query);
     }
 
     function renderDropdown(agents) {
@@ -139,10 +163,6 @@
             }
             item.setAttribute('data-index', i);
             item.addEventListener('click', function () { selectAgent(agent); });
-            item.addEventListener('mouseenter', function () {
-                selectedIndex = i;
-                renderDropdown(filteredAgents);
-            });
 
             // Avatar circle
             var avatar = document.createElement('div');
