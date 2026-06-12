@@ -336,7 +336,6 @@ html.dark #channel-detail-modal .hover\:bg-indigo-100:hover { background: #312e8
                 </label>
             </div>
             <button id="saveGeneralBtn" onclick="saveGeneral()" class="bg-indigo-500 hover:bg-indigo-600 text-white px-5 py-2 rounded-md text-sm font-medium transition-colors disabled:opacity-60 disabled:cursor-not-allowed">Save Changes</button>
-            <span id="save-status" class="ml-3 text-sm text-green-600 hidden">Saved!</span>
         </div>
         <!-- Right column -->
         <div class="space-y-6">
@@ -541,7 +540,6 @@ html.dark #channel-detail-modal .hover\:bg-indigo-100:hover { background: #312e8
                 <!-- Dynamically populated -->
             </div>
             <div id="skills-empty" class="hidden text-center py-8 text-gray-400 text-sm">No enabled skills found.</div>
-            <span id="skills-save-status" class="mt-2 inline-block text-sm text-green-600 hidden">Saved!</span>
         </div>
     </div>
 
@@ -2221,32 +2219,46 @@ async function toggleSkill(skillId) {
         // Deactivating — no dialog needed
         allowedSkillIds = allowedSkillIds.filter(id => id !== skillId);
         renderSkillsList();
-        await saveSkillsQuiet();
+        if (!await saveSkillsQuiet()) {
+            // Revert on failure
+            allowedSkillIds.push(skillId);
+            renderSkillsList();
+        }
     } else {
         // Activating — check if non-lazy skill needs confirmation
         const skill = allSkillsDefs.find(s => s.id === skillId);
         if (skill && skill.lazy_tools !== true) {
             if (!await showConfirm({title: 'Activate Skill', message: 'This skill is eagerly loaded (non-lazy). Activating it will automatically add all its tools to the agent. If you want to pick specific tools instead, use the Tools tab.', confirmText: 'Activate'})) {
-                // User cancelled — revert the checkbox visually
                 renderSkillsList();
                 return;
             }
         }
         allowedSkillIds.push(skillId);
         renderSkillsList();
-        await saveSkillsQuiet();
+        if (!await saveSkillsQuiet()) {
+            // Revert on failure
+            allowedSkillIds = allowedSkillIds.filter(id => id !== skillId);
+            renderSkillsList();
+        }
     }
 }
 
 async function saveSkillsQuiet() {
-    await fetch(`/api/agents/${AGENT_ID}/skills`, {
-        method: 'PUT',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({skills: allowedSkillIds})
-    });
-    const st = document.getElementById('skills-save-status');
-    st.classList.remove('hidden');
-    setTimeout(() => st.classList.add('hidden'), 1500);
+    try {
+        const res = await fetch(`/api/agents/${AGENT_ID}/skills`, {
+            method: 'PUT',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({skills: allowedSkillIds})
+        });
+        if (!res.ok) { showToast('Failed to save skills', 'error'); return false; }
+        const data = await res.json();
+        if (data.error) { showToast(data.error, 'error'); return false; }
+        showToast('Skills saved', 'success');
+        return true;
+    } catch(e) {
+        showToast('Network error saving skills', 'error');
+        return false;
+    }
 }
 
 let currentToolDetailId = null;
