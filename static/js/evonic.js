@@ -46,7 +46,7 @@
         if (overlayEl) return;
 
         overlayEl = document.createElement('div');
-        overlayEl.className = 'fixed inset-0 z-[9999] flex items-start justify-center pt-[15vh]';
+        overlayEl.className = 'fixed inset-0 z-[9999] flex items-start justify-center pt-[22vh]';
         overlayEl.style.background = 'rgba(0,0,0,0.4)';
         overlayEl.style.backdropFilter = 'blur(2px)';
         overlayEl.addEventListener('click', function (e) {
