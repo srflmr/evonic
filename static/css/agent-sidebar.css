@@ -32,7 +32,8 @@ html.dark {
 #agent-sidebar {
     width: 64px;
     min-width: 64px;
-    height: calc(100vh - 56px);
+    max-height: calc(100vh - 56px);
+    align-self: flex-start;
     position: sticky;
     top: 0;
     background: var(--sidebar-bg);
