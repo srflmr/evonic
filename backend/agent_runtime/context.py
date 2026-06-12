@@ -849,9 +849,31 @@ def build_message_entry(msg: dict, agent: dict) -> dict:
     has_image = msg_image and agent.get('vision_enabled')
     has_audio = msg_audio and agent.get('audio_enabled')
     has_video = msg_video and agent.get('video_enabled')
+
+    # Build attachment context note if attachment_info is present in metadata
+    attachment_info = _msg_meta.get('attachment_info') if _msg_meta else None
+    attachment_note = None
+    if attachment_info and isinstance(attachment_info, dict):
+        file_path = attachment_info.get('file_path', '')
+        filename = attachment_info.get('filename', '')
+        mime_type = attachment_info.get('mime_type', 'application/octet-stream')
+        size_bytes = int(attachment_info.get('size_bytes', 0) or 0)
+        if size_bytes >= 1048576:
+            size_str = f"{size_bytes / 1048576:.1f} MB"
+        elif size_bytes >= 1024:
+            size_str = f"{size_bytes / 1024:.1f} KB"
+        else:
+            size_str = f"{size_bytes} B"
+        attachment_note = (
+            f"\n\n[Attachment: {filename} ({mime_type}, {size_str})]"
+            f"\nFile path: {file_path}"
+        )
+
     if has_image or has_audio or has_video:
         parts = []
         text_content = msg.get('content', '')
+        if attachment_note:
+            text_content = text_content.rstrip() + attachment_note
         if text_content and text_content not in ('[Image]', '[Audio]', '[Video]'):
             parts.append({"type": "text", "text": text_content})
         if has_image:
@@ -892,6 +914,8 @@ def build_message_entry(msg: dict, agent: dict) -> dict:
         entry['content'] = parts
     elif msg.get('content'):
         content = msg['content']
+        if attachment_note:
+            content = content.rstrip() + attachment_note
         # Safety net: try RTK compression before falling back to blunt truncation.
         # Covers legacy DB entries and code paths that reach here outside llm_loop.
         if msg.get('role') == 'tool' and len(content) > MAX_TOOL_RESULT_CHARS:
