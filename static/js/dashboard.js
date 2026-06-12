@@ -110,7 +110,7 @@ function renderAgents(agents) {
         html += '<a href="/agents/' + a.id + '" class="flex items-center justify-between p-4 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors no-underline text-inherit">\n';
         html += '    <div class="flex items-center gap-3 min-w-0">\n';
         var avatarHtml = a.avatar_path
-            ? '<img src="/api/agents/' + a.id + '/avatar" class="w-8 h-8 rounded-full object-cover flex-shrink-0" alt="">'
+            ? '<img src="/api/agents/' + a.id + '/avatar?size=small" class="w-8 h-8 rounded-full object-cover flex-shrink-0" alt="">'
             : '<div class="w-8 h-8 rounded-full bg-indigo-100 dark:bg-indigo-900/40 flex items-center justify-center flex-shrink-0 text-xs font-bold text-indigo-600 dark:text-indigo-400">' + initial + '</div>';
         html += '        ' + avatarHtml + '\n';
         html += '        <div class="min-w-0">\n';

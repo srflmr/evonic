@@ -33,6 +33,9 @@ function _sidebarAvatarColor(agentId) {
 /** --- Unread state (persists across page navigations via sessionStorage) --- */
 var _UNREAD_KEY = 'evonic_unread_agents';
 
+/** Last unseen final-response payload per agent: { agentId: {agent_name, response, session_id, external_user_id} } */
+var _UNREAD_PAYLOAD_KEY = 'evonic_unread_payloads';
+
 function _getUnreadSet() {
     try {
         return new Set(JSON.parse(sessionStorage.getItem(_UNREAD_KEY) || '[]'));
@@ -47,11 +50,41 @@ function _markUnread(agentId) {
     } catch (_) {}
 }
 
+function _getUnreadPayloads() {
+    try {
+        return JSON.parse(sessionStorage.getItem(_UNREAD_PAYLOAD_KEY) || '{}') || {};
+    } catch (_) { return {}; }
+}
+
+function _storeUnreadPayload(agentId, payload) {
+    try {
+        var map = _getUnreadPayloads();
+        map[agentId] = {
+            agent_name: payload.agent_name || '',
+            // Bubble shows ~140 chars; cap stored text to protect sessionStorage quota
+            response: String(payload.response || '').substring(0, 500),
+            session_id: payload.session_id || '',
+            external_user_id: payload.external_user_id || ''
+        };
+        sessionStorage.setItem(_UNREAD_PAYLOAD_KEY, JSON.stringify(map));
+    } catch (_) {}
+}
+
+function _getUnreadPayload(agentId) {
+    var p = _getUnreadPayloads()[agentId];
+    return (p && p.response) ? p : null;
+}
+
 function _clearUnread(agentId) {
     try {
         var s = _getUnreadSet();
         s.delete(agentId);
         sessionStorage.setItem(_UNREAD_KEY, JSON.stringify(Array.from(s)));
+    } catch (_) {}
+    try {
+        var map = _getUnreadPayloads();
+        delete map[agentId];
+        sessionStorage.setItem(_UNREAD_PAYLOAD_KEY, JSON.stringify(map));
     } catch (_) {}
     var avatar = document.querySelector(
         '#agent-sidebar .agent-avatar[data-agent-id="' + CSS.escape(agentId) + '"]'
@@ -75,6 +108,7 @@ function _updateSelectedAvatar() {
  */
 function _navigateToAgentChat(agentId) {
     _clearUnread(agentId);
+    dismissBubble(agentId);
     var dest = '/agents/' + encodeURIComponent(agentId) + '#chat';
     if (typeof window.softSwitchAgent === 'function') {
         // softSwitchAgent manages its own loading bar across the in-place swap
@@ -125,7 +159,7 @@ function renderSidebar(agents) {
         if (agent.avatar_path) {
             // Render custom avatar image
             var img = document.createElement('img');
-            img.src = '/api/agents/' + encodeURIComponent(agent.id) + '/avatar';
+            img.src = '/api/agents/' + encodeURIComponent(agent.id) + '/avatar?size=small';
             img.alt = agent.name;
             img.className = 'agent-avatar-img';
             img.onerror = function () {
@@ -146,17 +180,51 @@ function renderSidebar(agents) {
         }
 
         avatar.addEventListener('click', function () {
+            // Mobile has no hover: first tap on an unread avatar shows the
+            // final-response bubble (tap the bubble to open its session);
+            // tapping the avatar again navigates to agent detail as usual.
+            if (window.innerWidth <= 768) {
+                var payload = avatar.hasAttribute('data-unread') ? _getUnreadPayload(agent.id) : null;
+                if (payload && !_activeBubbles[agent.id]) {
+                    showBubblePopup(agent.id, payload.agent_name || agent.name,
+                        payload.response, payload.session_id, payload.external_user_id,
+                        { hover: true });
+                    return;
+                }
+            }
             _navigateToAgentChat(agent.id);
         });
 
         avatar.addEventListener('mouseenter', function (e) {
             // Skip tooltip popup on mobile — tap goes directly to agent detail
             if (window.innerWidth <= 768) return;
+            // Unseen final response: show its callout instead of the agent
+            // tooltip so the user can click through to the session page.
+            var payload = avatar.hasAttribute('data-unread') ? _getUnreadPayload(agent.id) : null;
+            if (payload) {
+                var entry = _activeBubbles[agent.id];
+                if (entry && entry.hover) {
+                    _cancelBubbleDismiss(agent.id);
+                } else {
+                    showBubblePopup(agent.id, payload.agent_name || agent.name,
+                        payload.response, payload.session_id, payload.external_user_id,
+                        { hover: true });
+                }
+                return;
+            }
             showTooltip(e, agent);
         });
 
         avatar.addEventListener('mouseleave', function () {
             hideTooltip();
+            // On mobile the bubble stays until the user taps it, the avatar,
+            // or anywhere outside (synthetic mouseleave from taps must not
+            // dismiss it before the user can tap the bubble).
+            if (window.innerWidth <= 768) return;
+            var entry = _activeBubbles[agent.id];
+            if (entry && entry.hover) {
+                _scheduleBubbleDismiss(agent.id, _BUBBLE_HOVER_GRACE);
+            }
         });
 
         sidebar.appendChild(avatar);
@@ -216,7 +284,7 @@ function hideTooltip() {
     }
 }
 
-/** Active bubble popup map: agentId -> { element, timer } */
+/** Active bubble popup map: agentId -> { element, timer, hover } */
 var _activeBubbles = {};
 
 /** Maximum characters to show in the bubble preview */
@@ -224,6 +292,59 @@ var _BUBBLE_MAX_CHARS = 140;
 
 /** Auto-dismiss timeout in milliseconds */
 var _BUBBLE_TIMEOUT = 7000;
+
+/** Grace period for hover bubbles — lets the pointer cross the gap from avatar to bubble */
+var _BUBBLE_HOVER_GRACE = 300;
+
+/** (Re)schedule dismissal of an active bubble after delayMs */
+function _scheduleBubbleDismiss(agentId, delayMs) {
+    var entry = _activeBubbles[agentId];
+    if (!entry) return;
+    clearTimeout(entry.timer);
+    entry.timer = setTimeout(function () {
+        dismissBubble(agentId);
+    }, delayMs);
+}
+
+/** Cancel a pending bubble dismissal (pointer re-entered avatar or bubble) */
+function _cancelBubbleDismiss(agentId) {
+    var entry = _activeBubbles[agentId];
+    if (entry) clearTimeout(entry.timer);
+}
+
+/**
+ * Strip markdown artifacts from text for plain-text snippet display.
+ * Not a full parser — just removes common markers so the bubble preview
+ * reads cleanly (it is never rendered as markdown).
+ */
+function _stripMarkdown(text) {
+    if (!text) return '';
+    return text
+        // HTML tags
+        .replace(/<\/?[a-z][^>]*>/gi, '')
+        // Code fence lines (keep the code text itself)
+        .replace(/```[^\n]*\n?/g, '')
+        // Inline code
+        .replace(/`([^`]+)`/g, '$1')
+        // Images (before links)
+        .replace(/!\[([^\]]*)\]\([^)]*\)/g, '$1')
+        // Links
+        .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
+        // Bold / italic
+        .replace(/(\*\*|__)(.*?)\1/g, '$2')
+        .replace(/(\*|_)(.*?)\1/g, '$2')
+        // Headings
+        .replace(/^#{1,6}\s+/gm, '')
+        // Blockquotes
+        .replace(/^>\s?/gm, '')
+        // List markers
+        .replace(/^\s*([-*+]|\d+\.)\s+/gm, '')
+        // Horizontal rules
+        .replace(/^(\s*[-*_]){3,}\s*$/gm, '')
+        // Collapse whitespace — the preview is a one-line snippet
+        .replace(/\s+/g, ' ')
+        .trim();
+}
 
 /**
  * Truncate text to a maximum length at a word boundary.
@@ -267,9 +388,12 @@ function dismissBubble(agentId) {
 /**
  * Show a bubble popup next to an agent's avatar in the sidebar.
  * The bubble displays a truncated preview of the agent's final response.
- * Clicking the bubble navigates to the agent detail chat tab.
+ * Clicking the bubble navigates to the session page (when available) or the
+ * agent detail chat tab.
+ * opts.hover: bubble was opened by hovering an unread avatar — it stays up
+ * while the pointer is over the avatar or the bubble instead of auto-dismissing.
  */
-function showBubblePopup(agentId, agentName, response, sessionId, externalUserId) {
+function showBubblePopup(agentId, agentName, response, sessionId, externalUserId, opts) {
     var avatar = document.querySelector(
         '#agent-sidebar .agent-avatar[data-agent-id="' + CSS.escape(agentId) + '"]'
     );
@@ -278,7 +402,7 @@ function showBubblePopup(agentId, agentName, response, sessionId, externalUserId
     // Dismiss any existing bubble for this agent
     dismissBubble(agentId);
 
-    var preview = _truncatePreview(response, _BUBBLE_MAX_CHARS);
+    var preview = _truncatePreview(_stripMarkdown(response), _BUBBLE_MAX_CHARS);
     if (!preview) return;
 
     var bubble = document.createElement('div');
@@ -322,6 +446,7 @@ function showBubblePopup(agentId, agentName, response, sessionId, externalUserId
         var bubbleSessionId = bubble.getAttribute('data-session-id');
         var externalUserId = bubble.getAttribute('data-external-user-id');
         if (bubbleSessionId && externalUserId !== 'web_test') {
+            _clearUnread(agentId);
             sessionStorage.setItem('evonic_last_session', bubbleSessionId);
             window.location = '/sessions';
         } else {
@@ -354,12 +479,24 @@ function showBubblePopup(agentId, agentName, response, sessionId, externalUserId
         bubble.classList.add('bubble-visible');
     });
 
-    // Auto-dismiss timer
-    var timer = setTimeout(function () {
-        dismissBubble(agentId);
-    }, _BUBBLE_TIMEOUT);
-
-    _activeBubbles[agentId] = { element: bubble, timer: timer };
+    if (opts && opts.hover) {
+        // Hover mode: no auto-dismiss; pointer entering the bubble keeps it
+        // alive, leaving it schedules dismissal after the grace period.
+        _activeBubbles[agentId] = { element: bubble, timer: null, hover: true };
+        bubble.addEventListener('mouseenter', function () {
+            _cancelBubbleDismiss(agentId);
+        });
+        bubble.addEventListener('mouseleave', function () {
+            if (window.innerWidth <= 768) return;
+            _scheduleBubbleDismiss(agentId, _BUBBLE_HOVER_GRACE);
+        });
+    } else {
+        // Push mode (real-time event): auto-dismiss after the timeout
+        var timer = setTimeout(function () {
+            dismissBubble(agentId);
+        }, _BUBBLE_TIMEOUT);
+        _activeBubbles[agentId] = { element: bubble, timer: timer };
+    }
 }
 
 /**
@@ -372,6 +509,20 @@ document.addEventListener('click', function (e) {
         dismissBubble();
     }
 });
+
+/**
+ * Handle an agent_turn_complete event: mark the agent unread, persist the
+ * final-response payload (for re-showing the bubble on avatar hover), and
+ * show the push bubble — unless the user is already on that agent's page.
+ */
+function _onTurnComplete(payload) {
+    if (window.location.pathname === '/agents/' + payload.agent_id) return;
+    _markUnread(payload.agent_id);
+    _storeUnreadPayload(payload.agent_id, payload);
+    var av = document.querySelector('#agent-sidebar .agent-avatar[data-agent-id="' + CSS.escape(payload.agent_id) + '"]');
+    if (av) av.setAttribute('data-unread', 'true');
+    showBubblePopup(payload.agent_id, payload.agent_name, payload.response, payload.session_id, payload.external_user_id);
+}
 
 /** Subscribe via RealtimeClient for real-time busy state updates and turn-complete notifications */
 var _statusSSE = null;
@@ -393,12 +544,7 @@ function subscribeBusySSE() {
             });
             _statusSSE.addEventListener('agent_turn_complete', function (e) {
                 try {
-                    var payload = JSON.parse(e.data);
-                    if (window.location.pathname === '/agents/' + payload.agent_id) return;
-                    _markUnread(payload.agent_id);
-                    var av = document.querySelector('#agent-sidebar .agent-avatar[data-agent-id="' + CSS.escape(payload.agent_id) + '"]');
-                    if (av) av.setAttribute('data-unread', 'true');
-                    showBubblePopup(payload.agent_id, payload.agent_name, payload.response, payload.session_id, payload.external_user_id);
+                    _onTurnComplete(JSON.parse(e.data));
                 } catch (_) {}
             });
             _statusSSE.addEventListener('error', function () {});
@@ -417,13 +563,7 @@ function subscribeBusySSE() {
             avatar.setAttribute('data-busy', payload.busy ? 'true' : 'false');
         }
     });
-    rt.on('status', 'agent_turn_complete', function (payload) {
-        if (window.location.pathname === '/agents/' + payload.agent_id) return;
-        _markUnread(payload.agent_id);
-        var av = document.querySelector('#agent-sidebar .agent-avatar[data-agent-id="' + CSS.escape(payload.agent_id) + '"]');
-        if (av) av.setAttribute('data-unread', 'true');
-        showBubblePopup(payload.agent_id, payload.agent_name, payload.response, payload.session_id, payload.external_user_id);
-    });
+    rt.on('status', 'agent_turn_complete', _onTurnComplete);
     rt.start();
 }
 
