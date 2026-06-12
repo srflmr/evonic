@@ -2,7 +2,7 @@
 
 ## v0.7.0
 
-153 commits
+158 commits
 
 ### New Features (10)
 
@@ -59,7 +59,7 @@
 - **Slow-Request Logging** — requests exceeding 500ms logged with full path and timing for bottleneck identification.
 - **Verbose Logging by Default in CLI** — CLI mode now matches GUI log output verbosity, giving consistent debugging output regardless of how you launch.
 
-### Performance (10)
+### Performance (11)
 
 - **Agent Detail Page Speedup** — eliminated database write contention and redundant queries on agent detail page loads, cutting load time significantly.
 - **SQLite Performance Tuning** — WAL mode, synchronous, and cache size PRAGMAs tuned for the platform's read-heavy workload. Thread-local connection pooling reduces WAL checkpoint pressure.
@@ -71,8 +71,9 @@
 - **Lazy Image Loading with Skeleton Shimmer** — chat images load on-demand with skeleton shimmer animation placeholders, improving initial page render time on image-heavy conversations.
 - **O(log N) Event Boundary Lookup** — bisect-based boundary search in `get_events_in_range` for faster event retrieval.
 - **LLM Client Settings Cache** — context_length, prompt_buffer, and max_retries cached with 30s TTL to avoid redundant settings reads.
+- **Skill Manifest & Tool-Def Parsing Cache** — skill manifest JSON and tool-def parsing cached to avoid repeated filesystem reads on every tool invocation. Fixed a mutable cache bug where shared tool-def dicts were accidentally mutated across agents.
 
-### Bug Fixes (34)
+### Bug Fixes (36)
 
 - **Sidebar prevents empty chat space** — max-height and align-self: flex-start on the sidebar container stops it from pushing empty space into the chat room on tall viewports.
 - **PID start conflict** — single-instance prevention uses flock for atomic PID file access, fixing race conditions between parallel starts. Automatically skipped under pytest.
@@ -108,6 +109,8 @@
 - **Remove exa-py dependency** — unused exa-py removed from requirements.txt after exa-search skill migration.
 - **Remove redundant artifacts injection** — duplicate artifacts SYSTEM.md injection removed from agents.py.
 - **Replace Tailwind arbitrary classes** — arbitrary-value Tailwind classes replaced with inline CSS for more predictable thumbnail and lightbox styling.
+- **Sidebar position:fixed** — sidebar positioning changed from CSS flex to `position:fixed`, preventing it from contributing to the flex container height and eliminating empty whitespace in the chat area.
+- **Bypass is_skill_enabled in auto-assign** — `_exec_assign_skills` now bypasses the `is_skill_enabled()` gate when assigning tools, fixing an edge case where tools would silently fail to assign for newly-enabled skills.
 
 ## v0.6.78
 
