@@ -30,6 +30,12 @@ from backend.tools.lib.exec_backend import ExecutionBackend, file_stat_code, par
 
 _logger = logging.getLogger(__name__)
 
+# How long a single tool call keeps waiting through a WebSocket disconnect before
+# giving up. Within this window, Evonet reconnects (its backoff caps at 30s) and
+# the request is re-sent; Evonet deduplicates by request id so the command runs
+# exactly once. Only applies to clients that advertise idempotent-replay support.
+DISCONNECT_GRACE = 90
+
 
 class TunnelWorkplaceBackend(ExecutionBackend):
     """Executes commands via JSON-RPC over the Evonet WebSocket connection."""
@@ -39,7 +45,10 @@ class TunnelWorkplaceBackend(ExecutionBackend):
         self._workspace = workspace
         self._ws = None                          # set by on_ws_connected()
         self._ws_lock = threading.Lock()
-        self._pending: dict[str, threading.Event] = {}
+        self._replay_ok = False                  # set by on_ws_connected()
+        # req_id → {'event': Event, 'msg': str}. The msg is retained so the
+        # request can be re-sent verbatim after a reconnect.
+        self._pending: dict[str, dict] = {}
         self._results: dict[str, dict] = {}
         self._rpc_lock = threading.Lock()
 
@@ -74,20 +83,38 @@ class TunnelWorkplaceBackend(ExecutionBackend):
     # Called by ConnectorRelay when Evonet connects / disconnects
     # -------------------------------------------------------------------------
 
-    def on_ws_connected(self, ws) -> None:
+    def on_ws_connected(self, ws, replay_ok: bool = False) -> None:
         with self._ws_lock:
             self._ws = ws
+            self._replay_ok = replay_ok
+        if not replay_ok:
+            return
+        # Re-send any in-flight requests on the fresh socket. Evonet dedupes by
+        # request id, so a re-send returns the cached result (or attaches to the
+        # still-running command) rather than executing it again.
+        with self._rpc_lock:
+            pending = [(rid, rec['msg']) for rid, rec in self._pending.items()]
+        for req_id, msg in pending:
+            try:
+                ws.send(msg)
+            except Exception as e:
+                _logger.warning("Resend of pending request %s failed: %s", req_id, e)
 
     def on_ws_disconnected(self) -> None:
         with self._ws_lock:
             self._ws = None
-        # Unblock all pending calls with an error
+            replay_ok = self._replay_ok
+        # With a replay-capable Evonet, keep pending calls waiting: they are
+        # re-sent on reconnect and answered, or time out against the grace
+        # deadline in _call(). Only legacy clients fail fast here.
+        if replay_ok:
+            return
         with self._rpc_lock:
-            for req_id, event in list(self._pending.items()):
+            for req_id, rec in list(self._pending.items()):
                 self._results[req_id] = {
                     'stdout': '', 'stderr': 'Evonet disconnected.', 'exit_code': -1
                 }
-                event.set()
+                rec['event'].set()
 
     def on_message(self, data: dict) -> None:
         """Called by ConnectorRelay when a JSON response arrives from Evonet."""
@@ -99,9 +126,9 @@ class TunnelWorkplaceBackend(ExecutionBackend):
         }
         with self._rpc_lock:
             self._results[req_id] = result or {}
-            event = self._pending.pop(req_id, None)
-        if event:
-            event.set()
+            rec = self._pending.pop(req_id, None)
+        if rec:
+            rec['event'].set()
 
     # -------------------------------------------------------------------------
     # Internal RPC call helper
@@ -110,24 +137,38 @@ class TunnelWorkplaceBackend(ExecutionBackend):
     def _call(self, method: str, params: dict, timeout: int = 65) -> dict:
         with self._ws_lock:
             ws = self._ws
-        if ws is None:
+            replay_ok = self._replay_ok
+
+        # Without replay support, preserve the original fast-fail when offline.
+        if ws is None and not replay_ok:
             return {
                 'stdout': '', 'stderr': 'Evonet is not connected to this Workplace.',
                 'exit_code': -1, 'error': 'evonet_offline'
             }
+
         req_id = uuid.uuid4().hex
         msg = json.dumps({'id': req_id, 'method': method, 'params': params})
         event = threading.Event()
         with self._rpc_lock:
-            self._pending[req_id] = event
-        try:
-            ws.send(msg)
-        except Exception as e:
-            with self._rpc_lock:
-                self._pending.pop(req_id, None)
-            return {'stdout': '', 'stderr': f'Send error: {e}', 'exit_code': -1}
+            self._pending[req_id] = {'event': event, 'msg': msg}
 
-        if not event.wait(timeout=timeout):
+        # Send now if connected. If the send fails (or we're offline) and the
+        # client supports replay, leave the request pending — on_ws_connected
+        # re-sends it once Evonet reconnects.
+        if ws is not None:
+            try:
+                ws.send(msg)
+            except Exception as e:
+                if not replay_ok:
+                    with self._rpc_lock:
+                        self._pending.pop(req_id, None)
+                    return {'stdout': '', 'stderr': f'Send error: {e}', 'exit_code': -1}
+
+        # Wait for the response. Replay-capable clients get an extra grace window
+        # so a transient disconnect (Evonet reconnects and the request is re-sent
+        # by on_ws_connected) doesn't surface as an error to the agent.
+        grace = DISCONNECT_GRACE if replay_ok else 0
+        if not event.wait(timeout=timeout + grace):
             with self._rpc_lock:
                 self._pending.pop(req_id, None)
                 self._results.pop(req_id, None)
