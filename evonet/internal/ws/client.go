@@ -17,6 +17,7 @@ import (
 
 	"github.com/evonic/evonet/internal/config"
 	"github.com/evonic/evonet/internal/executor"
+	"github.com/evonic/evonet/internal/version"
 	"github.com/gorilla/websocket"
 )
 
@@ -129,7 +130,7 @@ func (c *Client) connect() error {
 	hostname, _ := os.Hostname()
 	header.Set("X-Device-Name", hostname)
 	header.Set("X-Platform", runtime.GOOS)
-	header.Set("X-Evonet-Version", "1.2.0")
+	header.Set("X-Evonet-Version", version.Version)
 	// Advertise that this client deduplicates requests by id, so the server may
 	// safely re-send an in-flight request after a reconnect (exactly-once).
 	header.Set("X-Evonet-Caps", "idempotent-replay")
