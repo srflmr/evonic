@@ -33,7 +33,7 @@ html.dark {
     width: 64px;
     min-width: 64px;
     flex-shrink: 0;
-    height: calc(100vh - 200px);
+    height: auto;
     background: var(--sidebar-bg);
     display: flex;
     flex-direction: column;
@@ -227,7 +227,9 @@ html.dark .sidebar-toggle-btn:hover {
 
 /* ── Responsive: mobile (below lg breakpoint) ── */
 @media (max-width: 1023px) {
-    /* Sidebar stays in-flow (static), naturally sharing flex row */
+    #agent-sidebar {
+        height: calc(100vh - 160px);
+    }
 }
 
 /* ── Bubble Popup (turn-complete notification) ── */
