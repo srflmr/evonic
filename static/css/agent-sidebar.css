@@ -28,14 +28,19 @@ html.dark {
     --sidebar-tooltip-shadow: rgba(0, 0, 0, 0.4);
 }
 
+/* ── App Shell: anchor for absolute-positioned sidebar ── */
+.app-shell {
+    position: relative;
+}
+
 /* ── Sidebar Container ── */
 #agent-sidebar {
     width: 64px;
     min-width: 64px;
-    position: fixed;
-    top: 56px;
+    position: absolute;
+    top: 0;
+    bottom: 0;
     left: 0;
-    height: calc(100vh - 56px);
     background: var(--sidebar-bg);
     display: flex;
     flex-direction: column;
