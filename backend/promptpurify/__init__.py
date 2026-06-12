@@ -16,6 +16,16 @@ Architecture:
 The model catches novel/creative attacks that regex-based guards miss.
 """
 
-from backend.promptpurify.l5e_runner import L5eRunner, L5eUnavailableError
-
 __all__ = ["L5eRunner", "L5eUnavailableError"]
+
+
+def __getattr__(name):
+    """Lazy-import L5eRunner / L5eUnavailableError to avoid triggering
+    numpy/onnxruntime on package import (needed by the model downloader)."""
+    if name == "L5eRunner":
+        from backend.promptpurify.l5e_runner import L5eRunner
+        return L5eRunner
+    if name == "L5eUnavailableError":
+        from backend.promptpurify.l5e_runner import L5eUnavailableError
+        return L5eUnavailableError
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

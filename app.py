@@ -178,6 +178,10 @@ from backend.tools.injection_guard import injection_tool_guard
 from backend.plugin_hooks import register_tool_guard
 register_tool_guard(injection_tool_guard)
 
+# Auto-download PROMPTPurify L5e ONNX model in background if missing
+from backend.promptpurify.downloader import ensure_l5e_model
+ensure_l5e_model()
+
 # Display plugin and skill loading summary on startup
 loaded_plugins = [p['id'] for p in plugin_manager.list_plugins() if plugin_manager._is_plugin_enabled(p['id'])]
 loaded_skills = []
