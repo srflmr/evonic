@@ -171,18 +171,32 @@ func (c *Client) messageLoop() error {
 		}
 		c.lastRecv.Store(time.Now().UnixNano())
 
+		// Control frames ({"type":"ping"|"pong"}) are valid JSON that would also
+		// unmarshal into an empty executor.Request, so detect them explicitly
+		// before treating a frame as an RPC request.
+		var env struct {
+			Type   string `json:"type"`
+			Method string `json:"method"`
+		}
+		if json.Unmarshal(raw, &env) != nil {
+			continue // malformed frame
+		}
+		switch env.Type {
+		case "ping":
+			pong, _ := json.Marshal(map[string]string{"type": "pong"})
+			if err := c.safeWrite(conn, websocket.TextMessage, pong); err != nil {
+				return err
+			}
+			continue
+		case "pong":
+			continue // liveness already recorded above
+		}
+		if env.Method == "" {
+			continue // not a request we understand
+		}
+
 		var req executor.Request
 		if err := json.Unmarshal(raw, &req); err != nil {
-			// Could be a ping message
-			var ping struct {
-				Type string `json:"type"`
-			}
-			if json.Unmarshal(raw, &ping) == nil && ping.Type == "ping" {
-				pong, _ := json.Marshal(map[string]string{"type": "pong"})
-				if err2 := c.safeWrite(conn, websocket.TextMessage, pong); err2 != nil {
-					return err2
-				}
-			}
 			continue
 		}
 
