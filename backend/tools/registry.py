@@ -118,7 +118,9 @@ class ToolRegistry:
     def get_all_tool_defs(self) -> List[Dict[str, Any]]:
         """Load tool definitions from both tools/ and enabled skills."""
         from backend.skills_manager import skills_manager
-        all_defs = self.get_tool_defs_from_json()
+        # get_tool_defs_from_json returns the live cached list — copy it, or
+        # extend() below would grow the cache with skill defs on every call.
+        all_defs = list(self.get_tool_defs_from_json())
         # Add skill tool definitions
         skill_defs = skills_manager.get_all_skill_tool_defs()
         all_defs.extend(skill_defs)

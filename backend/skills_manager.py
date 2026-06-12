@@ -10,6 +10,7 @@ A skill is a directory under skills/ containing:
 
 import os
 import re
+import copy
 import json
 import shutil
 import zipfile
@@ -37,6 +38,31 @@ class SkillsManager:
     def __init__(self):
         os.makedirs(SKILLS_DIR, exist_ok=True)
         self._skill_name_cache: Dict[str, str] = {}
+        # Parsed-JSON cache keyed by path with mtime invalidation.  list_skills /
+        # get_all_skill_tool_defs run on every agent context build, so manifests
+        # and tool-def files must not be re-read from disk per call.
+        self._json_file_cache: Dict[str, tuple] = {}
+
+    def _read_json_cached(self, path: str):
+        """Parse a JSON file, cached by mtime. Returns a deep copy so callers
+        can tag/mutate the result without polluting the cache.  Returns None
+        if the file is missing or unparseable.  Unlocked: a concurrent race
+        just parses the same file twice, which is harmless."""
+        try:
+            mtime = os.path.getmtime(path)
+        except OSError:
+            self._json_file_cache.pop(path, None)
+            return None
+        cached = self._json_file_cache.get(path)
+        if cached is None or cached[0] != mtime:
+            try:
+                with open(path, encoding='utf-8') as f:
+                    data = json.load(f)
+            except (json.JSONDecodeError, IOError):
+                return None
+            cached = (mtime, data)
+            self._json_file_cache[path] = cached
+        return copy.deepcopy(cached[1])
 
     def is_skill_enabled(self, skill_id: str) -> bool:
         """Check if a skill is enabled. DB is authoritative; absent = disabled."""
@@ -53,14 +79,15 @@ class SkillsManager:
             manifest_path = os.path.join(skill_dir, 'skill.json')
             if not os.path.isfile(manifest_path):
                 continue
+            manifest = self._read_json_cached(manifest_path)
+            if not isinstance(manifest, dict):
+                continue
             try:
-                with open(manifest_path, encoding='utf-8') as f:
-                    manifest = json.load(f)
                 manifest['_dir'] = skill_dir
                 manifest['tool_count'] = len(self._load_tool_defs(skill_dir, manifest))
                 manifest['enabled'] = self.is_skill_enabled(name)
                 skills.append(manifest)
-            except (json.JSONDecodeError, KeyError):
+            except KeyError:
                 continue
         return skills
 
@@ -124,7 +151,8 @@ class SkillsManager:
         all_defs = []
         for skill in self.list_skills():
             skill_id = skill.get('id', '')
-            if not self.is_skill_enabled(skill_id):
+            # 'enabled' was already resolved from the DB by list_skills()
+            if not skill.get('enabled'):
                 continue
             # Lazy-loaded skills are excluded from upfront context injection
             if skill.get('lazy_tools', False):
@@ -420,17 +448,9 @@ class SkillsManager:
         if not tools_file:
             return []
         tools_path = os.path.join(skill_dir, tools_file)
-        if not os.path.isfile(tools_path):
-            return []
-        try:
-            with open(tools_path, encoding='utf-8') as f:
-                data = json.load(f)
-            # The tools file is an array of OpenAI function defs
-            if isinstance(data, list):
-                return data
-            return []
-        except (json.JSONDecodeError, IOError):
-            return []
+        data = self._read_json_cached(tools_path)
+        # The tools file is an array of OpenAI function defs
+        return data if isinstance(data, list) else []
 
     def _find_manifest(self, directory: str) -> Optional[str]:
         """Find skill.json at root or one level deep in extracted zip."""

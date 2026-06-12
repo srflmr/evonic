@@ -32,10 +32,10 @@ html.dark {
 #agent-sidebar {
     width: 64px;
     min-width: 64px;
-    max-height: calc(100vh - 56px);
-    align-self: flex-start;
-    position: sticky;
-    top: 0;
+    position: fixed;
+    top: 56px;
+    left: 0;
+    height: calc(100vh - 56px);
     background: var(--sidebar-bg);
     display: flex;
     flex-direction: column;
@@ -56,6 +56,15 @@ html.dark {
     padding: 0;
     border-right: none;
     overflow: hidden;
+}
+
+/* Push main content right when sidebar is visible (position:fixed takes it out of flow) */
+#agent-sidebar:not(.collapsed) ~ .main-area {
+    margin-left: 64px;
+}
+
+.main-area {
+    transition: margin-left 0.25s ease;
 }
 
 #agent-sidebar::-webkit-scrollbar {
@@ -229,8 +238,9 @@ html.dark .sidebar-toggle-btn:hover {
 
 /* ── Responsive: mobile (below lg breakpoint) ── */
 @media (max-width: 1023px) {
-    #agent-sidebar {
-        height: auto;
+    /* Sidebar overlays content on mobile — no margin push */
+    #agent-sidebar:not(.collapsed) ~ .main-area {
+        margin-left: 0;
     }
 }
 

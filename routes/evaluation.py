@@ -289,12 +289,8 @@ def api_replay_test():
 def api_summary(run_id):
     """Get summary for a specific run (for dynamic rendering after modal close)"""
     try:
-        runs = db.get_all_runs(limit=1)
-        for run in runs:
-            if run.get('run_id') == run_id:
-                run_info = run
-                break
-        else:
+        run_info = db.get_evaluation_run(run_id)
+        if not run_info:
             return jsonify({'success': False, 'error': 'Run not found'}), 404
 
         test_results = db.get_test_results(run_id)

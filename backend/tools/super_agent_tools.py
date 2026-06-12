@@ -836,7 +836,15 @@ def _exec_assign_skills(args: dict) -> dict:
             continue
         if skill.get('lazy_tools', False):
             continue  # skip lazy skills — tools loaded on demand via use_skill
-        tool_defs = skills_manager.get_skill_tool_defs(skill_id)
+        # Use _load_tool_defs with _dir to bypass is_skill_enabled guard.
+        # Admin explicitly assigning a skill wants its tools regardless of
+        # global enable/disable status.  Fall back to get_skill_tool_defs
+        # when _dir is missing (e.g. mocked skills in tests).
+        skill_dir = skill.get('_dir', '')
+        if skill_dir:
+            tool_defs = skills_manager._load_tool_defs(skill_dir, skill)
+        else:
+            tool_defs = skills_manager.get_skill_tool_defs(skill_id)
         for td in tool_defs:
             fn_name = td['function']['name'] if isinstance(td, dict) and 'function' in td else td.get('name', '')
             tool_id = f"skill:{skill_id}:{fn_name}" if fn_name else ''
