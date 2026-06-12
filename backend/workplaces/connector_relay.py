@@ -17,6 +17,19 @@ import threading
 _logger = logging.getLogger(__name__)
 
 
+def _version_gte(version: str, minimum: str) -> bool:
+    """Return True if dotted `version` >= `minimum`. Unparseable → False."""
+    def parse(v):
+        try:
+            return tuple(int(p) for p in v.strip().split('.'))
+        except (ValueError, AttributeError):
+            return None
+    a, b = parse(version), parse(minimum)
+    if a is None or b is None:
+        return False
+    return a >= b
+
+
 class ConnectorRelay:
     """
     Handles Evonet WebSocket connections on behalf of WorkplaceManager.
@@ -54,9 +67,13 @@ class ConnectorRelay:
         device_name = flask_request.headers.get('X-Device-Name', '').strip() or connector.get('device_name') or 'unknown'
         platform = flask_request.headers.get('X-Platform', '').strip() or connector.get('platform') or 'unknown'
         version = flask_request.headers.get('X-Evonet-Version', '').strip() or connector.get('version') or ''
+        caps = flask_request.headers.get('X-Evonet-Caps', '')
+        # Only clients that deduplicate requests by id may receive a re-sent
+        # request after a reconnect; older clients would double-execute.
+        replay_ok = 'idempotent-replay' in caps or _version_gte(version, '1.2.0')
         _logger.info(
-            "Evonet accepted: workplace=%s device=%s platform=%s addr=%s",
-            workplace_id, device_name, platform, remote_addr,
+            "Evonet accepted: workplace=%s device=%s platform=%s addr=%s replay_ok=%s",
+            workplace_id, device_name, platform, remote_addr, replay_ok,
         )
 
         with self._lock:
@@ -71,7 +88,7 @@ class ConnectorRelay:
                 'version': version,
             })
             from backend.workplaces.manager import workplace_manager
-            workplace_manager.on_connector_connected(workplace_id, ws)
+            workplace_manager.on_connector_connected(workplace_id, ws, replay_ok=replay_ok)
         except Exception as e:
             _logger.error("Error registering connector for workplace %s: %s", workplace_id, e)
             ws.close()
@@ -114,16 +131,24 @@ class ConnectorRelay:
         except Exception as e:
             _logger.info("Evonet connection closed for workplace=%s: %s", workplace_id, e)
         finally:
+            # Only tear down if this ws is still the registered one. A half-open
+            # connection's loop can unblock long after Evonet has already
+            # reconnected; without this guard it would clobber the newer session.
             with self._lock:
-                self._connections.pop(workplace_id, None)
+                is_current = self._connections.get(workplace_id) is ws
+                if is_current:
+                    self._connections.pop(workplace_id, None)
 
-            _logger.info("Evonet disconnected: workplace=%s device=%s (handled %d messages)", workplace_id, device_name, msg_count)
-            try:
-                from backend.workplaces.manager import workplace_manager
-                workplace_manager.on_connector_disconnected(workplace_id)
-            except Exception:
-                pass
-            self._emit('connector_disconnected', {'workplace_id': workplace_id})
+            if not is_current:
+                _logger.info("Stale Evonet connection closed for workplace=%s (superseded by a newer connection)", workplace_id)
+            else:
+                _logger.info("Evonet disconnected: workplace=%s device=%s (handled %d messages)", workplace_id, device_name, msg_count)
+                try:
+                    from backend.workplaces.manager import workplace_manager
+                    workplace_manager.on_connector_disconnected(workplace_id)
+                except Exception:
+                    pass
+                self._emit('connector_disconnected', {'workplace_id': workplace_id})
 
     # -------------------------------------------------------------------------
     # Helpers
