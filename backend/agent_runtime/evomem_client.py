@@ -14,7 +14,24 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-_EVOMEM_BINARY = os.environ.get("EVOMEM_BINARY", "shared/bin/evomem")
+def _resolve_binary() -> str:
+    """Locate the evomem binary.
+
+    Honours EVOMEM_BINARY (or the legacy EVOBRAIN_BINARY) env override. Otherwise
+    prefers the new `shared/bin/evomem` name but falls back to the legacy
+    `shared/bin/evobrain` so the rename doesn't silently disable the engine while
+    the binary is still shipped under its old name.
+    """
+    env = os.environ.get("EVOMEM_BINARY") or os.environ.get("EVOBRAIN_BINARY")
+    if env:
+        return env
+    for path in ("shared/bin/evomem", "shared/bin/evobrain"):
+        if os.path.isfile(path):
+            return path
+    return "shared/bin/evomem"
+
+
+_EVOMEM_BINARY = _resolve_binary()
 _EVOMEM_TIMEOUT = int(os.environ.get("EVOMEM_TIMEOUT", "5"))
 
 # Operational tracing for evomem internals, shared by all evomem modules.

@@ -262,7 +262,8 @@ def _build_static_prompt(agent: Dict[str, Any]) -> str:
                 parts.append("- Read this file: `read(\"notes.md\")`")
                 parts.append("- Update via `write_file` with path `/_self/kb/notes.md`")
                 parts.append("- Update immediately when the user communicates a new preference")
-                parts.append("- Prioritize notes.md over `remember` for non-factual preference information")
+                parts.append("- Always-apply communication/style rules belong in notes.md (it is always in your context).")
+                parts.append("- Durable user preferences, interests, and facts should ALSO be saved with `remember` so they enter long-term memory and the knowledge graph (searchable via recall/think).")
 
     # Message Wrapper Protocol
     parts.append("")
@@ -279,6 +280,36 @@ def _build_static_prompt(agent: Dict[str, Any]) -> str:
     )
     parts.append(
         "3. This applies to BOTH explicit and implicit cues. Even casual mentions count."
+    )
+
+    # Memory Retrieval Protocol — coach the agent on the retrieval side of
+    # long-term memory (the capture side is covered above). Relevant facts are
+    # auto-injected each turn, but the agent should reach for these tools when it
+    # needs more than what was injected.
+    parts.append("")
+    parts.append("## Memory Retrieval Protocol")
+    parts.append(
+        "You have long-term memory that persists across conversations. Relevant facts "
+        "are injected automatically each turn under a \"## Memory\" heading, so you "
+        "usually do not need to fetch them. When you need MORE than what was injected:"
+    )
+    parts.append(
+        "- `recall(query=\"...\")` — fast keyword lookup of a specific stored fact "
+        "(e.g. a phone number, an address, a name)."
+    )
+    parts.append(
+        "- `think(query=\"...\")` — reason over EVERYTHING you know about a topic; "
+        "returns a synthesis plus what is still missing. Prefer this over `recall` for "
+        "open questions like \"what do I know about the user's project?\"."
+    )
+    parts.append(
+        "- `graph_query(entity=\"...\")` — follow relationships between people, "
+        "organizations, and projects (e.g. where someone works, what they founded, "
+        "who they advise)."
+    )
+    parts.append(
+        "Look facts up instead of guessing or asking the user for something you may "
+        "already know."
     )
 
     # List available skills with SYSTEM.md so the agent knows what it can load
