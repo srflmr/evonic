@@ -1829,6 +1829,7 @@ async function editFile(filename) {
     currentEditFile = filename;
     document.getElementById('kb-editor-filename').textContent = filename;
     document.getElementById('kb-editor-content').value = data.content;
+    window.kbEditorOriginalContent = data.content;
     document.getElementById('kb-editor-modal').classList.remove('hidden');
     autoGrowKBTextarea(document.getElementById('kb-editor-content'));
 }
@@ -1861,6 +1862,27 @@ async function saveFile() {
         setSaveLoading(btnId, false);
     }
 }
+
+// ESC key to close KB editor modal (with dirty-check)
+document.addEventListener('keydown', function(e) {
+    if (e.key !== 'Escape') return;
+    var modal = document.getElementById('kb-editor-modal');
+    if (!modal || modal.classList.contains('hidden')) return;
+    var textarea = document.getElementById('kb-editor-content');
+    if (!textarea) return;
+    if (textarea.value === (window.kbEditorOriginalContent || '')) {
+        closeEditor();
+    } else {
+        window.showConfirm({
+            title: 'Unsaved Changes',
+            message: 'You have unsaved changes. What would you like to do?',
+            confirmText: 'Save & Close',
+            cancelText: 'Discard'
+        }).then(function(result) {
+            if (result) saveFile(); else closeEditor();
+        });
+    }
+});
 
 async function deleteFile(filename) {
     if (!await showConfirm({title: 'Delete File', message: `Delete "${filename}"? This cannot be undone.`, confirmText: 'Delete'})) return;
