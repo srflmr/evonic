@@ -47,13 +47,25 @@ def execute(agent: dict, args: dict) -> dict:
 
     # Check for bare (no timezone) run_date in date triggers before calling scheduler
     _warning = None
+    _fires_at = None
+    _fires_at_utc = None
     if args.get('trigger_type') == 'date':
         run_date = trigger_config.get('run_date', '')
         if run_date and isinstance(run_date, str):
             try:
-                from datetime import datetime
-                if datetime.fromisoformat(run_date).tzinfo is None:
+                from datetime import datetime, timezone, timedelta
+                dt = datetime.fromisoformat(run_date)
+                if dt.tzinfo is None:
                     _warning = "run_date has no timezone info — treated as local time (WIB/UTC+7)"
+                    # Deterministic: compute actual fire time so agents can verify immediately
+                    local_tz = datetime.now().astimezone().tzinfo
+                    dt_aware = dt.replace(tzinfo=local_tz)
+                    _fires_at = dt_aware.strftime('%Y-%m-%d %H:%M:%S %Z')
+                    _fires_at_utc = dt_aware.astimezone(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')
+                else:
+                    # Timezone-aware: show both
+                    _fires_at = dt.strftime('%Y-%m-%d %H:%M:%S %Z')
+                    _fires_at_utc = dt.astimezone(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')
             except (ValueError, TypeError):
                 pass  # Malformed — let scheduler.create_schedule handle errors
 
@@ -77,6 +89,9 @@ def execute(agent: dict, args: dict) -> dict:
         }
         if _warning:
             response['_warning'] = _warning
+        if _fires_at:
+            response['fires_at'] = _fires_at
+            response['fires_at_utc'] = _fires_at_utc
         return response
     except Exception as e:
         return {'status': 'error', 'error': str(e)}

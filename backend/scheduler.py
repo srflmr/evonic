@@ -233,6 +233,18 @@ class Scheduler:
         try:
             dt = datetime.fromisoformat(run_date)
             dt = dt.replace(tzinfo=local_tz)
+            # Heuristic: if the naive time's hour differs from current local hour
+            # by exactly the UTC offset, the caller may have mistakenly converted to UTC.
+            local_now = datetime.now().astimezone()
+            offset_hours = int(local_now.utcoffset().total_seconds() / 3600)
+            naive_hour = dt.hour
+            expected_hour = local_now.hour
+            if abs(naive_hour - expected_hour) == abs(offset_hours) and offset_hours != 0:
+                log.warning(
+                    "run_date '%s' naive hour=%d vs local hour=%d (offset=%+d) — "
+                    "caller may have accidentally UTC-converted the time",
+                    run_date, naive_hour, expected_hour, offset_hours,
+                )
             trigger_config['run_date'] = dt
         except (ValueError, TypeError):
             pass  # Malformed — let APScheduler handle the error
@@ -320,18 +332,32 @@ class Scheduler:
                 # Handle past-due schedules
                 if trigger_type == 'date':
                     # Skip expired one-shot schedules
-                    if run_date and run_date < now.isoformat():
-                        db.update_schedule(s['id'], enabled=0)
-                        continue
+                    if run_date:
+                        try:
+                            run_dt = datetime.fromisoformat(run_date)
+                            if run_dt.tzinfo is None:
+                                run_dt = run_dt.replace(tzinfo=now.tzinfo)
+                            if run_dt < now:
+                                db.update_schedule(s['id'], enabled=0)
+                                continue
+                        except (ValueError, TypeError):
+                            pass
                 elif trigger_type == 'auto_extend':
                     # Past-due auto_extend: fire immediately (now + 5s grace)
-                    if run_date and run_date < now.isoformat():
-                        reschedule = now + timedelta(seconds=5)
-                        s['trigger_config']['run_date'] = reschedule.isoformat()
-                        db.update_schedule(s['id'],
-                                           trigger_config=s['trigger_config'])
-                        log.info("auto_extend %s past-due, rescheduled to %s",
-                                 s['id'], reschedule.isoformat())
+                    if run_date:
+                        try:
+                            run_dt = datetime.fromisoformat(run_date)
+                            if run_dt.tzinfo is None:
+                                run_dt = run_dt.replace(tzinfo=now.tzinfo)
+                            if run_dt < now:
+                                reschedule = now + timedelta(seconds=5)
+                                s['trigger_config']['run_date'] = reschedule.isoformat()
+                                db.update_schedule(s['id'],
+                                                   trigger_config=s['trigger_config'])
+                                log.info("auto_extend %s past-due, rescheduled to %s",
+                                         s['id'], reschedule.isoformat())
+                        except (ValueError, TypeError):
+                            pass
 
                 self._register_job(s['id'], s['trigger_type'], s['trigger_config'])
                 self._update_next_run(s['id'])
