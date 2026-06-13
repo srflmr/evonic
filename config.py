@@ -217,6 +217,11 @@ TOOL_COMPRESSION_VERBOSE = _get_env_bool("RTK_VERBOSE", False)
 # override this at runtime via the system settings UI.
 LONG_RUNNING_GUARD_ENABLED = _get_env_bool("LR_GUARD_DISABLED", False, invert=True)
 
+# Session archiving on /clear — when enabled, session data (messages, JSONL,
+# summaries, state) is saved to shared/db/session_archive.db before clearing.
+# Only active when EVONIC_SESSION_ARCHIVE=1 (or true/True/TRUE).
+SESSION_ARCHIVE = _get_env_bool("EVONIC_SESSION_ARCHIVE", False)
+
 AGENT_MAX_SUMMARIZE_BATCH = _get_env_int("AGENT_MAX_SUMMARIZE_BATCH", 20, min_val=1, max_val=500)
 AGENT_TIMEOUT_RETRIES = _get_env_int("AGENT_TIMEOUT_RETRIES", 2, min_val=0, max_val=20)
 AGENT_QUEUE_WORKERS = _get_env_int("AGENT_QUEUE_WORKERS", 5, min_val=1, max_val=32)

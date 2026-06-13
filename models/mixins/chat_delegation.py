@@ -117,6 +117,12 @@ class ChatDelegationMixin:
     def clear_session(self, session_id: str, agent_id: str = None):
         agent_id = agent_id or self._find_agent_for_session(session_id)
         if agent_id:
+            # Archive session data before clearing (background, non-blocking)
+            import config
+            if config.SESSION_ARCHIVE:
+                from models.session_archive import SessionArchiver
+                SessionArchiver.archive_session(agent_id, session_id)
+
             self._chat_db(agent_id).clear_session(session_id)
             from models.chatlog import chatlog_manager
             chatlog_manager.get(agent_id, session_id).clear()
