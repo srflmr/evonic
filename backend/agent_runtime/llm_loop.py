@@ -1411,10 +1411,13 @@ def run_tool_loop(agent: Dict[str, Any],
                 from backend.plugin_manager import check_tool_guards
                 guard_result = check_tool_guards(agent_id, fn_name, args)
                 if guard_result:
-                    tool_result = {
-                        'error': guard_result.get('error',
-                                                  'Blocked by plugin guard'),
-                        'blocked_by': 'tool_guard'}
+                    if guard_result.get('level') == 'requires_approval':
+                        tool_result = guard_result  # handled by approval flow below
+                    else:
+                        tool_result = {
+                            'error': guard_result.get('error',
+                                                      'Blocked by plugin guard'),
+                            'blocked_by': 'tool_guard'}
                 else:
                     tool_result = _execute_tool_core(fn_name, args,
                                                      builtin_exec, real_exec)
@@ -1627,7 +1630,7 @@ def run_tool_loop(agent: Dict[str, Any],
                 event_stream.emit('evonic:agent-state-changed', {'agent_id': agent_id, 'session_id': session_id})
 
             # ── Layer B: Tool Result Scanner (post-execution injection scan) ──
-            _SCAN_RESULT_TOOLS = frozenset({'read_file', 'bash', 'runpy'})
+            _SCAN_RESULT_TOOLS = frozenset({'read_file', 'bash', 'runpy', 'send_agent_message'})
             _already_blocked = isinstance(tool_result, dict) and 'blocked_by' in tool_result
             if fn_name in _SCAN_RESULT_TOOLS and not _already_blocked:
                 _inj_cfg_b = _agent_ig_config

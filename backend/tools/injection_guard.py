@@ -475,7 +475,16 @@ _RULES: list[tuple] = [
         "Token mentioned with extraction verb \u2014 low severity to avoid blocking legitimate code usage.",
     ),
 
-    # ── 13. ROT13 Obfuscation ──────────────────────────────────────────
+    # ── 13. PEM Private Key Content ─────────────────────────────────────
+    (
+        "pem_private_key_content",
+        _r(r"-----BEGIN\s+(OPENSSH|RSA|EC|DSA|PGP|ENCRYPTED)\s+PRIVATE\s+KEY-----"),
+        HIGH,
+        "Data Leakage",
+        "PEM-encoded private key content detected — requires user approval.",
+    ),
+
+    # ── 14. ROT13 Obfuscation ──────────────────────────────────────────
     (
         "rot13_encoded_payload",
         _r(
@@ -963,14 +972,32 @@ def injection_tool_guard(agent_id: str, tool_name: str, args: dict) -> Optional[
             f"{reason}"
         )
 
-        if mode == "log":
+        # PEM rules always use approval flow regardless of global mode
+        _effective_mode = "approve" if rule_name.startswith("pem_") else mode
+
+        if _effective_mode == "log":
             _logger.warning(
                 "INJECTION_LOG agent=%s tool=%s severity=%s score=%d rule=%s",
                 agent_id, tool_name, severity, score_pct, rule_name,
             )
             return None  # log only, don't block
 
-        if mode == "warn":
+        if _effective_mode == "approve":
+            _logger.warning(
+                "INJECTION_APPROVE agent=%s tool=%s severity=%s score=%d rule=%s",
+                agent_id, tool_name, severity, score_pct, rule_name,
+            )
+            return {
+                "level": "requires_approval",
+                "approval_info": {
+                    "command": f"{tool_name}({', '.join(f'{k}=...' for k in args)})",
+                    "description": error_msg,
+                },
+                "reasons": [reason],
+                "score": score_pct,
+            }
+
+        if _effective_mode == "warn":
             _logger.warning(
                 "INJECTION_WARN agent=%s tool=%s severity=%s score=%d rule=%s",
                 agent_id, tool_name, severity, score_pct, rule_name,

@@ -40,7 +40,7 @@ def check_tool_guards(agent_id: str, tool_name: str, args: dict) -> Optional[dic
     for guard in list(_tool_guards):
         try:
             result = guard(agent_id, tool_name, args)
-            if result and result.get('block'):
+            if result and (result.get('block') or result.get('level') == 'requires_approval'):
                 return result
         except Exception:
             pass
