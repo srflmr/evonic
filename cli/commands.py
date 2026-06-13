@@ -3889,90 +3889,36 @@ def doctor_command(quick=False, fix=False):
         contract_ok = os.path.isfile(contract_path)
         files_ok = model_ok and vocab_ok and contract_ok
 
-        # 3. Check per-agent ML config
-        agents = db.get_agents()
-        ml_agents = []
-        for a in agents:
-            aid = a.get("id", "?")
-            aname = a.get("name", aid)
-            try:
-                vars_dict = db.get_agent_variables_dict(aid)
-                ml_val = vars_dict.get("injection_guard_ml_enabled", "").strip().lower()
-                if ml_val in ("1", "true", "yes", "on"):
-                    ml_agents.append((aid, aname))
-            except Exception:
-                pass
-
-        # 4. onnxruntime check
+        # 3. onnxruntime check (hard requirement — ML is always-on)
         if not onnx_available:
-            results.append(_warn(
+            results.append(_fail(
                 "onnxruntime not installed — PromptPurify ML safety unavailable. "
                 "Install with: pip install onnxruntime"
             ))
 
-        # 5. Model file checks
+        # 4. Model file checks (hard requirement)
         if not model_ok:
-            if ml_agents:
-                names = ", ".join(name for _, name in ml_agents[:3])
-                if len(ml_agents) > 3:
-                    names += f" and {len(ml_agents) - 3} more"
-                results.append(_fail(
-                    f"PromptPurify model not found at "
-                    f"backend/promptpurify/model.int8.onnx "
-                    f"(ML enabled for: {names})"
-                ))
-            else:
-                results.append(_warn(
-                    "PromptPurify model not found at "
-                    "backend/promptpurify/model.int8.onnx"
-                ))
-
-        if not vocab_ok:
-            if ml_agents:
-                results.append(_fail(
-                    "PromptPurify vocab not found at backend/promptpurify/vocab.txt"
-                ))
-            else:
-                results.append(_warn(
-                    "PromptPurify vocab not found at backend/promptpurify/vocab.txt"
-                ))
-
-        if not contract_ok:
-            if ml_agents:
-                results.append(_fail(
-                    "PromptPurify contract not found at backend/promptpurify/l5e.json"
-                ))
-            else:
-                results.append(_warn(
-                    "PromptPurify contract not found at backend/promptpurify/l5e.json"
-                ))
-
-        # 6. Per-agent ML enabled checks
-        if ml_agents:
-            if not onnx_available:
-                for aid, aname in ml_agents:
-                    results.append(_fail(
-                        f"Agent '{aname}' ({aid}) has "
-                        f"injection_guard_ml_enabled=true but onnxruntime is "
-                        f"not installed"
-                    ))
-            elif not model_ok:
-                for aid, aname in ml_agents:
-                    results.append(_fail(
-                        f"Agent '{aname}' ({aid}) has "
-                        f"injection_guard_ml_enabled=true but PromptPurify "
-                        f"model is missing. Run: cd backend/promptpurify && "
-                        f"bash download_model.sh"
-                    ))
-        else:
-            results.append(_warn(
-                "PromptPurify ML safety layer is not enabled. "
-                "Set injection_guard_ml_enabled=1 in agent variables to activate."
+            results.append(_fail(
+                "PromptPurify model not found at "
+                "backend/promptpurify/model.int8.onnx. "
+                "Run: cd backend/promptpurify && bash download_model.sh"
             ))
 
-        # 7. All good
-        if onnx_available and files_ok and ml_agents:
-            results.append(_ok("PromptPurify ML safety available"))
+        if not vocab_ok:
+            results.append(_fail(
+                "PromptPurify vocab not found at backend/promptpurify/vocab.txt. "
+                "Run: cd backend/promptpurify && bash download_model.sh"
+            ))
+
+        if not contract_ok:
+            results.append(_fail(
+                "PromptPurify contract not found at backend/promptpurify/l5e.json. "
+                "Run: cd backend/promptpurify && bash download_model.sh"
+            ))
+
+        # 5. All good
+        if onnx_available and files_ok:
+            results.append(_ok("PromptPurify ML safety available (always-on)"))
 
         # 8. Fixes
         if fix:
