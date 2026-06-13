@@ -149,7 +149,7 @@ const Lightbox = (function() {
             .css({
                 position: 'absolute',
                 top: '6px',
-                right: '6px',
+                left: '6px',
                 zIndex: 20,
                 display: 'flex',
                 alignItems: 'center',

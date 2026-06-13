@@ -555,7 +555,7 @@ function _wrapImageWithDownload($img) {
         .css({
             position: 'absolute',
             top: '6px',
-            right: '6px',
+            left: '6px',
             zIndex: 10,
             display: 'flex',
             alignItems: 'center',
