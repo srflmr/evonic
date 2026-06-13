@@ -24,6 +24,7 @@ MODULE_ORDER = [
     'lightbox.js',
     'lazy-image.js',
     'renderers.js',
+    'artifacts.js',
     'transport.js',
     'turn.js',
     'index.js',
