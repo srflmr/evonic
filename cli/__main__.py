@@ -129,7 +129,7 @@ def main():
     )
     doctor_parser.add_argument(
         "--fix", action="store_true", default=False,
-        help="Automatically fix detected inconsistencies (e.g. missing save_artifact tool)",
+        help="Automatically fix detected inconsistencies (e.g. missing tools, safety components)",
     )
 
     # --- plugin ---

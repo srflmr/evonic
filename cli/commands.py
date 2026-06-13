@@ -3817,6 +3817,215 @@ def doctor_command(quick=False, fix=False):
     except Exception as e:
         results.append(_fail(f"Non-lazy skill tool check failed: {e}"))
 
+    # ── 11. Evobrain Memory Engine Check ──
+    _section("11. Evobrain Memory Engine Check")
+
+    try:
+        engine = os.environ.get("EVONIC_MEMORY_ENGINE", "evobrain").strip().lower()
+        engine_explicit = "EVONIC_MEMORY_ENGINE" in os.environ
+        binary_path = os.environ.get("EVOBRAIN_BINARY", "shared/bin/evobrain")
+        binary_full = os.path.join(ROOT, binary_path) if not os.path.isabs(binary_path) else binary_path
+        binary_ok = os.path.isfile(binary_full) and os.access(binary_full, os.X_OK)
+
+        # Check custom EVOBRAIN_BINARY path
+        if "EVOBRAIN_BINARY" in os.environ and not binary_ok:
+            results.append(_warn(
+                f"EVOBRAIN_BINARY is set to '{binary_path}' but binary not found "
+                f"or not executable at {binary_full}"
+            ))
+
+        if engine == "fts5":
+            _info("  Memory engine is FTS5 (evobrain not used)")
+        elif binary_ok:
+            results.append(_ok("Evobrain memory engine available"))
+        elif engine_explicit:
+            results.append(_fail(
+                f"EVONIC_MEMORY_ENGINE=evobrain is set but binary not found at "
+                f"{binary_full}. Set EVONIC_MEMORY_ENGINE=fts5 to use fallback, "
+                f"or install the evobrain binary."
+            ))
+        else:
+            results.append(_warn(
+                f"Evobrain is the default memory engine but binary not found at "
+                f"{binary_full}. Evobrain features (think, graph_query) will "
+                f"silently fall back to FTS5."
+            ))
+
+        # Fix: provide actionable message + create directory if needed
+        if not binary_ok and engine != "fts5" and fix:
+            _info(
+                "  To install evobrain: place the static binary at "
+                "shared/bin/evobrain and make it executable (chmod +x)."
+            )
+            bin_dir = os.path.dirname(binary_full)
+            if not os.path.isdir(bin_dir):
+                os.makedirs(bin_dir, exist_ok=True)
+                fixes_applied.append(f"Created directory {bin_dir} for evobrain binary")
+
+    except Exception as e:
+        results.append(_fail(f"Evobrain check failed: {e}"))
+
+    # ── 12. PromptPurify ML Safety Check ──
+    _section("12. PromptPurify ML Safety Check")
+
+    try:
+        from models.db import db
+
+        # 1. Check onnxruntime
+        onnx_available = False
+        try:
+            import onnxruntime  # noqa: F401
+            onnx_available = True
+            _info("  onnxruntime available")
+        except ImportError:
+            pass
+
+        # 2. Check model files
+        model_path = os.path.join(ROOT, "backend", "promptpurify", "model.int8.onnx")
+        vocab_path = os.path.join(ROOT, "backend", "promptpurify", "vocab.txt")
+        contract_path = os.path.join(ROOT, "backend", "promptpurify", "l5e.json")
+        model_ok = os.path.isfile(model_path)
+        vocab_ok = os.path.isfile(vocab_path)
+        contract_ok = os.path.isfile(contract_path)
+        files_ok = model_ok and vocab_ok and contract_ok
+
+        # 3. Check per-agent ML config
+        agents = db.get_agents()
+        ml_agents = []
+        for a in agents:
+            aid = a.get("id", "?")
+            aname = a.get("name", aid)
+            try:
+                vars_dict = db.get_agent_variables_dict(aid)
+                ml_val = vars_dict.get("injection_guard_ml_enabled", "").strip().lower()
+                if ml_val in ("1", "true", "yes", "on"):
+                    ml_agents.append((aid, aname))
+            except Exception:
+                pass
+
+        # 4. onnxruntime check
+        if not onnx_available:
+            results.append(_warn(
+                "onnxruntime not installed — PromptPurify ML safety unavailable. "
+                "Install with: pip install onnxruntime"
+            ))
+
+        # 5. Model file checks
+        if not model_ok:
+            if ml_agents:
+                names = ", ".join(name for _, name in ml_agents[:3])
+                if len(ml_agents) > 3:
+                    names += f" and {len(ml_agents) - 3} more"
+                results.append(_fail(
+                    f"PromptPurify model not found at "
+                    f"backend/promptpurify/model.int8.onnx "
+                    f"(ML enabled for: {names})"
+                ))
+            else:
+                results.append(_warn(
+                    "PromptPurify model not found at "
+                    "backend/promptpurify/model.int8.onnx"
+                ))
+
+        if not vocab_ok:
+            if ml_agents:
+                results.append(_fail(
+                    "PromptPurify vocab not found at backend/promptpurify/vocab.txt"
+                ))
+            else:
+                results.append(_warn(
+                    "PromptPurify vocab not found at backend/promptpurify/vocab.txt"
+                ))
+
+        if not contract_ok:
+            if ml_agents:
+                results.append(_fail(
+                    "PromptPurify contract not found at backend/promptpurify/l5e.json"
+                ))
+            else:
+                results.append(_warn(
+                    "PromptPurify contract not found at backend/promptpurify/l5e.json"
+                ))
+
+        # 6. Per-agent ML enabled checks
+        if ml_agents:
+            if not onnx_available:
+                for aid, aname in ml_agents:
+                    results.append(_fail(
+                        f"Agent '{aname}' ({aid}) has "
+                        f"injection_guard_ml_enabled=true but onnxruntime is "
+                        f"not installed"
+                    ))
+            elif not model_ok:
+                for aid, aname in ml_agents:
+                    results.append(_fail(
+                        f"Agent '{aname}' ({aid}) has "
+                        f"injection_guard_ml_enabled=true but PromptPurify "
+                        f"model is missing. Run: cd backend/promptpurify && "
+                        f"bash download_model.sh"
+                    ))
+        else:
+            results.append(_warn(
+                "PromptPurify ML safety layer is not enabled. "
+                "Set injection_guard_ml_enabled=1 in agent variables to activate."
+            ))
+
+        # 7. All good
+        if onnx_available and files_ok and ml_agents:
+            results.append(_ok("PromptPurify ML safety available"))
+
+        # 8. Fixes
+        if fix:
+            # Fix onnxruntime
+            if not onnx_available:
+                try:
+                    result = subprocess.run(
+                        [sys.executable, "-m", "pip", "install", "onnxruntime"],
+                        capture_output=True, text=True, timeout=120
+                    )
+                    if result.returncode == 0:
+                        fixes_applied.append("Installed onnxruntime via pip")
+                    else:
+                        fixes_applied.append(
+                            f"pip install onnxruntime failed: "
+                            f"{result.stderr.strip()[:200]}"
+                        )
+                except Exception as e:
+                    fixes_applied.append(f"pip install onnxruntime error: {e}")
+
+            # Fix model files
+            if not files_ok:
+                download_script = os.path.join(
+                    ROOT, "backend", "promptpurify", "download_model.sh"
+                )
+                if os.path.isfile(download_script):
+                    try:
+                        result = subprocess.run(
+                            ["bash", download_script],
+                            cwd=ROOT, capture_output=True, text=True, timeout=300
+                        )
+                        if result.returncode == 0:
+                            fixes_applied.append(
+                                "Ran backend/promptpurify/download_model.sh"
+                            )
+                        else:
+                            fixes_applied.append(
+                                f"download_model.sh failed: "
+                                f"{result.stderr.strip()[:200]}"
+                            )
+                    except Exception as e:
+                        fixes_applied.append(
+                            f"download_model.sh error: {e}"
+                        )
+                else:
+                    fixes_applied.append(
+                        "download_model.sh not found — cannot auto-download "
+                        "PromptPurify model"
+                    )
+
+    except Exception as e:
+        results.append(_fail(f"PromptPurify ML check failed: {e}"))
+
 
     # ── Summary ───────────────────────────────────────────────
     _section("Summary")
