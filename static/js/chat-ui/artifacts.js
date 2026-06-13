@@ -110,17 +110,28 @@ export function buildSavedArtifactsBlock(artifacts, opts = {}) {
     );
     $inner.append($header);
 
+    // Collect image-artifact URLs (in display order) so the lightbox can page
+    // prev/next across sibling images only.
+    const imageUrls = items
+        .filter(item => categorizeArtifact(item.filename) === 'image')
+        .map(item => artifactUrl(item, agentIdFallback));
+
     const $list = $('<div class="space-y-1.5">');
-    items.forEach(item => $list.append(_buildCard(item, agentIdFallback)));
+    items.forEach(item => $list.append(_buildCard(item, agentIdFallback, imageUrls)));
     $inner.append($list);
     $wrap.append($inner);
     return $wrap;
 }
 
-function _buildCard(item, agentIdFallback) {
+function _buildCard(item, agentIdFallback, imageUrls) {
     const category = categorizeArtifact(item.filename);
     const url = artifactUrl(item, agentIdFallback);
     const sizeStr = _formatSize(item.size);
+    // For images, build the gallery context (sibling images + this one's index)
+    // so the lightbox can navigate prev/next.
+    const gallery = (category === 'image' && imageUrls && imageUrls.length)
+        ? { urls: imageUrls, index: imageUrls.indexOf(url) }
+        : null;
 
     const $card = $('<div class="bg-gray-50 dark:bg-gray-700/50 border border-gray-200 dark:border-gray-600 rounded-lg p-2 hover:border-indigo-300 dark:hover:border-indigo-500 transition-colors flex items-center gap-2.5 group">');
 
@@ -138,7 +149,7 @@ function _buildCard(item, agentIdFallback) {
     } else {
         $thumb = _iconEl(category, 'w-10 h-10').addClass('cursor-pointer');
     }
-    $thumb.on('click', () => openSavedArtifact(url, item.filename, category));
+    $thumb.on('click', () => openSavedArtifact(url, item.filename, category, gallery));
     $card.append($thumb);
 
     const $meta = $('<div class="flex-1 min-w-0 cursor-pointer">');
@@ -146,7 +157,7 @@ function _buildCard(item, agentIdFallback) {
         $('<p class="text-sm font-medium text-gray-800 dark:text-gray-200 truncate">').attr('title', item.filename).text(item.filename),
         $('<p class="text-xs text-gray-400">').text(sizeStr)
     );
-    $meta.on('click', () => openSavedArtifact(url, item.filename, category));
+    $meta.on('click', () => openSavedArtifact(url, item.filename, category, gallery));
     $card.append($meta);
 
     const $dl = $('<a class="p-1.5 text-indigo-500 hover:text-indigo-700 rounded hover:bg-indigo-50 dark:hover:bg-indigo-900/20 transition-colors opacity-0 group-hover:opacity-100 flex-shrink-0" title="Download">')
@@ -160,11 +171,16 @@ function _buildCard(item, agentIdFallback) {
 
 /**
  * Open an artifact: lightbox for images, modal viewer for everything else.
+ * @param {object} [gallery] - { urls: string[], index: number } to enable
+ *   prev/next navigation across sibling image artifacts. Optional.
  */
-export function openSavedArtifact(url, filename, category) {
+export function openSavedArtifact(url, filename, category, gallery) {
     if (category === 'image') {
-        if (window.Lightbox && window.Lightbox.open) window.Lightbox.open([url], 0);
-        else Lightbox.open([url], 0);
+        const urls = (gallery && gallery.urls && gallery.urls.length) ? gallery.urls : [url];
+        let idx = (gallery && typeof gallery.index === 'number') ? gallery.index : 0;
+        if (idx < 0) idx = Math.max(0, urls.indexOf(url));
+        const lb = (window.Lightbox && window.Lightbox.open) ? window.Lightbox : Lightbox;
+        lb.open(urls, idx);
         return;
     }
     _openViewerModal(url, filename, category);
