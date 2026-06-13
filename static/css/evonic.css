@@ -1025,6 +1025,7 @@ html.dark .avatar-fallback {
     );
     background-size: 400px 100%;
     animation: chat-img-shimmer 1.5s ease-in-out infinite;
+    max-width: 100%;
     
 }
 
@@ -1160,9 +1161,8 @@ html.dark {
 #agent-sidebar {
     width: 64px;
     min-width: 64px;
-    height: calc(100vh - 56px);
-    position: sticky;
-    top: 0;
+    flex-shrink: 0;
+    height: auto;
     background: var(--sidebar-bg);
     display: flex;
     flex-direction: column;
@@ -1348,7 +1348,7 @@ html.dark .sidebar-toggle-btn:hover {
 
 @media (max-width: 1023px) {
     #agent-sidebar {
-        height: auto;
+        height: calc(100vh - 160px);
     }
 }
 
