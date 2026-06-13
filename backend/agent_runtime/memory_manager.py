@@ -398,10 +398,12 @@ def search_memories(agent_id: str, query: str, limit: int = 10) -> dict:
                     return {
                         "engine": "evobrain",
                         "memories": [
-                            {"slug": h.get("slug"), "title": h.get("title"),
-                             "snippet": h.get("snippet"), "evidence": h.get("evidence"),
-                             "score": h.get("score"), "source_dir": h.get("source_dir"),
-                             "updated_at": h.get("updated_at")}
+                            {"id": h.get("slug"),
+                             "content": h.get("snippet") or h.get("title"),
+                             "category": h.get("source_dir") or "evobrain",
+                             "created_at": h.get("updated_at"),
+                             "evidence": h.get("evidence"),
+                             "score": h.get("score")}
                             for h in hits
                         ],
                         "count": len(hits),
