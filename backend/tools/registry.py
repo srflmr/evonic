@@ -49,6 +49,9 @@ class ToolRegistry:
         self._builtins['builtin:remember'] = _builtin_remember_factory
         self._builtins['builtin:recall'] = _builtin_recall_factory
         self._builtins['builtin:forget_memory'] = _builtin_forget_memory_factory
+        # Knowledge-graph memory tools (evobrain): synthesis + graph traversal
+        self._builtins['builtin:think'] = _builtin_think_factory
+        self._builtins['builtin:graph_query'] = _builtin_graph_query_factory
         # Session recall tool
         self._builtins['builtin:recall_sessions'] = _builtin_recall_sessions_factory
         # Tool to clear active fallback flag from agent_state (agent calls this)
@@ -802,6 +805,88 @@ def _builtin_forget_memory_factory(agent_context: dict):
             memory_id=args.get('memory_id'),
             target_agent_id=args.get('agent_id'),
             is_super=is_super,
+        )
+
+    return tool_def, executor
+
+
+def _builtin_think_factory(agent_context: dict):
+    """Factory for the built-in 'think' tool — brain-layer synthesis over memory."""
+    tool_def = {
+        "type": "function",
+        "function": {
+            "name": "think",
+            "description": (
+                "Reason over EVERYTHING you know about a topic and surface what's missing. "
+                "Returns synthesized facts (with citations) plus knowledge gaps. "
+                "Heavier than 'recall' — use it for open questions like "
+                "'what do I know about the user's project?' rather than a simple keyword lookup. "
+                "Example: think(query='what do I know about Acme Corp?')"
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "The question or topic to synthesize knowledge about."
+                    }
+                },
+                "required": ["query"]
+            }
+        }
+    }
+
+    def executor(args: dict) -> dict:
+        from backend.agent_runtime.memory_manager import synthesize_memory
+        agent_id = agent_context.get('id', '')
+        return synthesize_memory(agent_id, args.get('query', ''))
+
+    return tool_def, executor
+
+
+def _builtin_graph_query_factory(agent_context: dict):
+    """Factory for the built-in 'graph_query' tool — traverse the knowledge graph."""
+    tool_def = {
+        "type": "function",
+        "function": {
+            "name": "graph_query",
+            "description": (
+                "Traverse your knowledge graph from an entity to find what it's connected to "
+                "(employer, companies founded, people advised, events attended, etc.). "
+                "Use this to follow relationships between people, organizations, and projects. "
+                "Example: graph_query(entity='Robin Syihab')"
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "entity": {
+                        "type": "string",
+                        "description": "The entity (name, alias, or slug) to start from."
+                    },
+                    "edge_type": {
+                        "type": "string",
+                        "enum": ["founded", "invested_in", "works_at",
+                                 "advises", "attended", "mentions"],
+                        "description": "Optional: only follow edges of this type."
+                    },
+                    "hops": {
+                        "type": "integer",
+                        "description": "How many hops to traverse (default 2)."
+                    }
+                },
+                "required": ["entity"]
+            }
+        }
+    }
+
+    def executor(args: dict) -> dict:
+        from backend.agent_runtime.memory_manager import graph_lookup
+        agent_id = agent_context.get('id', '')
+        return graph_lookup(
+            agent_id,
+            args.get('entity', ''),
+            edge_type=args.get('edge_type'),
+            hops=int(args.get('hops', 2) or 2),
         )
 
     return tool_def, executor

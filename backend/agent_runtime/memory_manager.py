@@ -16,6 +16,7 @@ No new pip dependencies — uses existing LLM client, SQLite FTS5 (Python stdlib
 and the evobrain static binary via subprocess.
 """
 
+import os
 import json
 import logging
 import threading
@@ -24,10 +25,21 @@ from typing import List, Optional
 from models.db import db
 from backend.llm_client import llm_client, strip_thinking_tags
 from backend.agent_runtime.evobrain_client import (
-    get_engine, capture, search as evobrain_search, init_brain as evobrain_init
+    get_engine, search as evobrain_search, think as evobrain_think,
+    graph_query as evobrain_graph_query, init_brain as evobrain_init, vlog,
 )
+from backend.agent_runtime import evobrain_writer
 
 logger = logging.getLogger(__name__)
+
+# Search modes per call-site (overridable via env). Passive injection favours
+# precision; explicit recall favours maximum recall from the weak hash embedder.
+_PASSIVE_SEARCH_MODE = os.environ.get("EVOBRAIN_SEARCH_MODE_PASSIVE", "conservative")
+_RECALL_SEARCH_MODE = os.environ.get("EVOBRAIN_SEARCH_MODE_RECALL", "tokenmax")
+
+# Memory categories that describe the user → linked to the canonical user entity
+# so the fact becomes graph-adjacent and feeds `think`.
+_USER_SCOPED = {"user_info", "preference", "instruction", "decision", "context"}
 
 _EXTRACT_PROMPT = """You are a long-term memory extractor for an AI assistant. Given a conversation summary, extract facts worth remembering in FUTURE conversations.
 
@@ -87,6 +99,24 @@ Category: {category}
 
 Return only the dimension string (e.g. "user.language_preference") or null:"""
 
+_GRAPH_EXTRACT_PROMPT = """You build a knowledge graph from a conversation summary. Extract the named entities (people, organizations, projects, places) and the typed relationships between them.
+
+Allowed relation types (use ONLY these): works_at, founded, invested_in, advises, attended, mentions.
+
+Rules:
+- Only extract relationships that are explicitly stated and factual (not speculative/planned/negated).
+- Use real entity names as they appear (e.g. "Acme Corp", "Robin Syihab"). The user themselves is the entity "User".
+- If a relationship doesn't fit one of the allowed types, skip it (or use "mentions" for a loose association).
+- Return STRICT JSON only, no prose:
+{{"entities": [{{"name": "...", "type": "person|organization|project|place", "aliases": ["..."]}}],
+ "relations": [{{"subject": "...", "relation": "works_at", "object": "..."}}]}}
+- If nothing to extract, return: {{"entities": [], "relations": []}}
+
+Conversation summary:
+{summary}
+
+Return only the JSON object:"""
+
 
 def _try_evobrain_retrieval(agent_id: str, query: str, limit: int = 8) -> Optional[str]:
     """Try to retrieve memories via evobrain hybrid search.
@@ -98,12 +128,16 @@ def _try_evobrain_retrieval(agent_id: str, query: str, limit: int = 8) -> Option
     if engine != "evobrain":
         return None
     try:
-        result = evobrain_search(agent_id, query, limit)
+        result = evobrain_search(agent_id, query, limit, mode=_PASSIVE_SEARCH_MODE)
     except Exception:
         logger.debug("evobrain search exception, falling back to FTS5")
         return None
     if not result or not isinstance(result.get("hits"), list) or not result["hits"]:
+        vlog("retrieve[%s]: 0 hits (mode=%s) -> FTS5 fallback",
+             agent_id, _PASSIVE_SEARCH_MODE)
         return None
+    vlog("retrieve[%s]: %d hits (mode=%s)",
+         agent_id, len(result["hits"]), _PASSIVE_SEARCH_MODE)
     lines = ["## Memory (Evobrain)",
              "Facts remembered from past conversations:"]
     for hit in result["hits"]:
@@ -115,17 +149,107 @@ def _try_evobrain_retrieval(agent_id: str, query: str, limit: int = 8) -> Option
     return "\n".join(lines)
 
 
-def _try_evobrain_store(agent_id: str, content: str, category: str) -> bool:
-    """Dual-write a memory to evobrain. Returns True if evobrain write succeeded."""
+def _try_evobrain_store(agent_id: str, content: str, category: str,
+                        memory_id: int = None, session_id: str = None) -> bool:
+    """Dual-write a memory to evobrain as a STRUCTURED note page.
+
+    Writes a `notes/` page (linked to the canonical `entities/user` for
+    user-scoped facts so it becomes graph-adjacent), then schedules a debounced
+    background sync. Returns True if the page was written.
+    """
     engine = get_engine()
     if engine != "evobrain":
         return False
     try:
-        result = capture(agent_id, content, category)
-        return result is not None
-    except Exception:
-        logger.debug("evobrain capture exception")
+        mentions = None
+        if category in _USER_SCOPED:
+            evobrain_writer.upsert_entity_page(agent_id, "User",
+                                               entity_type="person", tags=["user"])
+            mentions = ["entities/user"]
+        title = f"{category}: {content[:70]}"
+        slug = evobrain_writer.write_note(
+            agent_id, title=title, body=content, tags=[category],
+            mentions=mentions, memory_id=memory_id, source=session_id,
+        )
+        if slug:
+            vlog("store[%s]: %s category=%s -> %s", agent_id,
+                 ("user-linked" if mentions else "note"), category, slug)
+            evobrain_writer.mark_dirty(agent_id)
+            return True
         return False
+    except Exception:
+        logger.debug("evobrain structured store exception")
+        return False
+
+
+def _extract_and_store_graph(agent_id: str, summary: str,
+                             llm_lock: threading.Lock) -> None:
+    """Extract entities + typed relations from a summary and wire the graph.
+
+    Best-effort, runs in the background extraction thread. Any failure is
+    swallowed so flat FTS5/note storage is never affected.
+    """
+    if get_engine() != "evobrain":
+        return
+    try:
+        prompt = _GRAPH_EXTRACT_PROMPT.format(summary=summary)
+        with llm_lock:
+            result = llm_client.chat_completion(
+                messages=[{"role": "user", "content": prompt}],
+                tools=None, temperature=0.0, enable_thinking=False, max_tokens=1024,
+            )
+        if not result.get('success'):
+            return
+        raw = result['response'].get('choices', [{}])[0].get('message', {}).get('content', '')
+        raw, _ = strip_thinking_tags(raw)
+        raw = _strip_code_fences(raw)
+        data = json.loads(raw)
+        if not isinstance(data, dict):
+            return
+
+        # Map entity name -> slug (so relations can reference the same page).
+        name_to_slug = {}
+        for ent in data.get("entities", []):
+            if not isinstance(ent, dict):
+                continue
+            name = (ent.get("name") or "").strip()
+            if not name:
+                continue
+            slug = evobrain_writer.upsert_entity_page(
+                agent_id, name, entity_type=ent.get("type", "entity"),
+                aliases=ent.get("aliases") or [],
+            )
+            if slug:
+                name_to_slug[name.lower()] = slug
+
+        wrote_edge = False
+        for rel in data.get("relations", []):
+            if not isinstance(rel, dict):
+                continue
+            subj = (rel.get("subject") or "").strip()
+            obj = (rel.get("object") or "").strip()
+            relation = (rel.get("relation") or "").strip()
+            if not subj or not obj or not relation:
+                continue
+            subj_slug = name_to_slug.get(subj.lower()) or \
+                evobrain_writer.upsert_entity_page(agent_id, subj)
+            obj_slug = name_to_slug.get(obj.lower()) or \
+                evobrain_writer.upsert_entity_page(agent_id, obj)
+            if subj_slug and obj_slug:
+                if evobrain_writer.add_edge(agent_id, subj_slug, relation, obj_slug,
+                                            anchor=obj):
+                    wrote_edge = True
+
+        vlog("graph-extract[%s]: %d entities, %d relations%s", agent_id,
+             len(name_to_slug), len(data.get("relations", []) or []),
+             " (edges wired)" if wrote_edge else "")
+        if name_to_slug or wrote_edge:
+            evobrain_writer.mark_dirty(agent_id)
+    except (json.JSONDecodeError, KeyError, ValueError):
+        return
+    except Exception:
+        logger.debug("evobrain graph extraction exception (non-fatal)")
+        return
 
 
 def _extract_dimension(content: str, category: str,
@@ -242,6 +366,10 @@ def extract_and_store_memories(agent: dict, session_id: str, summary: str,
                  if isinstance(f, dict) and f.get('content', '').strip()]
         if not facts:
             return
+
+        # Build the knowledge graph (entities + typed edges) from the summary.
+        # Independent of the flat-fact storage below; best-effort, off the hot path.
+        _extract_and_store_graph(agent_id, summary, llm_lock)
 
         # Step 2: Get existing memories for deduplication
         existing = db.get_all_memories(agent_id)
@@ -371,7 +499,9 @@ def store_memory(agent_id: str, session_id: str, content: str,
 
         # Dual-write to evobrain (non-blocking, best-effort)
         if get_engine() == "evobrain":
-            evobrain_ok = _try_evobrain_store(agent_id, content, category)
+            evobrain_ok = _try_evobrain_store(agent_id, content, category,
+                                              memory_id=result['id'],
+                                              session_id=session_id)
             if evobrain_ok:
                 resp["evobrain"] = "stored"
             else:
@@ -391,7 +521,8 @@ def search_memories(agent_id: str, query: str, limit: int = 10) -> dict:
         # === Primary: evobrain ===
         engine = get_engine()
         if engine == "evobrain":
-            evobrain_result = evobrain_search(agent_id, query, limit)
+            evobrain_result = evobrain_search(agent_id, query, limit,
+                                              mode=_RECALL_SEARCH_MODE)
             if evobrain_result and isinstance(evobrain_result.get("hits"), list):
                 hits = evobrain_result["hits"]
                 if hits:
@@ -428,6 +559,71 @@ def search_memories(agent_id: str, query: str, limit: int = 10) -> dict:
         }
     except Exception as e:
         return {"error": f"Memory search failed: {e}"}
+
+
+def synthesize_memory(agent_id: str, query: str) -> dict:
+    """Brain-layer synthesis over memory. Backs the `think` built-in tool.
+
+    Returns composed facts (with citations) plus knowledge gaps. Falls back to
+    a plain keyword search when evobrain is unavailable or has nothing to say.
+    """
+    try:
+        if get_engine() == "evobrain":
+            result = evobrain_think(agent_id, query, mode="balanced")
+            if result and isinstance(result.get("facts"), list) and result["facts"]:
+                facts = [
+                    {"fact": (f.get("lead") or f.get("title") or "").strip(),
+                     "source": f.get("slug", "?"),
+                     "evidence": f.get("evidence", "?")}
+                    for f in result["facts"]
+                ]
+                gaps = [g.get("message", "") for g in result.get("gaps", [])
+                        if isinstance(g, dict) and g.get("message")]
+                vlog("think[%s]: %d facts, %d gaps for %r",
+                     agent_id, len(facts), len(gaps), query[:60])
+                return {"engine": "evobrain", "query": query,
+                        "facts": facts, "gaps": gaps, "count": len(facts)}
+        # Fallback: keyword search
+        vlog("think[%s]: no synthesis -> keyword fallback for %r", agent_id, query[:60])
+        return search_memories(agent_id, query)
+    except Exception as e:
+        return {"error": f"Synthesis failed: {e}"}
+
+
+def graph_lookup(agent_id: str, entity: str, edge_type: str = None,
+                 hops: int = 2) -> dict:
+    """Traverse the knowledge graph from an entity. Backs the `graph_query` tool.
+
+    Resolves a name/alias to a start slug via search, then follows typed edges.
+    """
+    try:
+        if get_engine() != "evobrain":
+            return {"error": "Knowledge graph is only available with the evobrain engine."}
+        start = (entity or "").strip()
+        if not start:
+            return {"error": "An entity name is required."}
+        # Resolve a free-text name/alias to a page slug (skip if already a slug).
+        if "/" not in start:
+            hit = evobrain_search(agent_id, start, limit=1, mode=_RECALL_SEARCH_MODE)
+            if hit and hit.get("hits"):
+                start = hit["hits"][0].get("slug", start)
+        vlog("graph[%s]: traverse from %r (edge=%s hops=%d)",
+             agent_id, start, edge_type or "*", hops)
+        result = evobrain_graph_query(agent_id, start, edge=edge_type, hops=hops)
+        if not result or not isinstance(result.get("edges"), list) or not result["edges"]:
+            vlog("graph[%s]: no connections from %r", agent_id, start)
+            return {"start": start, "edges": [], "count": 0,
+                    "result": "No connections found in the knowledge graph."}
+        edges = [
+            {"from": e.get("src_slug"), "edge": e.get("edge_type"),
+             "to": e.get("dst_slug"), "hop": e.get("hop")}
+            for e in result["edges"]
+        ]
+        vlog("graph[%s]: %d edges from %r", agent_id, len(edges), start)
+        return {"start": result.get("start", start),
+                "edges": edges, "count": len(edges)}
+    except Exception as e:
+        return {"error": f"Graph lookup failed: {e}"}
 
 
 def forget_memory(agent_id: str, memory_id: int, target_agent_id: str = None,

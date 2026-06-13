@@ -1,5 +1,6 @@
 """Tests for evobrain_client.py -- CLI subprocess wrapper."""
 
+import os
 import subprocess
 import pytest
 from unittest.mock import patch, MagicMock
@@ -11,21 +12,33 @@ from backend.agent_runtime.evobrain_client import (
 
 
 class TestGetEngine:
-    def test_default_is_fts5(self, monkeypatch):
+    def test_default_is_evobrain_when_available(self, monkeypatch):
         monkeypatch.delenv("EVONIC_MEMORY_ENGINE", raising=False)
+        monkeypatch.setattr(
+            "backend.agent_runtime.evobrain_client.is_available", lambda: True)
+        assert get_engine() == "evobrain"
+
+    def test_default_downgrades_to_fts5_when_unavailable(self, monkeypatch):
+        monkeypatch.delenv("EVONIC_MEMORY_ENGINE", raising=False)
+        monkeypatch.setattr(
+            "backend.agent_runtime.evobrain_client.is_available", lambda: False)
         assert get_engine() == "fts5"
 
     def test_evobrain_when_set(self, monkeypatch):
         monkeypatch.setenv("EVONIC_MEMORY_ENGINE", "evobrain")
+        monkeypatch.setattr(
+            "backend.agent_runtime.evobrain_client.is_available", lambda: True)
         assert get_engine() == "evobrain"
 
     def test_fts5_when_set(self, monkeypatch):
         monkeypatch.setenv("EVONIC_MEMORY_ENGINE", "fts5")
         assert get_engine() == "fts5"
 
-    def test_invalid_falls_back_to_fts5(self, monkeypatch):
+    def test_invalid_defaults_to_evobrain_when_available(self, monkeypatch):
         monkeypatch.setenv("EVONIC_MEMORY_ENGINE", "bogus")
-        assert get_engine() == "fts5"
+        monkeypatch.setattr(
+            "backend.agent_runtime.evobrain_client.is_available", lambda: True)
+        assert get_engine() == "evobrain"
 
 
 class TestIsAvailable:
@@ -112,6 +125,22 @@ class TestInitBrain:
             result = init_brain("test-agent")
             assert result is True
 
+    def test_succeeds_when_db_created_despite_nonjson_init_output(self, tmp_path):
+        # `init` prints plain text even with --json (so _run returns None); success
+        # must be judged by the db file appearing, not by a parsed result.
+        brain_dir = tmp_path / "brain"
+
+        def fake_run(bd, args, timeout=None, expect_json=True):
+            os.makedirs(bd, exist_ok=True)
+            open(os.path.join(bd, ".evobrain.db"), "w").close()
+            return None  # non-JSON init output
+
+        with patch("backend.agent_runtime.evobrain_client._get_brain_dir",
+                   return_value=str(brain_dir)), \
+             patch("backend.agent_runtime.evobrain_client.is_available", return_value=True), \
+             patch("backend.agent_runtime.evobrain_client._run", side_effect=fake_run):
+            assert init_brain("test-agent") is True
+
 
 class TestCapture:
     def test_returns_none_when_brain_not_initialized(self):
@@ -152,3 +181,42 @@ class TestSync:
         with patch("os.path.isdir", return_value=False):
             result = sync("test-agent")
             assert result is False
+
+
+class TestGraphQuery:
+    def test_returns_none_when_brain_missing(self):
+        from backend.agent_runtime.evobrain_client import graph_query
+        with patch("os.path.isdir", return_value=False):
+            assert graph_query("test-agent", "entities/x") is None
+
+    def test_builds_command_with_hops_and_edge(self):
+        from backend.agent_runtime.evobrain_client import graph_query
+        with patch("os.path.isdir", return_value=True), \
+             patch("os.path.exists", return_value=True), \
+             patch("backend.agent_runtime.evobrain_client._run",
+                   return_value={"start": "entities/x", "edges": []}) as mock_run:
+            graph_query("test-agent", "entities/x", edge="works_at", hops=3)
+            args = mock_run.call_args[0][1]
+            assert "graph-query" in args and "entities/x" in args
+            assert "--hops" in args and "3" in args
+            assert "--edge" in args and "works_at" in args
+
+
+class TestModeThreading:
+    def test_search_threads_mode(self):
+        with patch("os.path.isdir", return_value=True), \
+             patch("os.path.exists", return_value=True), \
+             patch("backend.agent_runtime.evobrain_client._run",
+                   return_value={"hits": []}) as mock_run:
+            search("test-agent", "q", limit=5, mode="tokenmax")
+            args = mock_run.call_args[0][1]
+            assert "--mode" in args and "tokenmax" in args
+
+    def test_think_threads_mode(self):
+        with patch("os.path.isdir", return_value=True), \
+             patch("os.path.exists", return_value=True), \
+             patch("backend.agent_runtime.evobrain_client._run",
+                   return_value={"facts": []}) as mock_run:
+            think("test-agent", "q", mode="conservative")
+            args = mock_run.call_args[0][1]
+            assert "--mode" in args and "conservative" in args

@@ -5,19 +5,38 @@ from unittest.mock import patch, MagicMock
 
 
 class TestEngineSelection:
-    def test_fts5_is_default(self):
+    def test_evobrain_is_default_when_available(self, monkeypatch):
+        monkeypatch.delenv("EVONIC_MEMORY_ENGINE", raising=False)
+        monkeypatch.setattr(
+            "backend.agent_runtime.evobrain_client.is_available", lambda: True)
+        from backend.agent_runtime.evobrain_client import get_engine
+        assert get_engine() == "evobrain"
+
+    def test_downgrades_to_fts5_when_binary_unavailable(self, monkeypatch):
+        monkeypatch.delenv("EVONIC_MEMORY_ENGINE", raising=False)
+        monkeypatch.setattr(
+            "backend.agent_runtime.evobrain_client.is_available", lambda: False)
         from backend.agent_runtime.evobrain_client import get_engine
         assert get_engine() == "fts5"
 
     def test_evobrain_when_env_set(self, monkeypatch):
         monkeypatch.setenv("EVONIC_MEMORY_ENGINE", "evobrain")
+        monkeypatch.setattr(
+            "backend.agent_runtime.evobrain_client.is_available", lambda: True)
         from backend.agent_runtime.evobrain_client import get_engine
         assert get_engine() == "evobrain"
 
-    def test_invalid_env_falls_back_to_fts5(self, monkeypatch):
-        monkeypatch.setenv("EVONIC_MEMORY_ENGINE", "bogus")
+    def test_explicit_fts5_overrides_default(self, monkeypatch):
+        monkeypatch.setenv("EVONIC_MEMORY_ENGINE", "fts5")
         from backend.agent_runtime.evobrain_client import get_engine
         assert get_engine() == "fts5"
+
+    def test_invalid_env_defaults_to_evobrain(self, monkeypatch):
+        monkeypatch.setenv("EVONIC_MEMORY_ENGINE", "bogus")
+        monkeypatch.setattr(
+            "backend.agent_runtime.evobrain_client.is_available", lambda: True)
+        from backend.agent_runtime.evobrain_client import get_engine
+        assert get_engine() == "evobrain"
 
 
 class TestGetMemoriesForContext:
@@ -210,22 +229,34 @@ class TestEvobrainStore:
         result = _try_evobrain_store("test-agent", "fact", "general")
         assert result is False
 
-    def test_returns_false_when_capture_fails(self, monkeypatch):
+    def test_returns_false_when_write_fails(self, monkeypatch):
         monkeypatch.setenv("EVONIC_MEMORY_ENGINE", "evobrain")
         with patch(
-            "backend.agent_runtime.memory_manager.capture",
-            return_value=None
+            "backend.agent_runtime.memory_manager.evobrain_writer.write_note",
+            return_value=""
+        ), patch(
+            "backend.agent_runtime.memory_manager.evobrain_writer.upsert_entity_page",
+            return_value="entities/user"
+        ), patch(
+            "backend.agent_runtime.memory_manager.evobrain_writer.mark_dirty"
         ):
             from backend.agent_runtime.memory_manager import _try_evobrain_store
             result = _try_evobrain_store("test-agent", "fact", "general")
             assert result is False
 
-    def test_returns_true_when_capture_succeeds(self, monkeypatch):
+    def test_returns_true_when_write_succeeds(self, monkeypatch):
         monkeypatch.setenv("EVONIC_MEMORY_ENGINE", "evobrain")
         with patch(
-            "backend.agent_runtime.memory_manager.capture",
-            return_value={"text": "fact", "category": "general"}
-        ):
+            "backend.agent_runtime.memory_manager.evobrain_writer.write_note",
+            return_value="notes/mem-1"
+        ), patch(
+            "backend.agent_runtime.memory_manager.evobrain_writer.upsert_entity_page",
+            return_value="entities/user"
+        ), patch(
+            "backend.agent_runtime.memory_manager.evobrain_writer.mark_dirty"
+        ) as mock_dirty:
             from backend.agent_runtime.memory_manager import _try_evobrain_store
-            result = _try_evobrain_store("test-agent", "fact", "general")
+            result = _try_evobrain_store("test-agent", "fact", "preference",
+                                         memory_id=1)
             assert result is True
+            mock_dirty.assert_called_once()
