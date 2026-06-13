@@ -4027,7 +4027,106 @@ def doctor_command(quick=False, fix=False):
         results.append(_fail(f"PromptPurify ML check failed: {e}"))
 
 
-    # ── Summary ───────────────────────────────────────────────
+    # ── 13. Asset Build Check ───────────────────────────────────────────────
+    _section("13. Asset Build Check")
+
+    try:
+        asset_checks = [
+            {
+                "name": "Chat UI JS",
+                "output": "static/js/chat-ui.js",
+                "sources": ["static/js/chat-ui"],
+                "build_cmd": ["python3", "scripts/build_chat_ui.py"],
+            },
+            {
+                "name": "Evonic CSS",
+                "output": "static/css/evonic.css",
+                "sources": [
+                    "static/style.css",
+                    "static/css/recap-prose.css",
+                    "static/css/agent-sidebar.css",
+                ],
+                "build_cmd": ["python3", "scripts/build_css.py"],
+            },
+            {
+                "name": "Tailwind CSS",
+                "output": "static/css/tailwind.css",
+                "sources": ["static/css/tailwind-input.css"],
+                "build_cmd": ["./scripts/build_tailwind.sh"],
+            },
+        ]
+
+        all_ok = True
+
+        for asset in asset_checks:
+            output_path = os.path.join(ROOT, asset["output"])
+            exists = os.path.isfile(output_path)
+            stale = False
+
+            if exists:
+                output_mtime = os.path.getmtime(output_path)
+                for src_pattern in asset["sources"]:
+                    src_path = os.path.join(ROOT, src_pattern)
+                    if os.path.isfile(src_path):
+                        if os.path.getmtime(src_path) > output_mtime:
+                            stale = True
+                            break
+                    elif os.path.isdir(src_path):
+                        for dirpath, _, filenames in os.walk(src_path):
+                            for fn in filenames:
+                                fp = os.path.join(dirpath, fn)
+                                if os.path.getmtime(fp) > output_mtime:
+                                    stale = True
+                                    break
+                            if stale:
+                                break
+
+            if not exists:
+                all_ok = False
+                n = asset['name']
+                o = asset['output']
+                results.append(_fail(f"{n} ─ {o} is missing"))
+            elif stale:
+                all_ok = False
+                n = asset['name']
+                o = asset['output']
+                results.append(_warn(f"{n} ─ {o} is stale (sources newer)"))
+            else:
+                n = asset['name']
+                o = asset['output']
+                results.append(_ok(f"{n} ─ {o} is up to date"))
+
+            if fix and (not exists or stale):
+                n = asset['name']
+                cmd_str = ' '.join(asset['build_cmd'])
+                _info(f'  Running: cd /workspace && ' + cmd_str)
+                try:
+                    proc = subprocess.run(
+                        asset['build_cmd'], cwd=ROOT,
+                        capture_output=True, text=True, timeout=120,
+                    )
+                    if proc.returncode == 0:
+                        status = 'built' if not exists else 'rebuilt'
+                        n = asset['name']
+                        o = asset['output']
+                        results.append(_ok(f"{n} ─ {status} successfully"))
+                        fixes_applied.append(status.title() + ' ' + o + ' (' + n + ')')
+                    else:
+                        n = asset['name']
+                        err = (proc.stderr.strip() or proc.stdout.strip())[:300]
+                        results.append(_fail(f"{n} build failed (exit {proc.returncode}):\n    {err}"))
+                except subprocess.TimeoutExpired:
+                    results.append(_fail(f"{n} build timed out (120s)"))
+                except Exception as exc:
+                    results.append(_fail(f"{n} build error: {exc}"))
+
+        if all_ok:
+            results.append(_ok('All static assets are present and up to date'))
+
+    except Exception as e:
+        results.append(_fail(f"Asset build check failed: {e}"))
+
+
     _section("Summary")
 
     # Filter out "skip" entries
