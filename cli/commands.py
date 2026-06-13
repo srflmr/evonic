@@ -3171,7 +3171,7 @@ def _info(msg):
     print(f"  {_INFO}  {msg}")
 
 
-def doctor_command(quick=False, fix=False):
+def doctor_command(quick=False, fix=False, with_llm_provider=False):
     """Run comprehensive system health diagnostics."""
     import importlib
     import json
@@ -3527,8 +3527,9 @@ def doctor_command(quick=False, fix=False):
     # ── 7. LLM Provider Check ────────────────────────────────
     _section("7. LLM Provider Check")
 
-    if quick:
-        _info("  Skipped (--quick mode)")
+    if quick or not with_llm_provider:
+        reason = "--quick mode" if quick else "use --with-llm-provider to enable"
+        _info(f"  Skipped ({reason})")
         results.append("skip")
     else:
         try:
