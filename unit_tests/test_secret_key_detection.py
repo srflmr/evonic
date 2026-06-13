@@ -3,7 +3,7 @@ Test suite: Secret key / credential leakage detection gap (PromptPurify + RegexG
 
 Covers the Aisyah->Ferris SSH private key leak incident (2026-06-13).
 Demonstrates 5 root causes:
-  1. RegexGuard has no PEM armor detection rule
+  1. RegexGuard NOW has PEM armor detection rule (pem_private_key_content)
   2. credential_extraction rule requires extraction verb — key transmission has none
   3. read_file of key files outside ~/.ssh/ is not blocked
   4. send_agent_message passes through (inter-agent is not user-facing)
@@ -73,10 +73,10 @@ def skip_test(name, reason):
 
 
 # =============================================================================
-# GROUP 1: RegexGuard PEM armor gap
+# GROUP 1: RegexGuard PEM armor detection (rule now active)
 # =============================================================================
 
-print("\n--- RegexGuard: PEM key detection gap ---")
+print("\n--- RegexGuard: PEM key detection (rule now active) ---")
 
 pem_markers = [
     "-----BEGIN OPENSSH PRIVATE KEY-----",
@@ -93,18 +93,18 @@ for pem in pem_markers:
         if pattern.search(pem):
             print(f"  UNEXPECTED: Rule '{rule_name}' matches '{pem}'")
             found_match = True
-check(not found_match, "No rule matches PEM armor headers",
-      "These pass through RegexGuard undetected")
+check(found_match, "PEM armor headers ARE detected by RegexGuard",
+      "RegexGuard now has pem_private_key_content rule")
 
 is_inj, sev, rule, score, reason = _detect_injection(ACTUAL_LEAK)
-check(not is_inj, "OPENSSH key NOT detected by RegexGuard",
-      f"Expected False, got is_inj={is_inj}, sev={sev}, rule={rule}")
+check(is_inj, "OPENSSH key IS detected by RegexGuard",
+      f"is_inj={is_inj}, sev={sev}, rule={rule}")
 
 is_inj, sev, rule, _, _ = _detect_injection(RSA_KEY)
-check(not is_inj, "RSA key NOT detected", f"sev={sev}, rule={rule}")
+check(is_inj, "RSA key IS detected", f"sev={sev}, rule={rule}")
 
 is_inj, sev, rule, _, _ = _detect_injection(EC_KEY)
-check(not is_inj, "EC key NOT detected", f"sev={sev}, rule={rule}")
+check(is_inj, "EC key IS detected", f"sev={sev}, rule={rule}")
 
 is_inj, sev, rule, _, _ = _detect_injection(PGP_KEY)
 check(not is_inj, "PGP key NOT detected", f"sev={sev}, rule={rule}")
@@ -127,7 +127,7 @@ result = injection_tool_guard(
     {"target_agent_id": "ferris", "message": ACTUAL_LEAK}
 )
 # After fix: ML is always-on, so the leak IS blocked
-blocked = result is not None and result.get("block")
+blocked = result is not None and result.get("level") == "requires_approval"
 check(blocked, "Key leak via send_agent_message IS NOW BLOCKED",
       f"Result: {result}")
 
@@ -227,7 +227,7 @@ if ml_available:
         "aisyah", "send_agent_message",
         {"target_agent_id": "ferris", "message": ACTUAL_LEAK}
     )
-    blocked = result is not None and result.get("block")
+    blocked = result is not None and result.get("level") == "requires_approval"
     check(blocked, "KEY LEAK IS NOW BLOCKED (ML always-on)",
           f"Result: {result}")
 else:
@@ -245,7 +245,7 @@ print("=" * 60)
 if failed == 0:
     print("\nALL TESTS PASSED")
     print("\nFINDINGS:")
-    print("  1. RegexGuard has NO PEM armor rule — keys pass through undetected")
+    print("  1. RegexGuard now HAS PEM armor rule (pem_private_key_content) — keys ARE detected")
     print("  2. credential_extraction requires extraction verb near 'private key'")
     print("     — actual key transmission has no verb, passes through")
     print("  3. credential_extraction severity is WARNING (below block threshold)")
@@ -253,4 +253,7 @@ if failed == 0:
     print("  5. After fix: injection_tool_guard with ML blocks the leak")
 else:
     print(f"\n{failed} TEST(S) FAILED — see details above")
-    sys.exit(1)
+
+if __name__ == "__main__":
+    if failed > 0:
+        raise SystemExit(1)
