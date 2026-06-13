@@ -306,15 +306,15 @@ const Lightbox = (function() {
     }
 
     function _updateNavigation() {
-        if (_images.length <= 1) {
-            _$prevBtn.addClass('hidden');
-            _$nextBtn.addClass('hidden');
-            _$counter.addClass('hidden');
-        } else {
-            _$prevBtn.removeClass('hidden');
-            _$nextBtn.removeClass('hidden');
-            _$counter.removeClass('hidden');
-        }
+        // The prev/next buttons carry an inline `display: flex` (set in _navBtn),
+        // which overrides the `hidden` class — so toggle their inline display
+        // directly. Otherwise the buttons stay visible (but inert, since _navigate
+        // early-returns) on a single-image lightbox, looking broken.
+        const multi = _images.length > 1;
+        _$prevBtn.css('display', multi ? 'flex' : 'none');
+        _$nextBtn.css('display', multi ? 'flex' : 'none');
+        if (multi) _$counter.removeClass('hidden');
+        else _$counter.addClass('hidden');
     }
 
     // Public API
