@@ -327,7 +327,7 @@ def start_server(port=None, host=None, debug=None, daemon=False):
     print(f"Port: {port}")
     print(f"URL: http://{host if host != '0.0.0.0' else 'localhost'}:{port}")
 
-    app.run(host=host, port=port, debug=debug, use_reloader=False)
+    app.run(host=host, port=port, debug=debug, use_reloader=False, threaded=True)
 
 
 def stop_server():

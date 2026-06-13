@@ -623,5 +623,7 @@ if __name__ == '__main__':
         host=config.HOST,
         port=config.PORT,
         debug=config.DEBUG,
-        use_reloader=False  # Disable reloader to prevent killing evaluation thread
+        use_reloader=False,  # Disable reloader to prevent killing evaluation thread
+        threaded=True  # Serve requests concurrently; otherwise long-lived SSE
+                       # streams block all other requests (e.g. image/avatar serving)
     )

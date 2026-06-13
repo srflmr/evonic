@@ -783,9 +783,12 @@ def api_get_avatar(agent_id):
         resp = send_file(abs_path, mimetype=mime, as_attachment=True,
                          download_name=os.path.basename(abs_path),
                          conditional=True)
-        # Revalidate-always: cheap 304s avoid full refetches on re-render
-        # without going stale after a new upload.
-        resp.headers['Cache-Control'] = 'no-cache'
+        # Short freshness window: the browser serves from cache without any
+        # request for max-age, sparing avatar refetches on every re-render. After
+        # the window it revalidates via the ETag/Last-Modified set by send_file,
+        # so a re-uploaded avatar (mtime changes) goes stale within ~5 min.
+        # 'private' because the avatar route is auth-gated.
+        resp.headers['Cache-Control'] = 'private, max-age=300, must-revalidate'
         return resp
     # Return the default avatar as an inline SVG served from a static string.
     # This SVG is fully controlled server-side and contains no user content.
