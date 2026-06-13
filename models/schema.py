@@ -325,6 +325,25 @@ class SchemaMixin:
             except sqlite3.OperationalError:
                 pass
 
+            # Add status column to evaluation_runs if it doesn't exist
+            try:
+                cursor.execute("ALTER TABLE evaluation_runs ADD COLUMN status TEXT DEFAULT 'running'")
+            except sqlite3.OperationalError:
+                pass
+            # Backfill: mark runs with completed_at as 'completed', others as 'interrupted'
+            cursor.execute(
+                "UPDATE evaluation_runs SET status = 'completed' WHERE completed_at IS NOT NULL AND status IS NULL"
+            )
+            cursor.execute(
+                "UPDATE evaluation_runs SET status = 'interrupted' WHERE completed_at IS NULL AND status IS NULL"
+            )
+
+            # Add selected_domains column to evaluation_runs if it doesn't exist
+            try:
+                cursor.execute("ALTER TABLE evaluation_runs ADD COLUMN selected_domains TEXT")
+            except sqlite3.OperationalError:
+                pass
+
             # ==================== Agentic Platform Tables ====================
 
             # Agents table

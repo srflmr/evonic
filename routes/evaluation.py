@@ -160,6 +160,52 @@ def api_stop():
         }), 400
 
 
+@evaluation_bp.route('/api/resume', methods=['POST'])
+def api_resume():
+    """Resume an interrupted evaluation run"""
+    try:
+        data = request.get_json()
+        run_id = data.get('run_id')
+
+        if not run_id:
+            return jsonify({'success': False, 'error': 'run_id is required'}), 400
+
+        evaluation_engine.resume_evaluation(int(run_id))
+        return jsonify({
+            'success': True,
+            'run_id': run_id,
+            'message': 'Evaluation resumed'
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 400
+
+
+@evaluation_bp.route('/api/incomplete_runs')
+def api_incomplete_runs():
+    """Get all interrupted runs that can be resumed"""
+    try:
+        runs = db.get_incomplete_runs()
+        # Parse selected_domains JSON for the frontend
+        for r in runs:
+            if r.get('selected_domains'):
+                try:
+                    r['selected_domains'] = json.loads(r['selected_domains'])
+                except (json.JSONDecodeError, TypeError):
+                    r['selected_domains'] = None
+        return jsonify({
+            'success': True,
+            'runs': runs
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
 @evaluation_bp.route('/api/reset', methods=['POST'])
 def api_reset():
     """Reset engine state to idle"""
