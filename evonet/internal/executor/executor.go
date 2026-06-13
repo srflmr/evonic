@@ -8,8 +8,22 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 )
+
+// cacheTTL is how long a completed request's result is retained for idempotent
+// replay. The Evonic server only re-sends a request id within its disconnect
+// grace window (currently 90s), so a few minutes is comfortably safe.
+const cacheTTL = 5 * time.Minute
+
+// inflight tracks a request that is either still executing or recently completed.
+// done is closed once resp is populated; concurrent callers with the same id wait
+// on done and then read resp (exactly-once execution).
+type inflight struct {
+	done chan struct{}
+	resp Response
+}
 
 // Request is an inbound JSON-RPC command from the Evonic server.
 type Request struct {
@@ -30,6 +44,9 @@ type Response struct {
 type Executor struct {
 	workDir string
 	verbose bool
+
+	mu    sync.Mutex
+	cache map[string]*inflight // req.ID → in-flight/completed result
 }
 
 func New(workDir string, verbose bool) *Executor {
@@ -41,11 +58,49 @@ func New(workDir string, verbose bool) *Executor {
 	if !strings.HasSuffix(clean, string(os.PathSeparator)) {
 		clean += string(os.PathSeparator)
 	}
-	return &Executor{workDir: clean, verbose: verbose}
+	return &Executor{workDir: clean, verbose: verbose, cache: make(map[string]*inflight)}
 }
 
 // Handle processes a Request and returns a Response.
+//
+// It guarantees exactly-once execution per request id: if the same id is seen
+// again while still running, the second caller waits for and returns the first
+// result; if it already completed (within cacheTTL), the cached result is
+// replayed without re-executing. This lets the Evonic server safely re-send a
+// request after a WebSocket reconnect without risking duplicate side effects.
 func (e *Executor) Handle(req Request) Response {
+	// Requests without an id can't be deduplicated — dispatch directly.
+	if req.ID == "" {
+		return e.dispatch(req)
+	}
+
+	e.mu.Lock()
+	if existing, ok := e.cache[req.ID]; ok {
+		e.mu.Unlock()
+		<-existing.done // attach to in-flight or already-completed execution
+		return existing.resp
+	}
+	entry := &inflight{done: make(chan struct{})}
+	e.cache[req.ID] = entry
+	e.mu.Unlock()
+
+	entry.resp = e.dispatch(req)
+	close(entry.done)
+	e.scheduleEvict(req.ID)
+	return entry.resp
+}
+
+// scheduleEvict removes a cached result after cacheTTL so memory stays bounded.
+func (e *Executor) scheduleEvict(id string) {
+	time.AfterFunc(cacheTTL, func() {
+		e.mu.Lock()
+		delete(e.cache, id)
+		e.mu.Unlock()
+	})
+}
+
+// dispatch routes a request to its method handler.
+func (e *Executor) dispatch(req Request) Response {
 	if e.verbose {
 		e.logRequest(req)
 	}

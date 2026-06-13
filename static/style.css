@@ -1066,6 +1066,7 @@ html.dark .avatar-fallback {
     );
     background-size: 400px 100%;
     animation: chat-img-shimmer 1.5s ease-in-out infinite;
+    max-width: 100%;
     /* sits inside the position:relative wrapper — 
        img is stacked on top (opacity:0 until load) */
 }

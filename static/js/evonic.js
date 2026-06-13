@@ -164,12 +164,25 @@
             item.setAttribute('data-index', i);
             item.addEventListener('click', function () { selectAgent(agent); });
 
-            // Avatar circle
+            // Avatar circle — custom image when available, initial letter fallback
             var avatar = document.createElement('div');
-            avatar.className = 'w-9 h-9 rounded-full flex items-center justify-center text-sm font-semibold text-white flex-shrink-0';
-            avatar.style.backgroundColor = agentColor(agent.id);
+            avatar.className = 'w-9 h-9 rounded-full flex items-center justify-center text-sm font-semibold text-white flex-shrink-0 overflow-hidden';
 
-            avatar.textContent = getInitial(agent.name);
+            if (agent.avatar_path) {
+                var avatarImg = document.createElement('img');
+                avatarImg.src = '/api/agents/' + encodeURIComponent(agent.id) + '/avatar?size=small';
+                avatarImg.alt = agent.name;
+                avatarImg.className = 'w-9 h-9 rounded-full object-cover';
+                avatarImg.onerror = function () {
+                    avatarImg.remove();
+                    avatar.style.backgroundColor = agentColor(agent.id);
+                    avatar.textContent = getInitial(agent.name);
+                };
+                avatar.appendChild(avatarImg);
+            } else {
+                avatar.style.backgroundColor = agentColor(agent.id);
+                avatar.textContent = getInitial(agent.name);
+            }
 
             // Info
             var info = document.createElement('div');

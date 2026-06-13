@@ -7,15 +7,16 @@ from typing import Dict, Any, List, Optional
 class EvaluationMixin:
     """Evaluation runs and improvement cycle CRUD. Requires self._connect() from the host class."""
 
-    def create_evaluation_run(self, model_name: str) -> int:
+    def create_evaluation_run(self, model_name: str, selected_domains: list = None) -> int:
         """Create a new evaluation run and return run_id"""
         started_at = datetime.now()
+        domains_json = json.dumps(selected_domains) if selected_domains else None
 
         with self._connect() as conn:
             cursor = conn.cursor()
             cursor.execute(
-                "INSERT INTO evaluation_runs (started_at, model_name) VALUES (?, ?)",
-                (started_at, model_name)
+                "INSERT INTO evaluation_runs (started_at, model_name, status, selected_domains) VALUES (?, ?, 'running', ?)",
+                (started_at, model_name, domains_json)
             )
             run_id = cursor.lastrowid
             conn.commit()
@@ -74,11 +75,34 @@ class EvaluationMixin:
             cursor.execute(
                 """UPDATE evaluation_runs
                    SET completed_at = ?, summary = ?, overall_score = ?,
-                       total_tokens = ?, total_duration_ms = ?
+                       total_tokens = ?, total_duration_ms = ?, status = 'completed'
                    WHERE run_id = ?""",
                 (completed_at, summary, overall_score, total_tokens, total_duration_ms, run_id)
             )
             conn.commit()
+
+    def mark_run_incomplete(self, run_id: int) -> bool:
+        """Mark an evaluation run as interrupted/incomplete (preserving all test data for resume)"""
+        with self._connect() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "UPDATE evaluation_runs SET status = 'interrupted' WHERE run_id = ?",
+                (run_id,)
+            )
+            conn.commit()
+            return cursor.rowcount > 0
+
+    def get_incomplete_runs(self) -> List[Dict[str, Any]]:
+        """Get evaluation runs that were interrupted and can be resumed"""
+        with self._connect() as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            cursor.execute(
+                """SELECT * FROM evaluation_runs
+                   WHERE status = 'interrupted'
+                   ORDER BY started_at DESC"""
+            )
+            return [dict(row) for row in cursor.fetchall()]
 
     def get_evaluation_run(self, run_id: int) -> Optional[Dict[str, Any]]:
         """Get evaluation run details"""

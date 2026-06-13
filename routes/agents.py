@@ -709,10 +709,46 @@ def api_create_artifact(agent_id):
 
 AVATAR_DIR = os.path.join(BASE_DIR, 'shared', 'avatars')
 
+# Generated variant filenames (see _process_avatar)
+AVATAR_SMALL_NAME = 'avatar_small.webp'
+AVATAR_LARGE_NAME = 'avatar_large.webp'
+_AVATAR_SMALL_SIZE = 64   # square, covers 2x DPI of 30-36px displays
+_AVATAR_LARGE_MAX = 512   # longest side, for profile / agents page
+
 def _avatar_dir(agent_id: str) -> str:
     d = os.path.join(AVATAR_DIR, agent_id)
     os.makedirs(d, exist_ok=True)
     return d
+
+
+def _process_avatar(file_storage, avatar_dir: str) -> str:
+    """Decode an uploaded image and write compressed WebP variants
+    (avatar_small.webp 64x64 center-cropped, avatar_large.webp max 512px).
+    Returns the large variant filename. Raises ValueError on undecodable input.
+    Animated GIF/WebP uploads keep only their first frame."""
+    from PIL import Image, ImageOps, UnidentifiedImageError
+    try:
+        img = Image.open(file_storage.stream)
+        img.load()
+        # Apply EXIF orientation before any resize (phone photos)
+        img = ImageOps.exif_transpose(img) or img
+    except (UnidentifiedImageError, Image.DecompressionBombError, OSError, ValueError) as e:
+        raise ValueError(f'Invalid or corrupt image file: {e}')
+
+    # Normalize mode: keep alpha (WebP supports it), convert exotic modes to RGB
+    if img.mode in ('P', 'PA', 'LA'):
+        img = img.convert('RGBA')
+    elif img.mode not in ('RGB', 'RGBA', 'L'):
+        img = img.convert('RGB')
+
+    small = ImageOps.fit(img, (_AVATAR_SMALL_SIZE, _AVATAR_SMALL_SIZE), Image.LANCZOS)
+    small.save(os.path.join(avatar_dir, AVATAR_SMALL_NAME), 'WEBP', quality=82, method=4)
+
+    large = img.copy()
+    large.thumbnail((_AVATAR_LARGE_MAX, _AVATAR_LARGE_MAX), Image.LANCZOS)
+    large.save(os.path.join(avatar_dir, AVATAR_LARGE_NAME), 'WEBP', quality=82, method=4)
+
+    return AVATAR_LARGE_NAME
 
 
 def _abs_avatar_path(avatar_path):
@@ -730,6 +766,13 @@ def api_get_avatar(agent_id):
     avatar_path = agent.get('avatar_path', '')
     abs_path = _abs_avatar_path(avatar_path)
     if abs_path and os.path.isfile(abs_path):
+        # ?size=small serves the compressed sibling variant when it exists;
+        # legacy avatars uploaded before variants existed fall back to the
+        # original file.
+        if request.args.get('size') == 'small':
+            small_path = os.path.join(os.path.dirname(abs_path), AVATAR_SMALL_NAME)
+            if os.path.isfile(small_path):
+                abs_path = small_path
         import mimetypes
         mime, _ = mimetypes.guess_type(abs_path)
         if mime is None:
@@ -737,8 +780,13 @@ def api_get_avatar(agent_id):
         from flask import send_file
         # Force download for all stored avatar files to prevent any stored SVG
         # from being rendered as an active document in the browser (XSS defence).
-        return send_file(abs_path, mimetype=mime, as_attachment=True,
-                         download_name=os.path.basename(abs_path))
+        resp = send_file(abs_path, mimetype=mime, as_attachment=True,
+                         download_name=os.path.basename(abs_path),
+                         conditional=True)
+        # Revalidate-always: cheap 304s avoid full refetches on re-render
+        # without going stale after a new upload.
+        resp.headers['Cache-Control'] = 'no-cache'
+        return resp
     # Return the default avatar as an inline SVG served from a static string.
     # This SVG is fully controlled server-side and contains no user content.
     default_svg = '''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40" fill="none">
@@ -772,18 +820,21 @@ def api_upload_avatar(agent_id):
         return jsonify({'error': 'Agent not found'}), 404
 
     avatar_dir = _avatar_dir(agent_id)
-    # Remove old avatar file if exists
+    # Generate compressed variants first — on failure the old avatar and DB
+    # entry stay untouched.
+    try:
+        fname = _process_avatar(f, avatar_dir)
+    except ValueError:
+        return jsonify({'error': 'Invalid or corrupt image file'}), 400
+    # Remove old legacy avatar file if it isn't one of the variant files
     old_path = agent.get('avatar_path', '')
     old_abs = _abs_avatar_path(old_path)
-    if old_abs and os.path.isfile(old_abs):
+    if old_abs and os.path.isfile(old_abs) and \
+            os.path.basename(old_abs) not in (AVATAR_SMALL_NAME, AVATAR_LARGE_NAME):
         try:
             os.remove(old_abs)
         except OSError:
             pass
-    # Save new avatar
-    fname = f'avatar{ext}'
-    fpath = os.path.join(avatar_dir, fname)
-    f.save(fpath)
     rel_path = os.path.join('shared', 'avatars', agent_id, fname)
     db.update_agent(agent_id, {'avatar_path': rel_path})
     return jsonify({'success': True, 'avatar_path': f'/api/agents/{agent_id}/avatar'})
@@ -801,6 +852,14 @@ def api_delete_avatar(agent_id):
             os.remove(old_abs)
         except OSError:
             pass
+        # Also remove generated variants alongside the stored file
+        for variant in (AVATAR_SMALL_NAME, AVATAR_LARGE_NAME):
+            vpath = os.path.join(os.path.dirname(old_abs), variant)
+            if os.path.isfile(vpath):
+                try:
+                    os.remove(vpath)
+                except OSError:
+                    pass
     db.update_agent(agent_id, {'avatar_path': ''})
     return jsonify({'success': True})
 

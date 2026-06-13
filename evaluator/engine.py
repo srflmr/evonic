@@ -85,7 +85,7 @@ class EvaluationEngine:
 
             self.model_name = model_name
             self.selected_domains = domains  # Store selected domains
-            self.current_run_id = db.create_evaluation_run(model_name)
+            self.current_run_id = db.create_evaluation_run(model_name, selected_domains=domains)
             self.is_running = True
             self.was_interrupted = False
             self.has_error = False
@@ -121,6 +121,228 @@ class EvaluationEngine:
         with self.lock:
             self.is_running = False
             self.was_interrupted = True
+    
+    def resume_evaluation(self, run_id: int) -> str:
+        """Resume an interrupted evaluation run.
+        
+        Loads the run from DB, discovers which tests are already completed,
+        and starts a new evaluation thread that skips completed tests.
+        
+        Args:
+            run_id: The interrupted run ID to resume
+        
+        Returns:
+            The run_id (same as input)
+        """
+        with self.lock:
+            if self.is_running:
+                raise Exception("Evaluation already running")
+            
+            # Load the interrupted run
+            run_info = db.get_evaluation_run(run_id)
+            if not run_info:
+                raise Exception(f"Run {run_id} not found")
+            
+            status = run_info.get('status', '')
+            if status == 'completed':
+                raise Exception(f"Run {run_id} is already completed — cannot resume")
+            if status == 'running':
+                raise Exception(f"Run {run_id} is still running — cannot resume")
+            
+            model_name = run_info.get('model_name', 'default')
+            
+            # Load selected_domains from DB
+            domains_json = run_info.get('selected_domains')
+            if domains_json:
+                try:
+                    domains = json.loads(domains_json)
+                except (json.JSONDecodeError, TypeError):
+                    domains = None
+            else:
+                domains = None
+            
+            # Discover completed tests from individual_test_results
+            completed_results = db.get_individual_test_results(run_id)
+            completed_test_ids = set(r['test_id'] for r in completed_results)
+            
+            # Recover accumulated duration from completed results
+            recovered_duration = sum(r.get('duration_ms', 0) for r in completed_results if r.get('duration_ms'))
+            recovered_tokens = 0  # individual_test_results don't store per-test token counts
+            
+            # Resolve model config
+            self.model_config = None
+            if model_name and model_name != 'default':
+                model_record = db.get_model_by_model_name(model_name)
+                if model_record:
+                    self.model_config = model_record
+            
+            self.model_name = model_name
+            self.selected_domains = domains
+            self.current_run_id = run_id
+            self.is_running = True
+            self.was_interrupted = False
+            self.has_error = False
+            self.error_message = None
+            self.total_tokens = recovered_tokens
+            self.total_duration_ms = recovered_duration
+            
+            # Reset status to running in DB
+            with db._connect() as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    "UPDATE evaluation_runs SET status = 'running' WHERE run_id = ?",
+                    (run_id,)
+                )
+                conn.commit()
+            
+            domains_str = ', '.join(domains) if domains else 'all'
+            self._log(f'[INFO] Melanjutkan evaluasi untuk model: {model_name} (Run #{run_id})')
+            self._log(f'[INFO] Domain yang dipilih: {domains_str}')
+            self._log(f'[INFO] {len(completed_test_ids)} test sudah selesai — akan dilewati')
+            
+            # Start resume thread
+            self.thread = Thread(
+                target=self._resume_run_evaluation,
+                args=(run_id, model_name, domains, self.model_config, completed_test_ids)
+            )
+            self.thread.daemon = True
+            self.thread.start()
+            
+            return run_id
+
+    def _resume_run_evaluation(self, run_id: int, model_name: str, domains: list,
+                                model_config: dict, completed_test_ids: set):
+        """Thread target for resuming an interrupted evaluation run."""
+        self._log(f'[SYSTEM] Resume evaluation thread (run_id: {run_id}) dimulai.')
+        
+        # Create per-run LLM client if custom config
+        if model_config:
+            from evaluator.llm_client import LLMClient
+            run_llm_client = LLMClient(model_config)
+            self._log(f"[INFO] Using custom LLM endpoint: {model_config.get('base_url', 'N/A')}")
+        else:
+            from evaluator.llm_client import llm_client as run_llm_client
+        
+        try:
+            if self.use_configurable_tests:
+                self._run_configurable_evaluation(
+                    run_id, model_name, domains, run_llm_client,
+                    completed_test_ids=completed_test_ids
+                )
+            else:
+                self._run_legacy_evaluation(run_id, model_name, domains, run_llm_client)
+            
+            # Recalculate level scores from individual results after resume
+            if self.is_running:
+                self._recalculate_all_level_scores(run_id, domains)
+            
+            # Generate summary after all tests
+            if self.is_running:
+                self._generate_summary(run_id, model_name, run_llm_client)
+                
+        except Exception as e:
+            import traceback
+            self._log(f'[ERROR] Evaluation error: {e}')
+            self._log(f'[ERROR] Traceback: {traceback.format_exc()[-500:]}')
+            print(f"Evaluation error: {e}")
+            traceback.print_exc()
+            self.has_error = True
+            self.error_message = str(e)
+        finally:
+            with self.lock:
+                self.is_running = False
+                was_interrupted = self.was_interrupted
+                run_id_save = self.current_run_id if was_interrupted else None
+            
+            if was_interrupted:
+                if run_id_save:
+                    db.mark_run_incomplete(run_id_save)
+                    self._log(f'[SYSTEM] Run {run_id_save} marked as interrupted — test data preserved for resume')
+                    test_logger.finalize_run(status="interrupted")
+            else:
+                if self.has_error:
+                    final_status = "error"
+                else:
+                    final_status = "completed"
+                test_logger.finalize_run(status=final_status)
+
+    def _recalculate_all_level_scores(self, run_id: int, domains: list):
+        """Recalculate all level scores from individual_test_results.
+        
+        Used after resume to recompute level_scores and test_results tables
+        from the combination of old (pre-interrupt) and new (post-resume) results.
+        """
+        from evaluator.score_aggregator import ScoreAggregator, TestResult
+        
+        # Use loaded domains or all enabled domains
+        if domains:
+            domain_ids = domains
+        else:
+            domain_ids = [d['id'] for d in test_manager.list_domains() if d.get('enabled', True)]
+        
+        for domain_id in domain_ids:
+            for level in range(1, 6):
+                # Read all individual results for this domain/level
+                results = db.get_individual_test_results(run_id, domain=domain_id, level=level)
+                if not results:
+                    continue
+                
+                # Convert to TestResult objects
+                test_results = []
+                first_response = None
+                for r in results:
+                    tr = TestResult(
+                        test_id=r.get('test_id', ''),
+                        domain=domain_id,
+                        level=level,
+                        score=r.get('score', 0.0),
+                        status=r.get('status', 'failed'),
+                        weight=1.0,
+                        details=json.loads(r['details']) if r.get('details') else {}
+                    )
+                    test_results.append(tr)
+                    if first_response is None:
+                        first_response = r.get('response')
+                
+                # Calculate level score
+                level_score = ScoreAggregator.calculate_level_score(test_results)
+                
+                # Calculate total duration for this level
+                level_duration_ms = sum(
+                    r.get('duration_ms', 0) for r in results if r.get('duration_ms')
+                )
+                
+                # Store level score
+                db.save_level_score(
+                    run_id, domain_id, level,
+                    level_score.average_score,
+                    level_score.total_tests,
+                    level_score.passed_tests
+                )
+                
+                # Also update the legacy test_results table
+                avg_score = level_score.average_score
+                status = 'passed' if avg_score >= 0.7 else 'failed'
+                
+                # Get first test's prompt from test definitions
+                tests = test_manager.list_tests(domain_id, level)
+                first_prompt = tests[0].get('prompt', '') if tests else ''
+                first_expected = tests[0].get('expected', {}) if tests else {}
+                
+                first_details = test_results[0].details if test_results[0].details else {}
+                
+                db.update_test_result(
+                    run_id, domain_id, level,
+                    prompt=first_prompt,
+                    response=first_response,
+                    expected=json.dumps(first_expected) if first_expected else None,
+                    score=avg_score,
+                    status=status,
+                    details=json.dumps(first_details) if first_details else None,
+                    model_name=self.model_name,
+                    duration_ms=level_duration_ms
+                )
+                self._log(f'[RECALC] {domain_id} L{level}: avg={avg_score*100:.0f}%, {level_score.passed_tests}/{level_score.total_tests} passed')
     
     def reset_state(self):
         """Reset engine state to idle"""
@@ -210,24 +432,17 @@ class EvaluationEngine:
                 self.is_running = False
                 # Capture under lock to prevent race with reset_state/start_evaluation
                 was_interrupted = self.was_interrupted
-                run_id_to_delete = self.current_run_id if was_interrupted else None
+                run_id_save = self.current_run_id if was_interrupted else None
             
             if was_interrupted:
-                # Interrupted/canceled — do NOT finalize the logger or save anything.
-                # Immediately delete all artifacts: DB records AND logger files on disk.
-                if run_id_to_delete:
-                    # Delete logger files (logs/eval/<run_id>/)
-                    run_dir = test_logger.get_run_dir()
-                    if run_dir and os.path.isdir(run_dir):
-                        try:
-                            shutil.rmtree(run_dir)
-                            self._log(f'[SYSTEM] Interrupted run {run_id_to_delete} logger files deleted')
-                        except Exception as e:
-                            self._log(f'[WARN] Failed to clean logger files for run {run_id_to_delete}: {e}')
+                # Interrupted/canceled — preserve all test data for resume.
+                # Mark the run as interrupted in the DB instead of deleting.
+                if run_id_save:
+                    db.mark_run_incomplete(run_id_save)
+                    self._log(f'[SYSTEM] Run {run_id_save} marked as interrupted — test data preserved for resume')
                     
-                    # Delete from database (cascades to test_results, level_scores, individual_test_results, etc.)
-                    db.delete_run(run_id_to_delete)
-                    self._log(f'[SYSTEM] Interrupted run {run_id_to_delete} deleted from history')
+                    # Finalize logger with interrupted status
+                    test_logger.finalize_run(status="interrupted")
             else:
                 # Normal completion or error — finalize the logger
                 if self.has_error:
@@ -282,13 +497,14 @@ class EvaluationEngine:
                 
                 # (Sleep removed — was time.sleep(0.5); no longer needed)
     
-    def _run_configurable_evaluation(self, run_id: int, model_name: str, selected_domains: list = None, run_llm_client=None):
+    def _run_configurable_evaluation(self, run_id: int, model_name: str, selected_domains: list = None, run_llm_client=None, completed_test_ids: set = None):
         """Run evaluation using configurable test definitions
         
         Args:
             run_id: Unique run identifier
             model_name: Model being evaluated
             selected_domains: List of domain names to test (None = all domains)
+            completed_test_ids: Set of test_ids already completed (for resume)
         """
         # Clear global test_loader cache to ensure fresh data
         from evaluator.test_loader import test_loader
@@ -316,7 +532,7 @@ class EvaluationEngine:
                 break
             
             self._run_all_domains_at_level(
-                run_id, model_name, domains, level, run_llm_client
+                run_id, model_name, domains, level, run_llm_client, completed_test_ids=completed_test_ids
             )
     
     def _run_single_legacy_test(self, domain: str, level: int, run_llm_client=None) -> Dict[str, Any]:
@@ -1551,12 +1767,17 @@ class EvaluationEngine:
         }
     
     def _run_single_domain_level(self, run_id: int, model_name: str, domain_id: str,
-                                  level: int, run_llm_client=None) -> Dict[str, Any]:
+                                  level: int, run_llm_client=None, completed_test_ids: set = None) -> Dict[str, Any]:
         """Run all tests for a single domain at a given level.
         
         Tests within a domain run sequentially (ordered by level).
         Returns a dict with domain and result info, or an error dict on exception.
+        
+        Args:
+            completed_test_ids: Set of test_ids already completed (for resume skip)
         """
+        is_resume = completed_test_ids is not None and len(completed_test_ids) > 0
+        
         try:
             # Load tests for this domain/level
             tests = test_manager.list_tests(domain_id, level)
@@ -1564,6 +1785,17 @@ class EvaluationEngine:
             if not tests:
                 self._log(f'[SKIP] No tests for {domain_id} Level {level}')
                 return {"domain": domain_id, "level": level, "skipped": True}
+            
+            # In resume mode, filter out already-completed tests
+            if is_resume:
+                remaining_tests = [t for t in tests if t['id'] not in completed_test_ids]
+                skipped_count = len(tests) - len(remaining_tests)
+                if skipped_count > 0:
+                    self._log(f'[RESUME] {domain_id} L{level}: skipping {skipped_count}/{len(tests)} already-completed tests')
+                if not remaining_tests:
+                    self._log(f'[RESUME] {domain_id} L{level}: all tests already completed, skipping')
+                    return {"domain": domain_id, "level": level, "skipped": True}
+                tests = remaining_tests
             
             # Set status to "running" for this cell before starting
             db.update_test_result(
@@ -1654,12 +1886,15 @@ class EvaluationEngine:
         return int(os.environ.get('EVALUATOR_WORKERS', '4'))
 
     def _run_all_domains_at_level(self, run_id: int, model_name: str,
-                                   domains: list, level: int, run_llm_client=None) -> list:
+                                   domains: list, level: int, run_llm_client=None, completed_test_ids: set = None) -> list:
         """Run all domains at a given level in parallel using ThreadPoolExecutor.
         
         Max workers is resolved via DB setting -> EVALUATOR_WORKERS env var -> default 4.
         Results are collected in the same format as the sequential loop.
         An exception in one domain does not crash other domains.
+        
+        Args:
+            completed_test_ids: Set of test_ids already completed (for resume skip)
         """
         max_workers = self._get_evaluator_workers()
         results = []
@@ -1672,7 +1907,7 @@ class EvaluationEngine:
                     break
                 future = executor.submit(
                     self._run_single_domain_level,
-                    run_id, model_name, domain_id, level, run_llm_client
+                    run_id, model_name, domain_id, level, run_llm_client, completed_test_ids
                 )
                 futures[future] = domain_id
             

@@ -27,6 +27,9 @@
                     <button id="clear-btn" class="flex-1 sm:flex-none px-4 py-2 rounded font-medium text-sm bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500 text-gray-700 dark:text-gray-200 transition-colors" onclick="clearState()" style="display: none;">
                         Clear
                     </button>
+                    <button id="resume-btn" class="flex-1 sm:flex-none px-4 py-2 rounded font-medium text-sm bg-green-500 hover:bg-green-600 text-white transition-colors" onclick="resumeEvaluation()" style="display: none;">
+                        Resume
+                    </button>
                 </div>
             </div>
         </div>
@@ -303,6 +306,7 @@ document.addEventListener('DOMContentLoaded', function() {
     loadSavedState();
     loadSavedLogs();
     loadModels();
+    checkIncompleteRuns();
     
     // Save model selection on change
     const selector = document.getElementById('model-selector');
@@ -332,6 +336,8 @@ function updateToggleButton(running) {
     if (running) {
         btn.textContent = 'Stop Evaluation';
         btn.className = 'px-4 py-2 rounded font-medium transition-colors bg-red-500 hover:bg-red-600 text-white';
+        // Hide resume button while running
+        document.getElementById('resume-btn').style.display = 'none';
     } else {
         btn.textContent = 'Start Evaluation';
         btn.className = 'px-4 py-2 rounded font-medium transition-colors bg-blue-500 hover:bg-blue-600 text-white';
@@ -628,6 +634,91 @@ async function stopEvaluation() {
     .catch(error => {
         console.error('Error:', error);
         setCheckboxesEnabled(true);
+    });
+}
+
+function resumeEvaluation() {
+    // Find the incomplete run to resume
+    fetch('/api/incomplete_runs')
+    .then(response => response.json())
+    .then(data => {
+        if (!data.success || !data.runs || data.runs.length === 0) {
+            alert('No incomplete runs found to resume.');
+            return;
+        }
+        // Use the most recent incomplete run
+        const run = data.runs[0];
+        const runId = run.run_id;
+        const modelName = run.model_name || 'default';
+        
+        // Reset UI state
+        completionModalShown = false;
+        const summaryBox = document.getElementById('summary-box');
+        const interruptedBox = document.getElementById('interrupted-box');
+        if (summaryBox) summaryBox.remove();
+        if (interruptedBox) interruptedBox.remove();
+        
+        // Clear old logs
+        document.getElementById('log-box').innerHTML = '';
+        localStorage.removeItem('eval_logs');
+        
+        // Update UI immediately
+        updateStatusIndicator('running');
+        updateToggleButton(true);
+        showClearButton(false);
+        setCheckboxesEnabled(false);
+        
+        // Hide resume button
+        document.getElementById('resume-btn').style.display = 'none';
+        
+        fetch('/api/resume', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({run_id: runId})
+        })
+        .then(response => response.json())
+        .then(res => {
+            if (res.success) {
+                startPolling();
+                setupLogStream();
+            } else {
+                alert('Error: ' + res.error);
+                updateStatusIndicator('idle');
+                updateToggleButton(false);
+                setCheckboxesEnabled(true);
+            }
+        })
+        .catch(error => {
+            alert('Failed to resume evaluation: ' + error.message);
+            updateStatusIndicator('idle');
+            updateToggleButton(false);
+            setCheckboxesEnabled(true);
+        });
+    })
+    .catch(error => {
+        console.error('Error checking incomplete runs:', error);
+    });
+}
+
+// Check for incomplete runs on page load and show Resume button
+function checkIncompleteRuns() {
+    const status = document.getElementById('toggle-btn').dataset.status;
+    // Only check if not currently running
+    if (status === 'running') return;
+    
+    fetch('/api/incomplete_runs')
+    .then(response => response.json())
+    .then(data => {
+        if (data.success && data.runs && data.runs.length > 0) {
+            const resumeBtn = document.getElementById('resume-btn');
+            resumeBtn.style.display = 'inline-block';
+            resumeBtn.title = `Resume run #${data.runs[0].run_id} (${data.runs[0].model_name || 'unknown'})`;
+            // Store the run ID for resume
+            resumeBtn.dataset.runId = data.runs[0].run_id;
+        }
+    })
+    .catch(err => {
+        console.error('Error checking incomplete runs:', err);
     });
 }
 

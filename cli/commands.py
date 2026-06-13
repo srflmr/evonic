@@ -3817,8 +3817,262 @@ def doctor_command(quick=False, fix=False):
     except Exception as e:
         results.append(_fail(f"Non-lazy skill tool check failed: {e}"))
 
+    # ── 11. Evobrain Memory Engine Check ──
+    _section("11. Evobrain Memory Engine Check")
 
-    # ── Summary ───────────────────────────────────────────────
+    try:
+        engine = os.environ.get("EVONIC_MEMORY_ENGINE", "evobrain").strip().lower()
+        engine_explicit = "EVONIC_MEMORY_ENGINE" in os.environ
+        binary_path = os.environ.get("EVOBRAIN_BINARY", "shared/bin/evobrain")
+        binary_full = os.path.join(ROOT, binary_path) if not os.path.isabs(binary_path) else binary_path
+        binary_ok = os.path.isfile(binary_full) and os.access(binary_full, os.X_OK)
+
+        # Check custom EVOBRAIN_BINARY path
+        if "EVOBRAIN_BINARY" in os.environ and not binary_ok:
+            results.append(_warn(
+                f"EVOBRAIN_BINARY is set to '{binary_path}' but binary not found "
+                f"or not executable at {binary_full}"
+            ))
+
+        if engine == "fts5":
+            _info("  Memory engine is FTS5 (evobrain not used)")
+        elif binary_ok:
+            results.append(_ok("Evobrain memory engine available"))
+        elif engine_explicit:
+            results.append(_fail(
+                f"EVONIC_MEMORY_ENGINE=evobrain is set but binary not found at "
+                f"{binary_full}. Set EVONIC_MEMORY_ENGINE=fts5 to use fallback, "
+                f"or install the evobrain binary."
+            ))
+        else:
+            results.append(_warn(
+                f"Evobrain is the default memory engine but binary not found at "
+                f"{binary_full}. Evobrain features (think, graph_query) will "
+                f"silently fall back to FTS5."
+            ))
+
+        # Fix: provide actionable message + create directory if needed
+        if not binary_ok and engine != "fts5" and fix:
+            _info(
+                "  To install evobrain: place the static binary at "
+                "shared/bin/evobrain and make it executable (chmod +x)."
+            )
+            bin_dir = os.path.dirname(binary_full)
+            if not os.path.isdir(bin_dir):
+                os.makedirs(bin_dir, exist_ok=True)
+                fixes_applied.append(f"Created directory {bin_dir} for evobrain binary")
+
+    except Exception as e:
+        results.append(_fail(f"Evobrain check failed: {e}"))
+
+    # ── 12. PromptPurify ML Safety Check ──
+    _section("12. PromptPurify ML Safety Check")
+
+    try:
+        from models.db import db
+
+        # 1. Check onnxruntime
+        onnx_available = False
+        try:
+            import onnxruntime  # noqa: F401
+            onnx_available = True
+            _info("  onnxruntime available")
+        except ImportError:
+            pass
+
+        # 2. Check model files
+        model_path = os.path.join(ROOT, "backend", "promptpurify", "model.int8.onnx")
+        vocab_path = os.path.join(ROOT, "backend", "promptpurify", "vocab.txt")
+        contract_path = os.path.join(ROOT, "backend", "promptpurify", "l5e.json")
+        model_ok = os.path.isfile(model_path)
+        vocab_ok = os.path.isfile(vocab_path)
+        contract_ok = os.path.isfile(contract_path)
+        files_ok = model_ok and vocab_ok and contract_ok
+
+        # 3. onnxruntime check (hard requirement — ML is always-on)
+        if not onnx_available:
+            results.append(_fail(
+                "onnxruntime not installed — PromptPurify ML safety unavailable. "
+                "Install with: pip install onnxruntime"
+            ))
+
+        # 4. Model file checks (hard requirement)
+        if not model_ok:
+            results.append(_fail(
+                "PromptPurify model not found at "
+                "backend/promptpurify/model.int8.onnx. "
+                "Run: cd backend/promptpurify && bash download_model.sh"
+            ))
+
+        if not vocab_ok:
+            results.append(_fail(
+                "PromptPurify vocab not found at backend/promptpurify/vocab.txt. "
+                "Run: cd backend/promptpurify && bash download_model.sh"
+            ))
+
+        if not contract_ok:
+            results.append(_fail(
+                "PromptPurify contract not found at backend/promptpurify/l5e.json. "
+                "Run: cd backend/promptpurify && bash download_model.sh"
+            ))
+
+        # 5. All good
+        if onnx_available and files_ok:
+            results.append(_ok("PromptPurify ML safety available (always-on)"))
+
+        # 8. Fixes
+        if fix:
+            # Fix onnxruntime
+            if not onnx_available:
+                try:
+                    result = subprocess.run(
+                        [sys.executable, "-m", "pip", "install", "onnxruntime"],
+                        capture_output=True, text=True, timeout=120
+                    )
+                    if result.returncode == 0:
+                        fixes_applied.append("Installed onnxruntime via pip")
+                    else:
+                        fixes_applied.append(
+                            f"pip install onnxruntime failed: "
+                            f"{result.stderr.strip()[:200]}"
+                        )
+                except Exception as e:
+                    fixes_applied.append(f"pip install onnxruntime error: {e}")
+
+            # Fix model files
+            if not files_ok:
+                download_script = os.path.join(
+                    ROOT, "backend", "promptpurify", "download_model.sh"
+                )
+                if os.path.isfile(download_script):
+                    try:
+                        result = subprocess.run(
+                            ["bash", download_script],
+                            cwd=ROOT, capture_output=True, text=True, timeout=300
+                        )
+                        if result.returncode == 0:
+                            fixes_applied.append(
+                                "Ran backend/promptpurify/download_model.sh"
+                            )
+                        else:
+                            fixes_applied.append(
+                                f"download_model.sh failed: "
+                                f"{result.stderr.strip()[:200]}"
+                            )
+                    except Exception as e:
+                        fixes_applied.append(
+                            f"download_model.sh error: {e}"
+                        )
+                else:
+                    fixes_applied.append(
+                        "download_model.sh not found — cannot auto-download "
+                        "PromptPurify model"
+                    )
+
+    except Exception as e:
+        results.append(_fail(f"PromptPurify ML check failed: {e}"))
+
+
+    # ── 13. Asset Build Check ───────────────────────────────────────────────
+    _section("13. Asset Build Check")
+
+    try:
+        asset_checks = [
+            {
+                "name": "Chat UI JS",
+                "output": "static/js/chat-ui.js",
+                "sources": ["static/js/chat-ui"],
+                "build_cmd": ["python3", "scripts/build_chat_ui.py"],
+            },
+            {
+                "name": "Evonic CSS",
+                "output": "static/css/evonic.css",
+                "sources": [
+                    "static/style.css",
+                    "static/css/recap-prose.css",
+                    "static/css/agent-sidebar.css",
+                ],
+                "build_cmd": ["python3", "scripts/build_css.py"],
+            },
+            {
+                "name": "Tailwind CSS",
+                "output": "static/css/tailwind.css",
+                "sources": ["static/css/tailwind-input.css"],
+                "build_cmd": ["./scripts/build_tailwind.sh"],
+            },
+        ]
+
+        all_ok = True
+
+        for asset in asset_checks:
+            output_path = os.path.join(ROOT, asset["output"])
+            exists = os.path.isfile(output_path)
+            stale = False
+
+            if exists:
+                output_mtime = os.path.getmtime(output_path)
+                for src_pattern in asset["sources"]:
+                    src_path = os.path.join(ROOT, src_pattern)
+                    if os.path.isfile(src_path):
+                        if os.path.getmtime(src_path) > output_mtime:
+                            stale = True
+                            break
+                    elif os.path.isdir(src_path):
+                        for dirpath, _, filenames in os.walk(src_path):
+                            for fn in filenames:
+                                fp = os.path.join(dirpath, fn)
+                                if os.path.getmtime(fp) > output_mtime:
+                                    stale = True
+                                    break
+                            if stale:
+                                break
+
+            if not exists:
+                all_ok = False
+                n = asset['name']
+                o = asset['output']
+                results.append(_fail(f"{n} ─ {o} is missing"))
+            elif stale:
+                all_ok = False
+                n = asset['name']
+                o = asset['output']
+                results.append(_warn(f"{n} ─ {o} is stale (sources newer)"))
+            else:
+                n = asset['name']
+                o = asset['output']
+                results.append(_ok(f"{n} ─ {o} is up to date"))
+
+            if fix and (not exists or stale):
+                n = asset['name']
+                cmd_str = ' '.join(asset['build_cmd'])
+                _info(f'  Running: cd /workspace && ' + cmd_str)
+                try:
+                    proc = subprocess.run(
+                        asset['build_cmd'], cwd=ROOT,
+                        capture_output=True, text=True, timeout=120,
+                    )
+                    if proc.returncode == 0:
+                        status = 'built' if not exists else 'rebuilt'
+                        n = asset['name']
+                        o = asset['output']
+                        results.append(_ok(f"{n} ─ {status} successfully"))
+                        fixes_applied.append(status.title() + ' ' + o + ' (' + n + ')')
+                    else:
+                        n = asset['name']
+                        err = (proc.stderr.strip() or proc.stdout.strip())[:300]
+                        results.append(_fail(f"{n} build failed (exit {proc.returncode}):\n    {err}"))
+                except subprocess.TimeoutExpired:
+                    results.append(_fail(f"{n} build timed out (120s)"))
+                except Exception as exc:
+                    results.append(_fail(f"{n} build error: {exc}"))
+
+        if all_ok:
+            results.append(_ok('All static assets are present and up to date'))
+
+    except Exception as e:
+        results.append(_fail(f"Asset build check failed: {e}"))
+
+
     _section("Summary")
 
     # Filter out "skip" entries

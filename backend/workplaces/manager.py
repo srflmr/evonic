@@ -156,7 +156,7 @@ class WorkplaceManager:
     # Tunnel connector callbacks (called by ConnectorRelay)
     # -------------------------------------------------------------------------
 
-    def on_connector_connected(self, workplace_id: str, ws) -> None:
+    def on_connector_connected(self, workplace_id: str, ws, replay_ok: bool = False) -> None:
         workplace = self._load_workplace(workplace_id)
         if not workplace:
             _logger.warning("Connector connected for unknown workplace %s", workplace_id)
@@ -174,7 +174,7 @@ class WorkplaceManager:
                     workspace=config.get('workspace_path'),
                 )
                 self._backends[tunnel_key] = backend
-        backend.on_ws_connected(ws)
+        backend.on_ws_connected(ws, replay_ok=replay_ok)
         self._set_status(workplace_id, 'connected')
         _logger.info("Tunnel workplace %s connected via Evonet", workplace_id)
 

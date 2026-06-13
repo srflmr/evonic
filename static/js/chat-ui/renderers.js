@@ -536,7 +536,7 @@ function _wrapImageWithDownload($img) {
 
     const $container = $('<div>').css({
         position: 'relative',
-        display: 'inline-block',
+        display: 'block',
         borderRadius: '0.5rem',
         overflow: 'hidden',
     });
