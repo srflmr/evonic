@@ -89,9 +89,12 @@ def capture(agent_id: str, text: str, category: str = "general") -> dict:
     if not os.path.isdir(brain_dir) or not os.path.exists(os.path.join(brain_dir, ".evobrain.db")):
         if not init_brain(agent_id):
             return None
-    # Build a markdown page with frontmatter
-    safe_text = text.replace('"', '\\"')
-    result = _run(brain_dir, ["capture", "--title", f"[{category}] {text[:60]}", safe_text])
+    # Build a safe title: strip YAML-breaking characters (brackets, quotes, colons)
+    safe_title = (f"{category}: {text[:80]}"
+                  .replace("[", "(").replace("]", ")")
+                  .replace('"', "").replace("'", "")
+                  .replace(":", " -"))
+    result = _run(brain_dir, ["capture", "--title", safe_title, text])
     if not result:
         return None
     # capture output is plain text in JSON mode: "captured -> slug (path)"

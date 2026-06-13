@@ -11,7 +11,8 @@ from backend.agent_runtime.evobrain_client import (
 
 
 class TestGetEngine:
-    def test_default_is_fts5(self):
+    def test_default_is_fts5(self, monkeypatch):
+        monkeypatch.delenv("EVONIC_MEMORY_ENGINE", raising=False)
         assert get_engine() == "fts5"
 
     def test_evobrain_when_set(self, monkeypatch):
