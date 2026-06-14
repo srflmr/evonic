@@ -73,6 +73,7 @@ const Lightbox = (function() {
     let _$nextBtn = null;
     let _$counter = null;
     let _$downloadBtn = null;
+    let _$filename = null;
     let _isOpen = false;
     let _prevFocusedEl = null;
     let _boundKeyHandler = null;
@@ -264,6 +265,20 @@ const Lightbox = (function() {
         // Hide counter if only 1 image
         _$counter.attr('data-count', '0');
 
+        // Filename label — positioned above the counter, inline pill style
+        _$filename = $('<span>')
+            .addClass('ev-lightbox-filename text-xs font-mono px-2 py-0.5 rounded')
+            .css({
+                position: 'absolute',
+                bottom: '44px',
+                left: '50%',
+                transform: 'translateX(-50%)',
+                zIndex: 20,
+                color: '#fff',
+                backgroundColor: 'rgba(0,0,0,0.5)',
+                whiteSpace: 'nowrap',
+            });
+
         // Click on backdrop to close
         _$overlay.on('click', function(e) {
             if (e.target === _$overlay[0]) {
@@ -338,7 +353,7 @@ const Lightbox = (function() {
             focusable[nextIndex].focus();
         }
 
-        _$overlay.append($closeBtn, _$prevBtn, _$nextBtn, _$imgContainer, _$counter);
+        _$overlay.append($closeBtn, _$prevBtn, _$nextBtn, _$imgContainer, _$filename, _$counter);
         $('body').append(_$overlay);
     }
 
@@ -348,6 +363,9 @@ const Lightbox = (function() {
         // Lazy-load: set src only when the image becomes visible
         _$img.attr('src', _images[index]);
         _$counter.text((index + 1) + ' / ' + _images.length);
+        // Extract and display filename
+        var filename = _images[index].split('/').pop().split('?')[0] || 'image';
+        _$filename.text(filename);
     }
 
     function _updateNavigation() {
