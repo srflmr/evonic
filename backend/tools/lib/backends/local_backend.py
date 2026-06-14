@@ -414,6 +414,46 @@ class LocalBackend(ExecutionBackend):
             return {'ok': True}
         return {'error': r.get('error', 'Unknown error')}
 
+    def write_file_bytes(self, path: str, data: bytes, create_dirs: bool = True) -> dict:
+        if self._run_as_user is None:
+            try:
+                if create_dirs:
+                    parent = os.path.dirname(path)
+                    if parent:
+                        os.makedirs(parent, exist_ok=True)
+                with open(path, 'wb') as f:
+                    f.write(data)
+                return {'ok': True}
+            except PermissionError:
+                return {'error': f'Permission denied writing: {path}'}
+            except IsADirectoryError:
+                return {'error': f'Path is a directory, not a file: {path}'}
+            except Exception as e:
+                return {'error': str(e)}
+        import base64
+        encoded = base64.b64encode(data).decode('ascii')
+        code = (
+            "import os, base64; p=" + repr(path) + "; "
+            "cd=" + repr(create_dirs) + "; "
+            "data=base64.b64decode(" + repr(encoded) + "); "
+            "try:\n"
+            " if cd:\n"
+            "  d=os.path.dirname(p)\n"
+            "  if d: os.makedirs(d,exist_ok=True)\n"
+            " f=open(p,'wb'); f.write(data); f.close()\n"
+            " print('__OK__')\n"
+            "except PermissionError: print('__ERR__Permission denied')\n"
+            "except IsADirectoryError: print('__ERR__Path is a directory')\n"
+            "except Exception as e: print('__ERR__'+str(e))"
+        )
+        r = self._sudo_subprocess(code)
+        if r.get('ok'):
+            result = r.get('result', '')
+            if isinstance(result, str) and result.startswith('__ERR__'):
+                return {'error': result[7:]}
+            return {'ok': True}
+        return {'error': r.get('error', 'Unknown error')}
+
     def make_dirs(self, path: str) -> dict:
         if self._run_as_user is None:
             try:

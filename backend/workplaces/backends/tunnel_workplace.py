@@ -260,6 +260,17 @@ class TunnelWorkplaceBackend(ExecutionBackend):
         # rm -f succeeds even if the file doesn't exist
         return {'ok': True}
 
+    def write_file_bytes(self, path: str, data: bytes, create_dirs: bool = True) -> dict:
+        """Write raw bytes to a file on the remote Evonet via RPC.
+
+        Uses the existing write_file_b64 RPC for binary-safe transfer.
+        """
+        import base64
+        if create_dirs:
+            self.make_dirs(os.path.dirname(path) or '.')
+        encoded = base64.b64encode(data).decode('ascii')
+        return self.write_file_b64(path, encoded)
+
     def make_dirs(self, path: str) -> dict:
         r = self.run_bash(f'mkdir -p {shlex.quote(path)}', 10, {})
         if r.get('exit_code', 1) != 0:

@@ -3675,6 +3675,8 @@ def doctor_command(quick=False, fix=False, with_llm_provider=False):
         spurious_save = []
         missing_list = []
         spurious_list = []
+        missing_fetch = []
+        spurious_fetch = []
 
         for a in agents:
             aid = a.get("id", "?")
@@ -3683,6 +3685,7 @@ def doctor_command(quick=False, fix=False, with_llm_provider=False):
             agent_tools = db.get_agent_tools(aid)
             has_save = "save_artifact" in agent_tools
             has_list = "list_artifacts" in agent_tools
+            has_fetch = "fetch_artifact" in agent_tools
 
             if artifacts_on and not has_save:
                 missing_save.append((aid, aname))
@@ -3693,6 +3696,11 @@ def doctor_command(quick=False, fix=False, with_llm_provider=False):
                 missing_list.append((aid, aname))
             elif not artifacts_on and has_list:
                 spurious_list.append((aid, aname))
+
+            if artifacts_on and not has_fetch:
+                missing_fetch.append((aid, aname))
+            elif not artifacts_on and has_fetch:
+                spurious_fetch.append((aid, aname))
 
         if missing_save:
             for aid, aname in missing_save:
@@ -3734,6 +3742,26 @@ def doctor_command(quick=False, fix=False, with_llm_provider=False):
         else:
             results.append(_ok("All artifacts-enabled agents have list_artifacts tool"))
 
+        if missing_fetch:
+            for aid, aname in missing_fetch:
+                results.append(_warn(
+                    f"Agent '{aname}' ({aid}) has artifacts_enabled=1 but "
+                    f"missing 'fetch_artifact' tool assignment"
+                ))
+            if fix:
+                for aid, aname in missing_fetch:
+                    try:
+                        db.add_agent_tool(aid, "fetch_artifact")
+                        fixes_applied.append(
+                            f"Added 'fetch_artifact' tool to agent '{aname}' ({aid})"
+                        )
+                    except Exception as e:
+                        results.append(_fail(
+                            f"Failed to add fetch_artifact to '{aid}': {e}"
+                        ))
+        else:
+            results.append(_ok("All artifacts-enabled agents have fetch_artifact tool"))
+
         if spurious_save:
             for aid, aname in spurious_save:
                 results.append(_warn(
@@ -3768,10 +3796,29 @@ def doctor_command(quick=False, fix=False, with_llm_provider=False):
                         results.append(_fail(
                             f"Failed to remove list_artifacts from '{aid}': {e}"
                         ))
+        if spurious_fetch:
+            for aid, aname in spurious_fetch:
+                results.append(_warn(
+                    f"Agent '{aname}' ({aid}) has artifacts_enabled=0 but "
+                    f"has 'fetch_artifact' tool assigned (should be removed)"
+                ))
+            if fix:
+                for aid, aname in spurious_fetch:
+                    try:
+                        db.remove_agent_tool(aid, "fetch_artifact")
+                        fixes_applied.append(
+                            f"Removed 'fetch_artifact' tool from agent '{aname}' ({aid})"
+                        )
+                    except Exception as e:
+                        results.append(_fail(
+                            f"Failed to remove fetch_artifact from '{aid}': {e}"
+                        ))
 
-        all_clear = not missing_save and not spurious_save and not missing_list and not spurious_list
+        all_clear = (not missing_save and not spurious_save and
+                     not missing_list and not spurious_list and
+                     not missing_fetch and not spurious_fetch)
         if all_clear:
-            _info("  All agents have consistent artifact tool assignment")
+            _info("  All agents have consistent artifact tool assignment (save/list/fetch)")
 
     except Exception as e:
         results.append(_fail(f"Artifact tool check failed: {e}"))

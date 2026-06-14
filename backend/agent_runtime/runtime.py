@@ -1646,10 +1646,13 @@ class AgentRuntime:
                     if _tid not in _existing:
                         assigned_tool_ids.append(_tid)
 
-            # Agents with save_artifact automatically get list_artifacts.
-            # No DB assignment needed — every artifacts-enabled agent can search their files.
-            if 'save_artifact' in assigned_tool_ids and 'list_artifacts' not in assigned_tool_ids:
-                assigned_tool_ids.append('list_artifacts')
+            # Agents with save_artifact automatically get list_artifacts + fetch_artifact.
+            # No DB assignment needed — every artifacts-enabled agent can search and fetch their files.
+            if 'save_artifact' in assigned_tool_ids:
+                if 'list_artifacts' not in assigned_tool_ids:
+                    assigned_tool_ids.append('list_artifacts')
+                if 'fetch_artifact' not in assigned_tool_ids:
+                    assigned_tool_ids.append('fetch_artifact')
 
             # Resolve workspace: workplace config takes priority over agent.workspace.
             # For tunnel workplaces, never fall back to the agent's /workspace path —
