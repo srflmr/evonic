@@ -1184,6 +1184,7 @@ function buildMessageBubble(role, content, opts = {}, cfg = {}) {
 
     const meta        = opts.metadata || {};
     const isSlashCmd  = !!meta.slash_command;
+    const isBashExec  = !!meta.bash_exec;
     const isUser      = role === 'user';
     const isError     = role === 'error';
     const isSystem    = !isUser && !isError && role !== 'assistant' && /^\[system/i.test(content);
@@ -1252,6 +1253,34 @@ function buildMessageBubble(role, content, opts = {}, cfg = {}) {
         $bubble = $('<div class="bg-orange-200 text-gray-600 border-gray-400 rounded-2xl px-4 py-2.5 text-sm break-words">');
         $bubble.append(_buildSysBalloon(sysTag, sysContent, 'text-gray-500', 'text-gray-400', 120));
 
+    } else if (isBashExec) {
+        // Bash exec (!) command output — dark terminal with hacker green text
+        const rendered = typeof marked !== 'undefined'
+            ? sanitize(marked.parse((content || ''))).replace(/<table/g, '<div class="table-wrapper"><table').replace(/<\/table>/g, '</table></div>')
+            : escape(content);
+        $bubble = $('<div class="chat-prose terminal-output rounded-2xl px-4 py-2.5 text-sm break-words">');
+        $bubble.css({
+            'background-color': '#080e0f',
+            'color': '#359635',
+            'border': '1px solid #174217'
+        });
+        $bubble.attr('role', 'article');
+        $bubble.html(rendered);
+        $bubble.find('pre').css({
+            'background-color': '#030607',
+            'border': '1px solid #174217',
+            'border-radius': '0.375rem'
+        });
+        $bubble.find('code').css({
+            'color': '#359635',
+            'background': 'transparent'
+        });
+        $bubble.find('em').css('color', '#6b8e6b');
+        $bubble.find('img').each(function() {
+            const $img = $(this);
+            _wrapImageWithDownload($img);
+            retrofitImageForLazy($img);
+        });
     } else if (isSlashCmd) {
         // Slash command response — blue styling, visible to user only (not sent to LLM)
         const rendered = typeof marked !== 'undefined'
@@ -2780,7 +2809,7 @@ class ChatUI {
                 continue;
             }
             if (entry.type === 'system') {
-                const sysMeta = (entry.metadata && entry.metadata.slash_command) ? { metadata: { slash_command: true } } : {};
+                const sysMeta = (entry.metadata && (entry.metadata.slash_command || entry.metadata.bash_exec)) ? { metadata: { slash_command: entry.metadata.slash_command || false, bash_exec: entry.metadata.bash_exec || false } } : {};
                 this.appendMessage('system', entry.content || '', sysMeta);
                 continue;
             }
