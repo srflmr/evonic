@@ -196,6 +196,8 @@ except Exception:
 # Print Evonic version on startup
 print(f"\n  🚀 Evonic v{get_version()}")
 print("---------------------------------------------")
+status = "enabled" if config.SESSION_ARCHIVE else "disabled"
+print("  Session archive: %s" % status)
 
 if loaded_plugins or loaded_skills:
     if loaded_plugins:

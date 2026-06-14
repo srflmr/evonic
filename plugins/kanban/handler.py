@@ -62,6 +62,7 @@ _task_state_since: dict = {}         # agent_id -> float (time.time() when state
 _progress_reminder_armed: dict = {}  # agent_id -> bool
 _approval_granted: dict = {}         # agent_id -> task_id (user approved, autopilot=OFF)
 _awaiting_approval: set = set()      # agents that have already presented task, now waiting silently
+_recently_completed: dict = {}       # agent_id -> task_id (just set to done, waiting for final answer)
 _notifier_paused: bool = False       # global notifier pause flag (UI toggle)
 
 
@@ -1916,6 +1917,10 @@ def on_tool_executed(event, sdk):
             _paused_tasks.pop(agent_id, None)
             _task_state_since.pop(agent_id, None)
             _progress_reminder_armed.pop(agent_id, None)
+            task_id = task.get('id', '')
+            if task_id:
+                _recently_completed[agent_id] = str(task_id)
+                _log(f'Agent {agent_id} marked task {task_id} done -- will auto-comment on final answer', 'info', sdk)
             _log(f'Guard cleared for agent {agent_id} — task done, triggering scan in 10s', 'info', sdk)
             global _pending_scan_timer
             with _lock:
@@ -1934,6 +1939,35 @@ def on_tool_executed(event, sdk):
     if tool_name not in KANBAN_ALLOWED_TOOLS and agent_id in _active_tasks:
         if not event.get('has_error', False):
             _progress_reminder_armed[agent_id] = True
+
+
+
+# --- Final answer auto-comment ---
+
+
+def _on_final_answer(data: dict):
+    """Auto-post the agent's final answer as a comment if the agent
+    just marked a kanban task as done. Skip if answer is empty/error/short."""
+    agent_id = data.get('agent_id', '')
+    if not agent_id:
+        return
+    task_id = _recently_completed.pop(agent_id, None)
+    if not task_id:
+        return
+    answer = data.get('answer', '') or ''
+    if not answer or len(answer) <= 60:
+        return
+    if data.get('loop_terminated') or data.get('is_error'):
+        return
+    try:
+        from plugins.kanban.db import kanban_db
+        task = kanban_db.get(task_id)
+        if not task or task.get('status') != 'done':
+            return
+        kanban_db.add_comment(task_id, answer, author=agent_id)
+        _log(f'Agent {agent_id} final answer auto-posted as comment on task #{task_id}', 'info')
+    except Exception as e:
+        _log(f'Failed to auto-comment final answer on task #{task_id}: {e}', 'error')
 
 
 # ─── Busy message provider ────────────────────────────────────────────────────
@@ -1999,6 +2033,10 @@ try:
     register_message_interceptor(_message_interceptor)
     register_builtin_suppressor(_builtin_suppressor)
     register_busy_message_provider(_busy_message_provider)
+    # Subscribe to final_answer event for auto-comment on completed tasks
+    from backend.event_stream import event_stream
+    event_stream.on('final_answer', _on_final_answer)
+
 except Exception:
     pass
 
