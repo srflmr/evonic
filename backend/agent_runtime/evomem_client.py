@@ -9,6 +9,7 @@ None so callers can transparently fall back to the FTS5 pipeline.
 import json
 import os
 import time
+import shutil
 import subprocess
 import logging
 
@@ -142,6 +143,94 @@ def _get_brain_dir(agent_id: str) -> str:
     return f"agents/{agent_id}/brain"
 
 
+def _get_kb_dir(agent_id: str) -> str:
+    """Return the KB directory path for a given agent.
+
+    KB files live at agents/<id>/kb/ and are mirrored into the brain's
+    kb/ subdirectory before sync so the evomem binary can scan them.
+    """
+    return f"agents/{agent_id}/kb"
+
+
+def _mirror_kb_files(agent_id: str) -> dict:
+    """Mirror KB files from agents/<id>/kb/ into brain/kb/ for sync.
+
+    Copies new/changed files, removes stale ones (deleted from kb/ source),
+    and returns a stats dict: {copied, removed, unchanged}.
+
+    The evomem binary scans all .md files under the brain directory, so
+    mirroring KB files into brain/kb/ makes them visible to the sync engine.
+    Content hash comparison avoids unnecessary writes.
+
+    When the KB source directory does not exist, any stale brain/kb/
+    copies are cleaned up so the next sync soft-deletes the pages.
+    """
+    brain_dir = _get_brain_dir(agent_id)
+    kb_dir = _get_kb_dir(agent_id)
+    brain_kb_dir = os.path.join(brain_dir, "kb")
+
+    stats = {"copied": 0, "removed": 0, "unchanged": 0}
+
+    # ---- No KB source directory: clean up any stale brain/kb/ copies ----
+    if not os.path.isdir(kb_dir):
+        if os.path.isdir(brain_kb_dir):
+            for filename in list(os.listdir(brain_kb_dir)):
+                if filename.endswith(".md"):
+                    os.remove(os.path.join(brain_kb_dir, filename))
+                    stats["removed"] += 1
+            try:
+                os.rmdir(brain_kb_dir)
+            except OSError:
+                pass
+        return stats
+
+    # ---- Ensure brain/kb/ directory exists ----
+    os.makedirs(brain_kb_dir, exist_ok=True)
+
+    # Collect existing brain/kb/ files
+    brain_kb_files: set = set()
+    if os.path.isdir(brain_kb_dir):
+        brain_kb_files = {f for f in os.listdir(brain_kb_dir) if f.endswith(".md")}
+
+    # ---- Copy new or changed KB files ----
+    kb_files: set = set()
+    for filename in sorted(os.listdir(kb_dir)):
+        if not filename.endswith(".md"):
+            continue
+        kb_files.add(filename)
+        src = os.path.join(kb_dir, filename)
+        dst = os.path.join(brain_kb_dir, filename)
+
+        if os.path.exists(dst):
+            # Compare content to avoid unnecessary writes
+            try:
+                with open(src, "rb") as f:
+                    src_content = f.read()
+                with open(dst, "rb") as f:
+                    dst_content = f.read()
+                if src_content == dst_content:
+                    stats["unchanged"] += 1
+                    continue
+            except OSError:
+                pass  # fall through to copy
+
+        shutil.copy2(src, dst)
+        stats["copied"] += 1
+        vlog("kb_mirror[%s]: copied %s", agent_id, filename)
+
+    # ---- Remove stale files (deleted from kb/ source) ----
+    for filename in sorted(brain_kb_files - kb_files):
+        os.remove(os.path.join(brain_kb_dir, filename))
+        stats["removed"] += 1
+        vlog("kb_mirror[%s]: removed stale %s", agent_id, filename)
+
+    if stats["copied"] or stats["removed"]:
+        vlog("kb_mirror[%s]: copied=%d removed=%d unchanged=%d",
+             agent_id, stats["copied"], stats["removed"], stats["unchanged"])
+
+    return stats
+
+
 def init_brain(agent_id: str) -> bool:
     """Initialize a new evomem directory for the agent. Returns True on success."""
     brain_dir = _get_brain_dir(agent_id)
@@ -221,8 +310,25 @@ def graph_query(agent_id: str, start: str, edge: str = None,
 
 
 def sync(agent_id: str) -> bool:
-    """Re-sync markdown files into the database. Returns True on success."""
+    """Re-sync markdown files into the database. Returns True on success.
+
+    Before running the evomem binary sync, this mirrors KB files from
+    agents/<id>/kb/ into the brain's kb/ subdirectory so they are picked
+    up by the sync engine with source_dir='kb'.  Stale copies (files
+    deleted from the KB directory) are removed so the sync engine
+    soft-deletes the corresponding pages.
+    """
     brain_dir = _get_brain_dir(agent_id)
     if not os.path.isdir(brain_dir) or not os.path.exists(os.path.join(brain_dir, ".evomem.db")):
         return False
-    return _run(brain_dir, ["sync"]) is not None
+
+    # Mirror KB files into brain/kb/ so the binary scans them
+    kb_stats = _mirror_kb_files(agent_id)
+
+    result = _run(brain_dir, ["sync"]) is not None
+
+    if result and (kb_stats["copied"] or kb_stats["removed"]):
+        vlog("sync[%s]: kb mirror stats copied=%d removed=%d unchanged=%d",
+             agent_id, kb_stats["copied"], kb_stats["removed"], kb_stats["unchanged"])
+
+    return result
