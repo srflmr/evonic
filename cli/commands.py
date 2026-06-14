@@ -3673,6 +3673,8 @@ def doctor_command(quick=False, fix=False, with_llm_provider=False):
         agents = db.get_agents()
         missing_save = []
         spurious_save = []
+        missing_list = []
+        spurious_list = []
 
         for a in agents:
             aid = a.get("id", "?")
@@ -3680,11 +3682,17 @@ def doctor_command(quick=False, fix=False, with_llm_provider=False):
             artifacts_on = a.get("artifacts_enabled") not in (False, 0, None)
             agent_tools = db.get_agent_tools(aid)
             has_save = "save_artifact" in agent_tools
+            has_list = "list_artifacts" in agent_tools
 
             if artifacts_on and not has_save:
                 missing_save.append((aid, aname))
             elif not artifacts_on and has_save:
                 spurious_save.append((aid, aname))
+
+            if artifacts_on and not has_list:
+                missing_list.append((aid, aname))
+            elif not artifacts_on and has_list:
+                spurious_list.append((aid, aname))
 
         if missing_save:
             for aid, aname in missing_save:
@@ -3706,6 +3714,26 @@ def doctor_command(quick=False, fix=False, with_llm_provider=False):
         else:
             results.append(_ok("All artifacts-enabled agents have save_artifact tool"))
 
+        if missing_list:
+            for aid, aname in missing_list:
+                results.append(_warn(
+                    f"Agent '{aname}' ({aid}) has artifacts_enabled=1 but "
+                    f"missing 'list_artifacts' tool assignment"
+                ))
+            if fix:
+                for aid, aname in missing_list:
+                    try:
+                        db.add_agent_tool(aid, "list_artifacts")
+                        fixes_applied.append(
+                            f"Added 'list_artifacts' tool to agent '{aname}' ({aid})"
+                        )
+                    except Exception as e:
+                        results.append(_fail(
+                            f"Failed to add list_artifacts to '{aid}': {e}"
+                        ))
+        else:
+            results.append(_ok("All artifacts-enabled agents have list_artifacts tool"))
+
         if spurious_save:
             for aid, aname in spurious_save:
                 results.append(_warn(
@@ -3723,9 +3751,27 @@ def doctor_command(quick=False, fix=False, with_llm_provider=False):
                         results.append(_fail(
                             f"Failed to remove save_artifact from '{aid}': {e}"
                         ))
-        elif not missing_save:
-            if not spurious_save:
-                _info("  All agents have consistent artifact tool assignment")
+        if spurious_list:
+            for aid, aname in spurious_list:
+                results.append(_warn(
+                    f"Agent '{aname}' ({aid}) has artifacts_enabled=0 but "
+                    f"has 'list_artifacts' tool assigned (should be removed)"
+                ))
+            if fix:
+                for aid, aname in spurious_list:
+                    try:
+                        db.remove_agent_tool(aid, "list_artifacts")
+                        fixes_applied.append(
+                            f"Removed 'list_artifacts' tool from agent '{aname}' ({aid})"
+                        )
+                    except Exception as e:
+                        results.append(_fail(
+                            f"Failed to remove list_artifacts from '{aid}': {e}"
+                        ))
+
+        all_clear = not missing_save and not spurious_save and not missing_list and not spurious_list
+        if all_clear:
+            _info("  All agents have consistent artifact tool assignment")
 
     except Exception as e:
         results.append(_fail(f"Artifact tool check failed: {e}"))
