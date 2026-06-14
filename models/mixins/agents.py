@@ -41,8 +41,8 @@ class AgentMixin:
                     vision_enabled, inject_agent_id, inject_datetime, send_intermediate_responses, enable_agent_state,
                     workspace, agent_messaging_enabled, sandbox_enabled, summarize_tail, artifacts_enabled,
                     message_wrapper_enabled, fallback_model_id, model_id, audio_enabled, video_enabled,
-                    run_as_user)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    run_as_user, bash_exec_enabled)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 agent['id'], agent.get('name', agent['id']),
                 agent.get('description', ''), agent.get('system_prompt', ''),
@@ -64,6 +64,9 @@ class AgentMixin:
                 1 if agent.get('audio_enabled') else 0,
                 1 if agent.get('video_enabled') else 0,
                 agent.get('run_as_user'),
+                # Default ON for the super agent, OFF for regular agents.
+                # Honors an explicit value when present (e.g. cloning).
+                1 if agent.get('bash_exec_enabled', agent.get('is_super')) else 0,
             ))
             conn.commit()
         return agent['id']
@@ -78,7 +81,7 @@ class AgentMixin:
                    'agent_messaging_enabled', 'workplace_id',
                    'attachments_enabled', 'attachment_max_size_mb', 'artifacts_enabled',
                    'fallback_model_id', 'audio_enabled', 'video_enabled',
-                   'run_as_user'}
+                   'run_as_user', 'bash_exec_enabled'}
         updates = {k: v for k, v in data.items() if k in allowed}
         if not updates:
             return False

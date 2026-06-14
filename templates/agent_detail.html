@@ -428,6 +428,15 @@ html.dark #channel-detail-modal .hover\:bg-indigo-100:hover { background: #312e8
                     </div>
                     <div>
                         <label class="flex items-center gap-3 cursor-pointer select-none">
+                            {{ toggle_widget(id='agent-bash-exec', checked=agent.bash_exec_enabled) }}
+                            <div>
+                                <span class="text-gray-600 dark:text-gray-300 text-sm font-medium">Bash Exec (web <code>!</code>)</span>
+                                <p class="text-xs text-gray-400 mt-0.5">Let web users run a shell command directly by prefixing the message with <code>!</code> (e.g. <code>!ls -la</code>). Runs immediately, bypassing the agent — its output is hidden from the agent's context. Not available on channels (Telegram/WhatsApp). Default ON for the super agent.</p>
+                            </div>
+                        </label>
+                    </div>
+                    <div>
+                        <label class="flex items-center gap-3 cursor-pointer select-none">
                             {{ toggle_widget(id='agent-injection-guard', checked=True) }}
                             <div>
                                 <span class="text-gray-600 dark:text-gray-300 text-sm font-medium">Injection Guard</span>
@@ -1691,6 +1700,7 @@ async function saveAdvanced() {
             agent_messaging_enabled: document.getElementById('agent-messaging-enabled').checked ? 1 : 0,
             artifacts_enabled: document.getElementById('agent-artifacts').checked ? 1 : 0,
             safety_checker_enabled: document.getElementById('agent-safety-checker').checked ? 1 : 0,
+            bash_exec_enabled: document.getElementById('agent-bash-exec').checked ? 1 : 0,
             message_wrapper_enabled: document.getElementById('agent-message-wrapper').checked ? 1 : 0,
             run_as_user: document.getElementById('agent-run-as-user').value.trim() || null,
         })

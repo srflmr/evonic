@@ -911,6 +911,57 @@ class AgentRuntime:
             self._llm_serializer._llm_lock,
         )
 
+    def _run_bash_exec(self, agent: Dict[str, Any], session_id: str,
+                       db_agent_id: str, external_user_id: str,
+                       message: str) -> str:
+        """Run a web user's "!<command>" directly and persist it for UI display only.
+
+        The command and its output are saved with a `bash_exec` metadata flag so
+        they render in the web chat (and survive reload) but are filtered out of
+        the LLM context — the agent never sees them. Safety checks are bypassed
+        (`_skip_safety`): the command is typed explicitly by a human operator and
+        gated by the per-agent toggle.
+        """
+        cmd = message.lstrip()[1:].strip()
+        if not cmd:
+            return "Usage: `!<command>` — run a shell command directly (web only)."
+
+        from backend.tools import bash
+        exec_agent = {**agent, 'session_id': session_id, '_skip_safety': True}
+        result = bash.execute(exec_agent, {'script': cmd})
+
+        # Format the output as a fenced block for monospace rendering in the UI.
+        if result.get('error'):
+            body = result['error']
+        else:
+            parts = []
+            stdout = (result.get('stdout') or '').rstrip('\n')
+            stderr = (result.get('stderr') or '').rstrip('\n')
+            if stdout:
+                parts.append(stdout)
+            if stderr:
+                parts.append(stderr)
+            body = "\n".join(parts) if parts else "(no output)"
+        response = f"$ {cmd}\n```bash\n{body}\n```"
+        exit_code = result.get('exit_code')
+        if exit_code not in (0, None):
+            response += f"\n_(exit code {exit_code})_"
+
+        # Persist for UI display only — hidden from LLM via the `bash_exec` flag.
+        _db_retry(db.add_chat_message, session_id, 'user', message,
+                  agent_id=db_agent_id, metadata={'bash_exec': True},
+                  label="save bash command")
+        _db_retry(db.add_chat_message, session_id, 'assistant', response,
+                  agent_id=db_agent_id, metadata={'bash_exec': True},
+                  label="save bash output")
+        _cl = chatlog_manager.get(db_agent_id, session_id)
+        _cl.append({'type': 'user', 'session_id': session_id, 'content': message,
+                    'sender_id': external_user_id, 'metadata': {'bash_exec': True}})
+        _cl.append({'type': 'system', 'session_id': session_id, 'content': response,
+                    'metadata': {'bash_exec': True}})
+        self._prefetcher.invalidate(session_id)
+        return response
+
     def handle_message(self, agent_id: str, external_user_id: str,
                        message: str, channel_id: Optional[str] = None,
                        image_url: Optional[str] = None,
@@ -969,6 +1020,17 @@ class AgentRuntime:
         # previous spawn that reused the same session slug.
         if is_subagent and metadata and metadata.get('subagent_spawn'):
             db.clear_session(session_id, agent_id=db_agent_id)
+
+        # Web-only "!" direct bash execution — eval'd directly, bypassing the LLM.
+        # Gated on the per-agent bash_exec_enabled flag and web channel (no channel_id).
+        # On a channel, a "!"-prefixed message falls through as ordinary user text.
+        if message.lstrip().startswith('!') and channel_id is None \
+                and agent.get('bash_exec_enabled'):
+            response = self._run_bash_exec(
+                agent, session_id, db_agent_id, external_user_id, message,
+            )
+            return {"response": response, "tool_trace": [], "timeline": [],
+                    "slash_command": True, "bash_exec": True}
 
         # Slash command interception — execute before saving message or sending to LLM
         parsed = parse_command(message)
@@ -1422,7 +1484,8 @@ class AgentRuntime:
         def _is_ui_only_msg(msg: dict) -> bool:
             """Skip messages that appear in UI but must not enter LLM context."""
             meta = msg.get('metadata') or {}
-            return bool(meta.get('busy_ack') or meta.get('busy_rejection') or meta.get('evonet_offline'))
+            return bool(meta.get('busy_ack') or meta.get('busy_rejection')
+                        or meta.get('evonet_offline') or meta.get('bash_exec'))
 
         def _is_slash_command_msg(msg: dict) -> bool:
             """Skip slash command user messages and their assistant responses.
