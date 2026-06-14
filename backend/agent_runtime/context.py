@@ -30,6 +30,10 @@ def _token_count(text: str) -> int:
 from models.db import db
 from backend.tools import tool_registry
 from backend.skills_manager import SkillsManager, skills_manager
+from backend.agent_runtime.evomem_client import (
+    get_kb_graph_metadata,
+    get_evomem_db_mtime,
+)
 from config import AGENT_MAX_TOOL_RESULT_CHARS as MAX_TOOL_RESULT_CHARS
 
 _BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -138,23 +142,244 @@ def _build_portal_info(agent_id: str) -> list:
     return lines
 
 
-def _extract_kb_description(filepath: str) -> str | None:
-    """Parse YAML front matter in a KB file and return the `description:` value if present."""
+def _extract_kb_frontmatter(filepath: str) -> dict:
+    """Parse YAML front matter in a KB file and return description + tags.
+
+    Returns a dict: {description: str|None, tags: [str]}.
+    """
+    result = {"description": None, "tags": []}
     try:
         with open(filepath, "r", encoding="utf-8") as f:
             first_line = f.readline().strip()
             if first_line != "---":
-                return None
+                return result
             for line in f:
                 line_stripped = line.strip()
                 if line_stripped == "---":
                     break
                 if line_stripped.startswith("description:"):
                     val = line_stripped[len("description:"):].strip().strip("\"'")
-                    return val if val else None
+                    result["description"] = val if val else None
+                elif line_stripped.startswith("tags:"):
+                    tag_val = line_stripped[len("tags:"):].strip()
+                    if tag_val.startswith("[") and tag_val.endswith("]"):
+                        inner = tag_val[1:-1].strip()
+                        if inner:
+                            result["tags"] = [t.strip().strip("\"'") for t in inner.split(",") if t.strip()]
     except Exception:
         pass
-    return None
+    return result
+
+
+def _format_size(size_bytes: int) -> str:
+    """Format file size in human-readable KB or MB."""
+    if size_bytes >= 1024 * 1024:
+        return f"{size_bytes / (1024 * 1024):.1f} MB"
+    return f"{size_bytes / 1024:.1f} KB"
+
+
+def _compute_staleness_flag(
+    source_updated_at: str | None,
+    target_slug: str,
+    target_updated_at: dict,
+) -> str:
+    """Compute staleness flag for an outgoing link target.
+
+    Returns a string like " ⚠ (updated 3 days ago, target may have changed)"
+    or empty string if the target is not newer than the source.
+    """
+    if not source_updated_at:
+        return ""
+    target_ts = target_updated_at.get(target_slug)
+    if not target_ts:
+        return ""
+
+    try:
+        src_dt = datetime.fromisoformat(source_updated_at)
+        tgt_dt = datetime.fromisoformat(target_ts)
+    except (ValueError, TypeError):
+        return ""
+
+    if tgt_dt <= src_dt:
+        return ""
+
+    # Compute "N days ago" relative to target's update time
+    now = datetime.now(timezone.utc)
+    if tgt_dt.tzinfo is None:
+        tgt_dt = tgt_dt.replace(tzinfo=timezone.utc)
+    delta = now - tgt_dt
+    days = delta.days
+    if days == 0:
+        age = "today"
+    elif days == 1:
+        age = "1 day ago"
+    else:
+        age = f"{days} days ago"
+
+    return f" ⚠ (updated {age}, target may have changed)"
+
+
+def _build_kb_listing(effective_id: str) -> list:
+    """Build the enhanced KB listing with graph metadata and staleness flags.
+
+    Merges disk-based file info (size, frontmatter description/tags) with
+    evomem graph metadata (incoming/outgoing links, link tags) and computes
+    staleness flags for outgoing links.
+
+    Returns a list of prompt lines, or empty list if no KB dir or no files.
+    """
+    kb_dir = os.path.join(_AGENTS_DIR, effective_id, 'kb')
+    if not os.path.isdir(kb_dir):
+        return []
+
+    files = sorted(
+        f for f in os.listdir(kb_dir)
+        if os.path.isfile(os.path.join(kb_dir, f))
+    )
+    if not files:
+        return []
+
+    # --- Disk metadata: file sizes + frontmatter ---
+    file_info: dict = {}
+    for f in files:
+        fp = os.path.join(kb_dir, f)
+        size = os.path.getsize(fp)
+        fm = _extract_kb_frontmatter(fp)
+        file_info[f] = {
+            "size": size,
+            "description": fm["description"],
+            "tags": fm["tags"],
+        }
+
+    # --- Graph metadata from evomem ---
+    graph = get_kb_graph_metadata(effective_id)
+    graph_pages = graph["pages"] if graph else {}
+    target_updated_at = graph["target_updated_at"] if graph else {}
+
+    # Merge evomem tags into file_info (evomem is authoritative for tags)
+    for slug, gdata in graph_pages.items():
+        if slug in file_info:
+            if gdata.get("tags"):
+                file_info[slug]["tags"] = gdata["tags"]
+
+    lines = []
+    lines.append("\n## Available Knowledge Files")
+    lines.append(
+        "You can read these files using the `read` tool. "
+        "Use [[kb/filename]] to link between KB docs."
+    )
+    lines.append("")
+
+    for f in files:
+        info = file_info[f]
+        gdata = graph_pages.get(f, {})
+
+        # Build the main line: filename, size, tags, description
+        size_str = _format_size(info["size"])
+        tags = info.get("tags") or gdata.get("tags") or []
+        tag_str = f" [tags: {', '.join(tags)}]" if tags else ""
+        desc = info["description"]
+        if desc and len(desc) > 120:
+            desc = desc[:117] + "..."
+        desc_str = f" — {desc}" if desc else ""
+
+        lines.append(f"- {f} ({size_str}){tag_str}{desc_str}")
+
+        # Incoming links
+        incoming = gdata.get("incoming_slugs", [])
+        if incoming:
+            lines.append(f"    ↑ referenced by: {', '.join(incoming)}")
+        else:
+            lines.append("    ↑ referenced by: <none>")
+
+        # Outgoing links with staleness
+        outgoing = gdata.get("outgoing_slugs", [])
+        if outgoing:
+            source_ts = gdata.get("updated_at")
+            out_parts = []
+            for tgt in outgoing:
+                flag = _compute_staleness_flag(source_ts, tgt, target_updated_at)
+                out_parts.append(tgt + flag)
+            lines.append(f"    → references: {', '.join(out_parts)}")
+        else:
+            lines.append("    → references: <none>")
+
+        lines.append("")
+
+    lines.append("### KB Usage")
+    lines.append(
+        "- **Save**: Use `write_file` with path `/_self/kb/filename` to "
+        "store a new KB file."
+    )
+    lines.append(
+        "- **Read**: Use the `read` tool with the bare filename (no path) "
+        "to read a KB file."
+    )
+    lines.append(
+        "- **KB vs Remember**: Use `read` for reference documents, guides, "
+        "and long-form content. Use `remember` for short, searchable facts "
+        "you want to recall across conversations."
+    )
+    lines.append(
+        "- **Frontmatter**: KB files MUST include YAML frontmatter "
+        "(delimited by `---` lines) with a `description` field. This "
+        "description appears as a snippet in the \"Available Knowledge Files\" "
+        "listing, helping agents decide whether to read the full file."
+    )
+    lines.append(
+        "- **Best practices**: Store structured reference material in KB "
+        "(specs, API docs, conventions). Keep each file focused on one topic. "
+        "Update KB files when information changes. Always include frontmatter "
+        "with a `description` when creating a new KB file."
+    )
+
+    # Inject notes.md instructions only if notes.md exists in KB
+    if 'notes.md' in files:
+        lines.append("")
+        lines.append("### Notes.md - User Preferences & Instructions")
+        lines.append(
+            "You have a `notes.md` file in your KB. This file is your primary "
+            "location for storing your user's personal preferences, tastes, "
+            "language preferences, and communication style instructions."
+        )
+        lines.append("")
+        lines.append("**Use notes.md for:**")
+        lines.append(
+            "- User's preferred language (e.g., 'User prefers Bahasa Indonesia')"
+        )
+        lines.append(
+            "- Communication style preferences (e.g., 'User likes concise "
+            "answers', 'User dislikes emoji')"
+        )
+        lines.append("- Personal instructions (e.g., 'Call the user Pak')")
+        lines.append(
+            "- Tastes and preferences (e.g., 'User prefers bullet points "
+            "over paragraphs')"
+        )
+        lines.append("")
+        lines.append("**Do NOT put in notes.md -- use `remember` instead:**")
+        lines.append(
+            "- Factual/memorization data: addresses, phone numbers, email, birthday"
+        )
+        lines.append(
+            "- Secret/sensitive data: passwords, tokens, PINs, secret codes, "
+            "bank accounts"
+        )
+        lines.append("")
+        lines.append("**Usage rules:**")
+        lines.append('- Read this file: `read("notes.md")`')
+        lines.append(
+            "- Update via `write_file` with path `/_self/kb/notes.md`"
+        )
+        lines.append(
+            "- Update immediately when the user communicates a new preference"
+        )
+        lines.append(
+            "- Prioritize notes.md over `remember` for non-factual preference "
+            "information"
+        )
+
+    return lines
 
 
 def _build_static_prompt(agent: Dict[str, Any]) -> str:
@@ -214,55 +439,10 @@ def _build_static_prompt(agent: Dict[str, Any]) -> str:
                         tool_prompt = tool_prompt.replace('/workspace', 'the agents working directory')
                     parts.append(tool_prompt)
 
-    # List available KB files so the agent knows what it can read
-    kb_dir = os.path.join(_AGENTS_DIR, eid, 'kb')
-    if os.path.isdir(kb_dir):
-        files = [f for f in sorted(os.listdir(kb_dir))
-                 if os.path.isfile(os.path.join(kb_dir, f))]
-        if files:
-            parts.append("\n## Available Knowledge Files")
-            parts.append("You can read these files using the `read` tool:")
-            for f in files:
-                fp = os.path.join(kb_dir, f)
-                size = os.path.getsize(fp)
-                brief = _extract_kb_description(fp)
-                if brief:
-                    parts.append(f"- {f} ({size / 1024:.1f} KB) — {brief}")
-                else:
-                    parts.append(f"- {f} ({size / 1024:.1f} KB)")
-            parts.append("")
-            parts.append("### KB Usage")
-            parts.append("- **Save**: Use `write_file` with path `/_self/kb/filename` to store a new KB file.")
-            parts.append("- **Read**: Use the `read` tool with the bare filename (no path) to read a KB file.")
-            parts.append("- **KB vs Remember**: Use `read` for reference documents, guides, and long-form content. Use `remember` for short, searchable facts you want to recall across conversations.")
-            parts.append("- **Frontmatter**: KB files MUST include YAML frontmatter (delimited by `---` lines) with a `description` field. This description appears as a snippet in the \"Available Knowledge Files\" listing, helping agents decide whether to read the full file.")
-            parts.append("- **Best practices**: Store structured reference material in KB (specs, API docs, conventions). Keep each file focused on one topic. Update KB files when information changes. Always include frontmatter with a `description` when creating a new KB file.")
-
-            # Inject notes.md instructions only if notes.md exists in KB
-            if 'notes.md' in files:
-                parts.append("")
-                parts.append("### Notes.md - User Preferences & Instructions")
-                parts.append(
-                    "You have a `notes.md` file in your KB. This file is your primary location "
-                    "for storing your user's personal preferences, tastes, language preferences, "
-                    "and communication style instructions."
-                )
-                parts.append("")
-                parts.append("**Use notes.md for:**")
-                parts.append("- User's preferred language (e.g., 'User prefers Bahasa Indonesia')")
-                parts.append("- Communication style preferences (e.g., 'User likes concise answers', 'User dislikes emoji')")
-                parts.append("- Personal instructions (e.g., 'Call the user Pak')")
-                parts.append("- Tastes and preferences (e.g., 'User prefers bullet points over paragraphs')")
-                parts.append("")
-                parts.append("**Do NOT put in notes.md -- use `remember` instead:**")
-                parts.append("- Factual/memorization data: addresses, phone numbers, email, birthday")
-                parts.append("- Secret/sensitive data: passwords, tokens, PINs, secret codes, bank accounts")
-                parts.append("")
-                parts.append("**Usage rules:**")
-                parts.append("- Read this file: `read(\"notes.md\")`")
-                parts.append("- Update via `write_file` with path `/_self/kb/notes.md`")
-                parts.append("- Update immediately when the user communicates a new preference")
-                parts.append("- Prioritize notes.md over `remember` for non-factual preference information")
+    # List available KB files with graph-aware metadata (links, tags, staleness)
+    _kb_listing_lines = _build_kb_listing(eid)
+    if _kb_listing_lines:
+        parts.extend(_kb_listing_lines)
 
     # Message Wrapper Protocol
     parts.append("")
@@ -444,6 +624,10 @@ def _cache_key_valid(agent: Dict[str, Any], cache_entry: Dict[str, Any]) -> bool
     if hashlib.sha256(vars_key.encode()).hexdigest() != cache_entry.get('vars_hash', ''):
         return False
 
+    # Check evomem DB mtime (KB graph changes when links are synced)
+    if get_evomem_db_mtime(eid) != cache_entry.get('evomem_mtime', 0.0):
+        return False
+
     return True
 
 
@@ -481,6 +665,7 @@ def build_system_prompt(agent: Dict[str, Any]) -> str:
             'static_prompt': static_prompt,
             'sp_mtime': _get_mtime(sp_path),
             'kb_mtime': _get_mtime(kb_dir),
+            'evomem_mtime': get_evomem_db_mtime(eid),
             'skills_hash': skills_hash,
             'tools_hash': str(sorted(assigned_ids)),
             'ctx_mtime': _get_mtime(__file__),

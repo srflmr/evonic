@@ -209,3 +209,90 @@ def sync(agent_id: str) -> bool:
     if not os.path.isdir(brain_dir) or not os.path.exists(os.path.join(brain_dir, ".evomem.db")):
         return False
     return _run(brain_dir, ["sync"]) is not None
+
+
+def get_kb_graph_metadata(agent_id: str) -> dict | None:
+    """Query evomem for KB pages with link-graph metadata.
+
+    Returns a dict with:
+      pages: {slug: {slug, title, tags, updated_at, incoming_slugs, outgoing_slugs}}
+      target_updated_at: {slug: updated_at_str} for all outgoing link targets
+    Returns None if the brain DB does not exist.
+    """
+    import sqlite3
+    brain_dir = _get_brain_dir(agent_id)
+    db_path = os.path.join(brain_dir, ".evomem.db")
+    if not os.path.isfile(db_path):
+        vlog("get_kb_graph_metadata: brain DB not found at %s", db_path)
+        return None
+
+    try:
+        conn = sqlite3.connect(db_path)
+        conn.row_factory = sqlite3.Row
+        pages = {}
+        all_outgoing = set()
+
+        rows = conn.execute("""
+            SELECT p.slug, p.title, p.tags, p.updated_at,
+                   (SELECT COUNT(*) FROM links WHERE dst_slug = p.slug AND dst_page_id IS NOT NULL) as incoming_count,
+                   (SELECT GROUP_CONCAT(src.slug) FROM links l JOIN pages src ON l.src_page_id = src.id WHERE l.dst_slug = p.slug) as incoming_slugs,
+                   (SELECT GROUP_CONCAT(dst.slug) FROM links l JOIN pages dst ON l.dst_page_id = dst.id WHERE l.src_page_id = p.id) as outgoing_slugs
+            FROM pages p WHERE p.page_type = 'kb' AND p.deleted_at IS NULL
+            ORDER BY p.slug
+        """).fetchall()
+
+        for row in rows:
+            slug = row["slug"]
+            tags_raw = row["tags"] or "[]"
+            try:
+                tags = json.loads(tags_raw) if isinstance(tags_raw, str) else tags_raw
+                if not isinstance(tags, list):
+                    tags = []
+            except (json.JSONDecodeError, TypeError):
+                tags = []
+            incoming_slugs = [s.strip() for s in row["incoming_slugs"].split(",") if s.strip()] if row["incoming_slugs"] else []
+            outgoing_slugs = [s.strip() for s in row["outgoing_slugs"].split(",") if s.strip()] if row["outgoing_slugs"] else []
+
+            pages[slug] = {
+                "slug": slug,
+                "title": row["title"],
+                "tags": tags,
+                "updated_at": row["updated_at"],
+                "incoming_count": row["incoming_count"],
+                "incoming_slugs": incoming_slugs,
+                "outgoing_slugs": outgoing_slugs,
+            }
+            all_outgoing.update(outgoing_slugs)
+
+        # Fetch updated_at for all outgoing link targets (for staleness computation)
+        target_updated_at = {}
+        if all_outgoing:
+            placeholders = ",".join("?" for _ in all_outgoing)
+            target_rows = conn.execute(
+                f"SELECT slug, updated_at FROM pages WHERE slug IN ({placeholders}) AND deleted_at IS NULL",
+                list(all_outgoing),
+            ).fetchall()
+            for tr in target_rows:
+                target_updated_at[tr["slug"]] = tr["updated_at"]
+
+        conn.close()
+        vlog("get_kb_graph_metadata: %d KB pages, %d link targets", len(pages), len(target_updated_at))
+        return {"pages": pages, "target_updated_at": target_updated_at}
+
+    except Exception:
+        logger.warning("get_kb_graph_metadata failed for agent %s", agent_id, exc_info=True)
+        return None
+
+
+def get_evomem_db_mtime(agent_id: str) -> float:
+    """Return the mtime of the evomem DB file, or 0.0 if it doesn't exist.
+
+    Used for cache invalidation: when the evomem DB changes (sync runs),
+    the system prompt KB listing should be rebuilt.
+    """
+    brain_dir = _get_brain_dir(agent_id)
+    db_path = os.path.join(brain_dir, ".evomem.db")
+    try:
+        return os.stat(db_path).st_mtime
+    except OSError:
+        return 0.0
