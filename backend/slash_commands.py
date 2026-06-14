@@ -253,7 +253,8 @@ def _register_builtins():
         current_name = current.get("name", agent_id) if current else agent_id
 
         # Build session log path
-        session_log_path = f"agents/{agent_id}/sessions/{session_id}.jsonl"
+        jsonl_id = session_id.split("-")[-1]
+        session_log_path = f"agents/{agent_id}/sessions/{jsonl_id}.jsonl"
 
         # Build investigation message
         target_name = target.get("name", target_agent_id)
@@ -290,7 +291,7 @@ def _register_builtins():
             reason = result.get("reason", "unknown")
             return f"Failed to deliver investigation request to {target_name}: {reason}."
 
-        return f"Investigation request sent to **{target_name}**. They will reply here when done."
+        return f"Investigation request sent to **{target_name}**."
 
     command_registry.register(
         "investigate",

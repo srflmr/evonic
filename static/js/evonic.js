@@ -54,7 +54,8 @@
         });
 
         var box = document.createElement('div');
-        box.className = 'w-full mt-50 max-w-lg mx-4 bg-white dark:bg-gray-800 rounded-xl shadow-2xl border border-gray-200 dark:border-gray-700 overflow-hidden';
+        box.className = 'w-full max-w-lg mx-4 bg-white dark:bg-gray-800 rounded-xl shadow-2xl border border-gray-200 dark:border-gray-700 overflow-hidden';
+        box.style.marginTop = '100px';
         box.addEventListener('click', function (e) { e.stopPropagation(); });
 
         // Search input row
