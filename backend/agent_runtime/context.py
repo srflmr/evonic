@@ -220,11 +220,11 @@ def _compute_staleness_flag(
 
 
 def _build_kb_listing(effective_id: str) -> list:
-    """Build the enhanced KB listing with graph metadata and staleness flags.
+    """Build the KB listing.
 
-    Merges disk-based file info (size, frontmatter description/tags) with
-    evomem graph metadata (incoming/outgoing links, link tags) and computes
-    staleness flags for outgoing links.
+    When _kb_index.md exists, shows its content as the primary listing,
+    followed by auto-generated graph metadata. Otherwise falls back to
+    a flat graph-aware listing.
 
     Returns a list of prompt lines, or empty list if no KB dir or no files.
     """
@@ -239,73 +239,133 @@ def _build_kb_listing(effective_id: str) -> list:
     if not files:
         return []
 
-    # --- Disk metadata: file sizes + frontmatter ---
-    file_info: dict = {}
-    for f in files:
-        fp = os.path.join(kb_dir, f)
-        size = os.path.getsize(fp)
-        fm = _extract_kb_frontmatter(fp)
-        file_info[f] = {
-            "size": size,
-            "description": fm["description"],
-            "tags": fm["tags"],
-        }
-
-    # --- Graph metadata from evomem ---
-    graph = get_kb_graph_metadata(effective_id)
-    graph_pages = graph["pages"] if graph else {}
-    target_updated_at = graph["target_updated_at"] if graph else {}
-
-    # Merge evomem tags into file_info (evomem is authoritative for tags)
-    for slug, gdata in graph_pages.items():
-        if slug in file_info:
-            if gdata.get("tags"):
-                file_info[slug]["tags"] = gdata["tags"]
-
     lines = []
     lines.append("\n## Available Knowledge Files")
-    lines.append(
-        "You can read these files using the `read` tool. "
-        "Use [[kb/filename]] to link between KB docs."
-    )
-    lines.append("")
 
-    for f in files:
-        info = file_info[f]
-        gdata = graph_pages.get(f, {})
+    # --- Try to use _kb_index.md as canonical index ---
+    index_path = os.path.join(kb_dir, '_kb_index.md')
+    if os.path.isfile(index_path):
+        # Read _kb_index.md content, strip YAML frontmatter
+        index_body = ""
+        try:
+            with open(index_path, 'r', encoding='utf-8') as f:
+                raw = f.read()
+            # Strip YAML frontmatter (--- ... ---)
+            if raw.startswith('---'):
+                second = raw.find('---', 3)
+                if second != -1:
+                    index_body = raw[second + 3:].strip()
+                else:
+                    index_body = raw
+            else:
+                index_body = raw
+        except Exception:
+            index_body = ""
 
-        # Build the main line: filename, size, tags, description
-        size_str = _format_size(info["size"])
-        tags = info.get("tags") or gdata.get("tags") or []
-        tag_str = f" [tags: {', '.join(tags)}]" if tags else ""
-        desc = info["description"]
-        if desc and len(desc) > 120:
-            desc = desc[:117] + "..."
-        desc_str = f" — {desc}" if desc else ""
+        if index_body:
+            lines.append(
+                "Your KB index (read with read(\"_kb_index.md\")):\n"
+            )
+            lines.append(index_body)
+            lines.append("")
 
-        lines.append(f"- {f} ({size_str}){tag_str}{desc_str}")
+        # --- Auto-generated graph metadata (compact) ---
+        graph = get_kb_graph_metadata(effective_id)
+        graph_pages = graph["pages"] if graph else {}
+        target_updated_at = graph["target_updated_at"] if graph else {}
 
-        # Incoming links
-        incoming = gdata.get("incoming_slugs", [])
-        if incoming:
-            lines.append(f"    ↑ referenced by: {', '.join(incoming)}")
-        else:
-            lines.append("    ↑ referenced by: <none>")
+        # Filter out _kb_index.md from graph metadata
+        regular_files = [f for f in files if f != '_kb_index.md']
+        if regular_files:
+            lines.append("### Graph metadata (auto-generated):")
+            if graph_pages:
+                for f in regular_files:
+                    gdata = graph_pages.get(f, {})
+                    incoming = gdata.get('incoming_slugs', [])
+                    outgoing = gdata.get('outgoing_slugs', [])
+                    tags = gdata.get('tags', [])
+                    tag_str = f" [tags: {', '.join(tags)}]" if tags else ""
 
-        # Outgoing links with staleness
-        outgoing = gdata.get("outgoing_slugs", [])
-        if outgoing:
-            source_ts = gdata.get("updated_at")
-            out_parts = []
-            for tgt in outgoing:
-                flag = _compute_staleness_flag(source_ts, tgt, target_updated_at)
-                out_parts.append(tgt + flag)
-            lines.append(f"    → references: {', '.join(out_parts)}")
-        else:
-            lines.append("    → references: <none>")
+                    inc_str = f"↑{len(incoming)} incoming" if incoming else "↑0 incoming"
+                    out_str = f"→{len(outgoing)} outgoing" if outgoing else "→0 outgoing"
 
+                    source_ts = gdata.get('updated_at')
+                    if outgoing:
+                        out_parts = []
+                        for tgt in outgoing:
+                            flag = _compute_staleness_flag(source_ts, tgt, target_updated_at)
+                            out_parts.append(tgt + flag)
+                        out_str = f"→ {', '.join(out_parts)}"
+
+                    lines.append(f"- {f}: {inc_str}, {out_str}{tag_str}")
+            else:
+                for f in regular_files:
+                    lines.append(f"- {f}: no graph data available yet")
+            lines.append("")
+    else:
+        # --- Fallback: graph-aware listing (no _kb_index.md) ---
+        lines.append(
+            "You can read these files using the `read` tool. "
+            "Use [[kb/filename]] to link between KB docs."
+        )
         lines.append("")
 
+        # Disk metadata
+        file_info: dict = {}
+        for f in files:
+            fp = os.path.join(kb_dir, f)
+            size = os.path.getsize(fp)
+            fm = _extract_kb_frontmatter(fp)
+            file_info[f] = {
+                "size": size,
+                "description": fm["description"],
+                "tags": fm["tags"],
+            }
+
+        # Graph metadata from evomem
+        graph = get_kb_graph_metadata(effective_id)
+        graph_pages = graph["pages"] if graph else {}
+        target_updated_at = graph["target_updated_at"] if graph else {}
+
+        for slug, gdata in graph_pages.items():
+            if slug in file_info:
+                if gdata.get("tags"):
+                    file_info[slug]["tags"] = gdata["tags"]
+
+        for f in files:
+            info = file_info[f]
+            gdata = graph_pages.get(f, {})
+
+            size_str = _format_size(info["size"])
+            tags = info.get("tags") or gdata.get("tags") or []
+            tag_str = f" [tags: {', '.join(tags)}]" if tags else ""
+            desc = info["description"]
+            if desc and len(desc) > 120:
+                desc = desc[:117] + "..."
+            desc_str = f" — {desc}" if desc else ""
+
+            lines.append(f"- {f} ({size_str}){tag_str}{desc_str}")
+
+            incoming = gdata.get("incoming_slugs", [])
+            if incoming:
+                lines.append(f"    ↑ referenced by: {', '.join(incoming)}")
+            else:
+                lines.append("    ↑ referenced by: <none>")
+
+            outgoing = gdata.get("outgoing_slugs", [])
+            if outgoing:
+                source_ts = gdata.get("updated_at")
+                out_parts = []
+                for tgt in outgoing:
+                    flag = _compute_staleness_flag(source_ts, tgt, target_updated_at)
+                    out_parts.append(tgt + flag)
+                lines.append(f"    → references: {', '.join(out_parts)}")
+            else:
+                lines.append("    → references: <none>")
+
+            lines.append("")
+
+    # --- KB Usage section (common to both paths) ---
     lines.append("### KB Usage")
     lines.append(
         "- **Save**: Use `write_file` with path `/_self/kb/filename` to "
@@ -331,6 +391,21 @@ def _build_kb_listing(effective_id: str) -> list:
         "(specs, API docs, conventions). Keep each file focused on one topic. "
         "Update KB files when information changes. Always include frontmatter "
         "with a `description` when creating a new KB file."
+    )
+    lines.append(
+        "- **Wiki-links**: Use `[[kb/filename]]` (without `.md` extension) "
+        "to link between KB documents. "
+        "Update `_kb_index.md` when adding new KB files."
+    )
+
+    # --- KB Coaching ---
+    lines.append("")
+    lines.append("### KB Coaching")
+    lines.append(
+        "When creating new KB files, add `[[kb/...]]` wiki-links to related "
+        "documents so the knowledge graph stays connected. Use the `kb_graph` "
+        "tool to explore existing link neighborhoods. Keep `_kb_index.md` "
+        "updated when you add or remove KB documents."
     )
 
     # Inject notes.md instructions only if notes.md exists in KB
@@ -367,7 +442,7 @@ def _build_kb_listing(effective_id: str) -> list:
         )
         lines.append("")
         lines.append("**Usage rules:**")
-        lines.append('- Read this file: `read("notes.md")`')
+        lines.append('- Read this file: `read(\"notes.md\")`')
         lines.append(
             "- Update via `write_file` with path `/_self/kb/notes.md`"
         )
