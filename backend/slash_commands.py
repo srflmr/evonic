@@ -971,7 +971,7 @@ def _register_builtins():
             agent_id=sub_id,
             tag="SUBSPAWN",
             message=message,
-            external_user_id=external_user_id,
+            external_user_id=f"__agent__{agent_id}",
             channel_id=channel_id,
             dedup=False,
             trigger_llm=True,
