@@ -1229,6 +1229,7 @@ def api_chat(agent_id):
             'tool_trace': result.get('tool_trace', []),
             'timeline': result.get('timeline', []),
             'slash_command': result.get('slash_command', False),
+            'bash_exec': result.get('bash_exec', False),
             'clear_ui': result.get('clear_ui', False),
         }
         if attachment_info:

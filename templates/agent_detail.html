@@ -3542,7 +3542,8 @@ async function sendChat() {
             chatUI.removeThinkingIndicator(thinkingId);
             thinkingId = null; if (_currentTurn) _currentTurn.thinkingId = null;
             chatUI.closeStream();
-            chatUI.appendMessage('assistant', data.response, { metadata: { slash_command: true } });
+            const cmdMeta = data.bash_exec ? { bash_exec: true } : { slash_command: true };
+            chatUI.appendMessage('assistant', data.response, { metadata: cmdMeta });
             await syncLastChatTs();
         } else {
             // Non-buffered success: agent responded immediately.
