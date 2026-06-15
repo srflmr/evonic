@@ -198,7 +198,7 @@ def _register_builtins():
                 continue
             if name in web_only and channel_id is not None:
                 continue
-            if name == "sub" and not has_subagent:
+            if name == "sub" and not has_subagent and not is_super:
                 continue
             lines.append(f"- `/{name}` — {desc}")
         return "\n".join(lines)
@@ -935,10 +935,13 @@ def _register_builtins():
 
         from models.db import db
 
-        # Check if agent has subagent skill assigned
-        skills = db.get_agent_skills(agent_id)
-        if "subagent" not in skills:
-            return "This command requires the `subagent` skill to be assigned to this agent."
+        # Super agents have implicit access to all skills
+        super_agent = db.get_super_agent()
+        is_super = super_agent and super_agent.get('id') == agent_id
+        if not is_super:
+            skills = db.get_agent_skills(agent_id)
+            if "subagent" not in skills:
+                return "This command requires the `subagent` skill to be assigned to this agent."
 
         # Fetch parent agent
         parent_agent = db.get_agent(agent_id)
