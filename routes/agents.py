@@ -566,11 +566,22 @@ def _artifacts_dir(agent_id: str) -> str:
     return d
 
 
+def _resolve_to_parent_agent_id(agent_id: str) -> str:
+    """If agent_id is a sub-agent, return its parent's ID; otherwise return agent_id."""
+    from backend.subagent_manager import subagent_manager
+    if subagent_manager.is_subagent(agent_id):
+        sub = subagent_manager.get(agent_id)
+        if sub:
+            return sub.get('parent_id', agent_id)
+    return agent_id
+
+
 # ==================== Agent Artifacts API ====================
 
 
 @agents_bp.route('/api/agents/<agent_id>/artifacts', methods=['GET'])
 def api_list_artifacts(agent_id):
+    agent_id = _resolve_to_parent_agent_id(agent_id)
     if not db.get_agent(agent_id):
         return jsonify({'error': 'Agent not found'}), 404
     artifacts_dir = _artifacts_dir(agent_id)
@@ -654,6 +665,7 @@ def api_list_artifacts(agent_id):
 
 @agents_bp.route('/api/agents/<agent_id>/artifacts/<path:filename>', methods=['GET'])
 def api_get_artifact(agent_id, filename):
+    agent_id = _resolve_to_parent_agent_id(agent_id)
     if not db.get_agent(agent_id):
         return jsonify({'error': 'Agent not found'}), 404
     if '/' in filename or '\\' in filename or '..' in filename:
@@ -671,6 +683,7 @@ def api_get_artifact(agent_id, filename):
 
 @agents_bp.route('/api/agents/<agent_id>/artifacts/<path:filename>', methods=['DELETE'])
 def api_delete_artifact(agent_id, filename):
+    agent_id = _resolve_to_parent_agent_id(agent_id)
     if not db.get_agent(agent_id):
         return jsonify({'error': 'Agent not found'}), 404
     if not session.get('authenticated'):
@@ -686,6 +699,7 @@ def api_delete_artifact(agent_id, filename):
 
 @agents_bp.route('/api/agents/<agent_id>/artifacts', methods=['POST'])
 def api_create_artifact(agent_id):
+    agent_id = _resolve_to_parent_agent_id(agent_id)
     if not db.get_agent(agent_id):
         return jsonify({'error': 'Agent not found'}), 404
     data = request.get_json()
