@@ -53,7 +53,8 @@ SUBAGENT_USER_DIRECT_PREFIX = (
     " \u2014 not delegated by your parent agent."
     " Execute the task below directly and report your result."
     " Since your response will appear in the parent agent\u2019s chat,"
-    " begin your response with a brief line about the user request.\n\n"
+    " begin your response with a brief line about the user request,"
+    " so the parent agent has context.\n\n"
     "--- USER TASK ---\n"
 )
 
