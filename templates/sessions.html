@@ -1036,12 +1036,13 @@ function connectSessionStream(sessionId, afterSeq = 0) {
 
         if (payload.slash_command && payload.response) {
             // Slash command response — finalize any thinking bubble and display the response
+            const wasAtBottom = chatUI.isNearBottom(80);
             if (_sseThinkingId) {
                 chatUI.finalizeThinkingBubble(_sseThinkingId);
                 _sseThinkingId = null;
             }
             chatUI.appendMessage('assistant', payload.response);
-            chatUI.scrollToBottom();
+            if (wasAtBottom) requestAnimationFrame(() => chatUI.scrollToBottom());
             _sseCompleted = true;
             // Reconnect so we're ready for the next incoming message
             es.close();
@@ -1202,7 +1203,7 @@ async function doSendReply() {
     const $msgEl = chatUI.appendMessage(outRole, displayText, {metadata: optimisticMeta});
     // If the agent is mid-turn, mark message as queued with clock indicator
     if (_sseThinkingId) chatUI.markLastUserBubbleQueued($msgEl);
-    chatUI.scrollToBottom();
+    requestAnimationFrame(function () { chatUI.scrollToBottom(); });
     _pendingReplyText = null; // Will be set after we know the final text from backend
 
     let res;
@@ -1248,8 +1249,9 @@ async function doSendReply() {
     // Slash command response — display immediately (belt & suspenders with SSE path)
     if (res.slash_command && res.response) {
         $input.val('');
+        const wasAtBottom = chatUI.isNearBottom(80);
         chatUI.appendMessage('assistant', res.response);
-        chatUI.scrollToBottom();
+        if (wasAtBottom) requestAnimationFrame(() => chatUI.scrollToBottom());
         _pendingReplyText = null;
         if (file) { _pendingFileUpload = true; clearFileInput(); }
         return;
