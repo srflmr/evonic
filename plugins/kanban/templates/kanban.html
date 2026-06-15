@@ -1544,33 +1544,26 @@ html.dark .skeleton-card .sk-actions { border-color: #4b5563; }
         $('#trigger-loading').show();
         $('#trigger-agent-list, #trigger-actions, #trigger-no-agents').addClass('hidden');
 
-        const now = Date.now();
-        if (!_agentCache || (now - _agentCacheTime) > 60000) {
-            $.get('/api/kanban/eligible-agents', function(data) {
-                _agentCache = (data.agents || []).map(a => ({id: a.id, name: a.name || a.id, avatar_path: a.avatar_path}));
-                _agentCacheTime = now;
-                _renderTriggerAgents();
-            }).fail(function() {
-                _agentCache = [];
-                _agentCacheTime = now;
-                _renderTriggerAgents();
-            });
-        } else {
+        // Always fetch eligible agents (separate from main agent cache)
+        $.get('/api/kanban/eligible-agents', function(data) {
+            _triggerAgents = (data.agents || []).map(a => ({id: a.id, name: a.name || a.id, avatar_path: a.avatar_path}));
             _renderTriggerAgents();
-        }
+        }).fail(function() {
+            _triggerAgents = [];
+            _renderTriggerAgents();
+        });
     }
 
     function _renderTriggerAgents() {
         $('#trigger-loading').hide();
-        if (!_agentCache || !_agentCache.length) {
+        if (!_triggerAgents || !_triggerAgents.length) {
             $('#trigger-no-agents').removeClass('hidden');
             return;
         }
 
-        _triggerAgents = _agentCache;
         const html = _triggerAgents.map(function(agent) {
             const initials = esc(agent.name).split(/[\s._-]+/).filter(Boolean).map(s => s[0].toUpperCase()).slice(0, 2).join('');
-            const hasAvatar = hasAgentAvatar(agent.id);
+            const hasAvatar = !!(agent.avatar_path);
             const avatarHtml = hasAvatar
                 ? `<img src="/api/agents/${esc(agent.id)}/avatar" alt="${esc(agent.name)}" class="w-12 h-12 rounded-full object-cover bg-indigo-50 dark:bg-indigo-900/20" onerror="this.onerror=null;this.style.display='none';this.nextElementSibling.style.display='inline-flex'"><span class="hidden items-center justify-center w-12 h-12 rounded-full text-sm font-semibold bg-gray-200 dark:bg-gray-600 text-gray-600 dark:text-gray-300">${initials}</span>`
                 : `<span class="inline-flex items-center justify-center w-12 h-12 rounded-full text-sm font-semibold bg-gray-200 dark:bg-gray-600 text-gray-600 dark:text-gray-300">${initials}</span>`;
@@ -1722,6 +1715,23 @@ html.dark .skeleton-card .sk-actions { border-color: #4b5563; }
 
     let _agentCache = null;
     let _agentCacheTime = 0;
+
+    function preloadAgentCache(callback) {
+        const now = Date.now();
+        if (_agentCache && (now - _agentCacheTime) < 60000) {
+            if (callback) callback();
+            return;
+        }
+        $.get('/api/kanban/all-agents', function(data) {
+            _agentCache = (data.agents || []).map(a => ({id: a.id, name: a.name || a.id, has_kanban: a.has_kanban, avatar_path: a.avatar_path}));
+            _agentCacheTime = now;
+            if (callback) callback();
+        }).fail(function() {
+            _agentCache = [];
+            _agentCacheTime = now;
+            if (callback) callback();
+        });
+    }
 
     function populateAgentSelect(selector, selectedValue) {
         const now = Date.now();
@@ -1914,6 +1924,8 @@ html.dark .skeleton-card .sk-actions { border-color: #4b5563; }
     });
 
     fetchNotifierStatus();
-    loadTasks();
+    preloadAgentCache(function() {
+        loadTasks();
+    });
 </script>
 {% endblock %}

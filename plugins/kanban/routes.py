@@ -614,7 +614,7 @@ def create_blueprint():
             eligible_set = set(eligible_ids)
             all_agents = main_db.get_agents()
             agents = [
-                {'id': a['id'], 'name': a.get('name', a['id'])}
+                {'id': a['id'], 'name': a.get('name', a['id']), 'avatar_path': a.get('avatar_path', '')}
                 for a in all_agents
                 if a['id'] in eligible_set and a.get('enabled', 1)
             ]
@@ -640,6 +640,7 @@ def create_blueprint():
                     'id': a['id'],
                     'name': a.get('name', a['id']),
                     'has_kanban': a['id'] in eligible_ids,
+                    'avatar_path': a.get('avatar_path', ''),
                 }
                 for a in all_agents
                 if a.get('enabled', 1)
