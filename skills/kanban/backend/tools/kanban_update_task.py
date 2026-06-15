@@ -61,7 +61,15 @@ def execute(agent: dict, args: dict) -> dict:
     if new_status is not None:
         parent_id = agent.get('parent_id', '')
         task_assignee = task.get('assignee')
-        if task_assignee != agent_id and task_assignee != parent_id and not agent.get('is_super'):
+        # Guardrail: unassigned task cannot be status-updated unless agent claims it in the same call
+        if not task_assignee and not agent.get('is_super'):
+            claimed = new_assignee and new_assignee.strip() == agent_id
+            if not claimed:
+                return {
+                    'status': 'error',
+                    'message': 'This task has no assignee. Use kanban_update_task to assign it to yourself, or include assignee with this status update.',
+                }
+        if task_assignee and task_assignee != agent_id and task_assignee != parent_id and not agent.get('is_super'):
             return {
                 'status': 'error',
                 'message': 'Only the assigned agent or a super agent can update this task',
