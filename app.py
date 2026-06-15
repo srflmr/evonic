@@ -196,6 +196,8 @@ except Exception:
 # Print Evonic version on startup
 print(f"\n  🚀 Evonic v{get_version()}")
 print("---------------------------------------------")
+status = "enabled" if config.SESSION_ARCHIVE else "disabled"
+print("  Session archive: %s" % status)
 
 if loaded_plugins or loaded_skills:
     if loaded_plugins:
@@ -627,5 +629,7 @@ if __name__ == '__main__':
         host=config.HOST,
         port=config.PORT,
         debug=config.DEBUG,
-        use_reloader=False  # Disable reloader to prevent killing evaluation thread
+        use_reloader=False,  # Disable reloader to prevent killing evaluation thread
+        threaded=True  # Serve requests concurrently; otherwise long-lived SSE
+                       # streams block all other requests (e.g. image/avatar serving)
     )

@@ -269,7 +269,7 @@ export class ChatUI {
                 continue;
             }
             if (entry.type === 'system') {
-                const sysMeta = (entry.metadata && entry.metadata.slash_command) ? { metadata: { slash_command: true } } : {};
+                const sysMeta = (entry.metadata && (entry.metadata.slash_command || entry.metadata.bash_exec)) ? { metadata: { slash_command: entry.metadata.slash_command || false, bash_exec: entry.metadata.bash_exec || false } } : {};
                 this.appendMessage('system', entry.content || '', sysMeta);
                 continue;
             }

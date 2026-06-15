@@ -409,6 +409,14 @@ class SchemaMixin:
             except sqlite3.OperationalError:
                 pass
 
+            # Migration: add bash_exec_enabled — web-only "!" direct bash execution.
+            # Default OFF for regular agents; backfill the super agent to ON.
+            try:
+                cursor.execute("ALTER TABLE agents ADD COLUMN bash_exec_enabled BOOLEAN DEFAULT 0")
+                cursor.execute("UPDATE agents SET bash_exec_enabled = 1 WHERE is_super = 1")
+            except sqlite3.OperationalError:
+                pass
+
             # Migration: add primary_channel_id for agent communication routing
             try:
                 cursor.execute("ALTER TABLE agents ADD COLUMN primary_channel_id TEXT")

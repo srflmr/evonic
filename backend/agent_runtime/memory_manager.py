@@ -548,7 +548,7 @@ def search_memories(agent_id: str, query: str, limit: int = 10) -> dict:
                         "memories": [
                             {"id": h.get("slug"),
                              "content": h.get("snippet") or h.get("title"),
-                             "category": h.get("source_dir") or "evobrain",
+                             "category": h.get("source_dir") or "evomem",
                              "created_at": h.get("updated_at"),
                              "evidence": h.get("evidence"),
                              "score": h.get("score")}

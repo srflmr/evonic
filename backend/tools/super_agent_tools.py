@@ -370,6 +370,27 @@ _TOOL_DEFS = [
             }
         }
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "agent_info",
+            "description": "Get comprehensive information about an agent: settings, tools, skills, channels, portals, KB files, artifacts stats, variables, and models.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "agent_id": {
+                        "type": "string",
+                        "description": "The target agent's ID (e.g. 'siwa', 'adit', 'angga')"
+                    },
+                    "section": {
+                        "type": "string",
+                        "description": "Comma-separated section names to return. Options: info, tools, skills, channels, portals, kb, artifacts, variables, models. Omit or leave empty to return all sections. Example: 'info,channels,artifacts'"
+                    }
+                },
+                "required": ["agent_id"]
+            }
+        }
+    },
 ]
 
 
@@ -877,6 +898,11 @@ def _exec_unassign_skill(args: dict) -> dict:
     return {'success': True, 'message': f"Removed skill '{skill_id}' from agent '{agent_id}'. {len(updated_skills)} skill(s) remaining."}
 
 
+def _exec_agent_info(args: dict) -> dict:
+    from backend.tools.agent_info import execute as _agent_info_exec
+    return _agent_info_exec({}, args)
+
+
 # ==================== Registry-style access ====================
 
 _EXECUTORS: Dict[str, Callable] = {
@@ -895,6 +921,7 @@ _EXECUTORS: Dict[str, Callable] = {
     'restart': _exec_restart,
     'assign_skills': _exec_assign_skills,
     'unassign_skill': _exec_unassign_skill,
+    'agent_info': _exec_agent_info,
 }
 
 

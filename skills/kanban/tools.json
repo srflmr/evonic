@@ -108,7 +108,7 @@
     "type": "function",
     "function": {
       "name": "kanban_create_task",
-      "description": "Create a new task on the Kanban board.",
+      "description": "Create a new task on the Kanban board. Returns {status, task_id, task} where task_id is the integer ID of the newly created task.",
       "parameters": {
         "type": "object",
         "properties": {

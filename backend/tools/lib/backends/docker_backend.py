@@ -756,6 +756,41 @@ class DockerBackend(ExecutionBackend):
         except Exception:
             return {'error': 'Failed to parse response from container'}
 
+    def write_file_bytes(self, path: str, data: bytes, create_dirs: bool = True) -> dict:
+        """Write raw bytes to a file inside the Docker container.
+
+        Uses base64-encoded Python exec for binary-safe transfer, same
+        pattern as write_file but accepts bytes directly.
+        """
+        import json as _json, base64 as _b64
+        encoded = _b64.b64encode(data).decode('ascii')
+        mkdirs = 'True' if create_dirs else 'False'
+        code = (
+            'import base64, json, os\n'
+            f'p = {_json.dumps(path)}\n'
+            f'data = base64.b64decode({_json.dumps(encoded)})\n'
+            f'mk = {mkdirs}\n'
+            'try:\n'
+            '    if mk:\n'
+            '        os.makedirs(os.path.dirname(p), exist_ok=True)\n'
+            '    with open(p, "wb") as f:\n'
+            '        f.write(data)\n'
+            '    print(json.dumps({"ok": True}))\n'
+            'except PermissionError:\n'
+            f'    print(json.dumps({{\"error\": \"Permission denied writing: \" + {_json.dumps(path)}}}))\n'
+            'except IsADirectoryError:\n'
+            f'    print(json.dumps({{\"error\": \"Path is a directory: \" + {_json.dumps(path)}}}))\n'
+            'except Exception as e:\n'
+            '    print(json.dumps({"error": str(e)}))\n'
+        )
+        r = self._container_exec_python(code, timeout=30)
+        if 'error' in r:
+            return r
+        try:
+            return _json.loads(r.get('stdout', '{}'))
+        except Exception:
+            return {'error': 'Failed to parse response from container'}
+
     def docker_cp_out(self, container_path: str, host_path: str) -> dict:
         """Copy a file from the container to the host filesystem."""
         container_id, err = _get_or_create_container(

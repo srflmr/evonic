@@ -19,7 +19,10 @@ def execute(agent: dict, args: dict) -> dict:
     if not task:
         return {'status': 'error', 'message': f'Task {task_id} not found'}
 
-    if task.get('assignee') != agent_id and task.get('picked_by') != agent_id:
+    parent_id = agent.get('parent_id', '')
+    assignee = task.get('assignee')
+    picked_by = task.get('picked_by')
+    if (assignee != agent_id and assignee != parent_id) and (picked_by != agent_id and picked_by != parent_id):
         return {'status': 'error', 'message': 'You are not authorized to comment on this task'}
 
     comment = kanban_db.add_comment(task_id, content, author=agent_id)

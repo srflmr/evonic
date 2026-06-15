@@ -54,7 +54,7 @@ def execute(agent: dict, args: dict) -> dict:
     if action != 'run':
         return {'error': f"Unknown action: {action!r}. Use 'run' or 'destroy'."}
 
-    script = args.get('script')
+    script = args.get('script') or args.get('command')
     if not script:
         return {'error': "Missing required argument: 'script'"}
 

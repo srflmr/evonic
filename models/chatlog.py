@@ -488,9 +488,10 @@ def _reconstruct_llm_messages(entries: List[dict]) -> List[Dict[str, Any]]:
             i += 1
 
         elif etype == 'user':
-            # Skip slash command user messages — they are handled directly by
-            # the command executor and must never enter LLM context.
-            if (entry.get('metadata') or {}).get('slash_command'):
+            # Skip slash command and web "!" bash-exec user messages — they are
+            # handled directly and must never enter LLM context.
+            _umeta = entry.get('metadata') or {}
+            if _umeta.get('slash_command') or _umeta.get('bash_exec'):
                 i += 1
                 continue
             _pending_reasoning = ''  # reasoning before a user message is irrelevant
@@ -526,9 +527,11 @@ def _reconstruct_llm_messages(entries: List[dict]) -> List[Dict[str, Any]]:
             i += 1
 
         elif etype == 'system':
-            # Skip slash command responses — they were saved with metadata.slash_command
-            # and must never enter LLM context.
-            if (entry.get('metadata') or {}).get('slash_command'):
+            # Skip slash command and web "!" bash-exec responses — they were saved
+            # with metadata.slash_command / metadata.bash_exec and must never enter
+            # LLM context.
+            _smeta = entry.get('metadata') or {}
+            if _smeta.get('slash_command') or _smeta.get('bash_exec'):
                 i += 1
                 continue
             # System injections were sent as user messages to the LLM

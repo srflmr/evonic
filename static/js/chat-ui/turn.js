@@ -21,6 +21,7 @@
  */
 
 import { log, assert } from './debug.js';
+import { buildSavedArtifactsBlock } from './artifacts.js';
 
 const STALE_TIMEOUT_MS = 300_000; // 5 minutes — safety net for truly abandoned turns
 
@@ -117,6 +118,9 @@ export class Turn {
         this._finalized = false;
         this._preApprovalPhase = 'thinking';
         this._finalContent = null;  // stored from response_chunk (is_final), used for SSE→response bubble
+        this._savedArtifacts = [];  // artifacts saved via save_artifact during this turn
+        this._savedArtifactsRendered = false;
+        this._$savedArtifactsBlock = null;  // live strip element, updated in place
 
         this._log = log('turn');
 
@@ -296,6 +300,9 @@ export class Turn {
         }
 
         if (evtName === 'tool_executed') {
+            // Surface saved artifacts live (below the thinking stream) the moment a
+            // save_artifact call succeeds — no need to wait for the turn to finish.
+            if (this._captureSavedArtifact(data)) this._renderSavedArtifacts();
             this._mergeToolResult(data);
             this._showThinkingRow();
             // Fire tool:executed for agent-state-bridge
@@ -423,6 +430,39 @@ export class Turn {
         }
     }
 
+    // Record a successful save_artifact result so it can be shown as a saved-items
+    // strip between the thinking bubble and the final response on finalize.
+    // Returns true if a new artifact was captured (so callers can re-render).
+    _captureSavedArtifact(data) {
+        if (!data || data.tool !== 'save_artifact' || data.error) return false;
+        const result = data.result || {};
+        const filename = result.filename;
+        if (!filename) return false;
+        // Dedup by filename (a re-save overwrites) — keep the latest.
+        this._savedArtifacts = this._savedArtifacts.filter(a => a.filename !== filename);
+        this._savedArtifacts.push({ filename, filepath: result.filepath, size: result.size });
+        return true;
+    }
+
+    // Render (or update in place) the saved-artifacts strip just below the thinking
+    // panel. Called live as each save_artifact succeeds AND again on finalize, so
+    // the strip grows incrementally rather than appearing only at the end.
+    _renderSavedArtifacts() {
+        if (!this._savedArtifacts.length) return;
+        const $block = this._safeRender('saved_artifacts', () =>
+            buildSavedArtifactsBlock(this._savedArtifacts, { agentIdFallback: this._agentId }));
+        if (!$block || !$block.length) return;
+        if (this._$savedArtifactsBlock && this._$savedArtifactsBlock.length) {
+            // Replace the existing strip with the refreshed list (avoids duplicates).
+            this._$savedArtifactsBlock.replaceWith($block);
+        } else {
+            this.$panel.after($block);
+        }
+        this._$savedArtifactsBlock = $block;
+        this._savedArtifactsRendered = true;
+        this._smartScroll();
+    }
+
     _showThinkingRow() {
         if (this._finalized) return; // don't add a pending row to a completed turn
         this.$timeline.find('.tl-thinking-pending').remove();
@@ -469,6 +509,9 @@ export class Turn {
         // Auto-collapse the timeline when turn completes, keeping UI clean
         this.$timeline.addClass('hidden');
         this.$bubble.find('.tool-trace-chevron').removeClass('rotated');
+
+        // Show saved artifacts (if any) between the thinking bubble and final response
+        this._renderSavedArtifacts();
 
         this.phase = 'done';
         this._onPhaseChange(this, 'final', 'done');
@@ -618,6 +661,9 @@ export class Turn {
         if (!this._finalized) {
             this.$bubble.remove();
             this.$panel.remove();
+            // The live saved-artifacts strip is a sibling of $panel — remove it too
+            // so an aborted turn doesn't leave an orphaned strip behind.
+            if (this._$savedArtifactsBlock) this._$savedArtifactsBlock.remove();
         }
 
         this._onDispose(this, reason);

@@ -145,6 +145,16 @@ class ExecutionBackend(ABC):
         Returns {'ok': True} on success or {'error': str} on failure.
         """
 
+    @abstractmethod
+    def write_file_bytes(self, path: str, data: bytes, create_dirs: bool = True) -> dict:
+        """Write raw bytes to a file in the execution environment.
+
+        Used by fetch_artifact to stream artifact file bytes from the host
+        into the sandbox/SSH/tunnel execution environment.
+
+        Returns {'ok': True} on success or {'error': str} on failure.
+        """
+
     # ------------------------------------------------------------------
     # Path resolution — converts a host filesystem path into the
     # path the backend's execution environment can access.

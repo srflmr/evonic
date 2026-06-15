@@ -125,11 +125,15 @@ def main():
     )
     doctor_parser.add_argument(
         "--quick", action="store_true", default=False,
-        help="Skip slow checks (LLM provider tests)",
+        help="Skip slow checks (file system, agent config)",
     )
     doctor_parser.add_argument(
         "--fix", action="store_true", default=False,
         help="Automatically fix detected inconsistencies (e.g. missing tools, safety components)",
+    )
+    doctor_parser.add_argument(
+        "--with-llm-provider", action="store_true", default=False,
+        help="Include LLM provider connectivity check (slow, network-dependent)",
     )
 
     # --- plugin ---
@@ -836,7 +840,7 @@ def main():
     elif args.command == "restart":
         restart_server()
     elif args.command == "doctor":
-        doctor_command(quick=args.quick, fix=args.fix)
+        doctor_command(quick=args.quick, fix=args.fix, with_llm_provider=args.with_llm_provider)
     elif args.command == "plugin":
         if args.plugin_command is None:
             plugin_parser.print_help()

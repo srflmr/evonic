@@ -73,6 +73,7 @@ const Lightbox = (function() {
     let _$nextBtn = null;
     let _$counter = null;
     let _$downloadBtn = null;
+    let _$filename = null;
     let _isOpen = false;
     let _prevFocusedEl = null;
     let _boundKeyHandler = null;
@@ -194,7 +195,7 @@ const Lightbox = (function() {
             .css({
                 position: 'absolute',
                 top: '6px',
-                right: '6px',
+                left: '6px',
                 zIndex: 20,
                 display: 'flex',
                 alignItems: 'center',
@@ -263,6 +264,20 @@ const Lightbox = (function() {
 
         // Hide counter if only 1 image
         _$counter.attr('data-count', '0');
+
+        // Filename label — positioned above the counter, inline pill style
+        _$filename = $('<span>')
+            .addClass('ev-lightbox-filename text-xs font-mono px-2 py-0.5 rounded')
+            .css({
+                position: 'absolute',
+                bottom: '44px',
+                left: '50%',
+                transform: 'translateX(-50%)',
+                zIndex: 20,
+                color: '#fff',
+                backgroundColor: 'rgba(0,0,0,0.5)',
+                whiteSpace: 'nowrap',
+            });
 
         // Click on backdrop to close
         _$overlay.on('click', function(e) {
@@ -338,7 +353,7 @@ const Lightbox = (function() {
             focusable[nextIndex].focus();
         }
 
-        _$overlay.append($closeBtn, _$prevBtn, _$nextBtn, _$imgContainer, _$counter);
+        _$overlay.append($closeBtn, _$prevBtn, _$nextBtn, _$imgContainer, _$filename, _$counter);
         $('body').append(_$overlay);
     }
 
@@ -348,18 +363,21 @@ const Lightbox = (function() {
         // Lazy-load: set src only when the image becomes visible
         _$img.attr('src', _images[index]);
         _$counter.text((index + 1) + ' / ' + _images.length);
+        // Extract and display filename
+        var filename = _images[index].split('/').pop().split('?')[0] || 'image';
+        _$filename.text(filename);
     }
 
     function _updateNavigation() {
-        if (_images.length <= 1) {
-            _$prevBtn.addClass('hidden');
-            _$nextBtn.addClass('hidden');
-            _$counter.addClass('hidden');
-        } else {
-            _$prevBtn.removeClass('hidden');
-            _$nextBtn.removeClass('hidden');
-            _$counter.removeClass('hidden');
-        }
+        // The prev/next buttons carry an inline `display: flex` (set in _navBtn),
+        // which overrides the `hidden` class — so toggle their inline display
+        // directly. Otherwise the buttons stay visible (but inert, since _navigate
+        // early-returns) on a single-image lightbox, looking broken.
+        const multi = _images.length > 1;
+        _$prevBtn.css('display', multi ? 'flex' : 'none');
+        _$nextBtn.css('display', multi ? 'flex' : 'none');
+        if (multi) _$counter.removeClass('hidden');
+        else _$counter.addClass('hidden');
     }
 
     // Public API
@@ -1104,7 +1122,7 @@ function _wrapImageWithDownload($img) {
         .css({
             position: 'absolute',
             top: '6px',
-            right: '6px',
+            left: '6px',
             zIndex: 10,
             display: 'flex',
             alignItems: 'center',
@@ -1166,6 +1184,7 @@ function buildMessageBubble(role, content, opts = {}, cfg = {}) {
 
     const meta        = opts.metadata || {};
     const isSlashCmd  = !!meta.slash_command;
+    const isBashExec  = !!meta.bash_exec;
     const isUser      = role === 'user';
     const isError     = role === 'error';
     const isSystem    = !isUser && !isError && role !== 'assistant' && /^\[system/i.test(content);
@@ -1234,6 +1253,34 @@ function buildMessageBubble(role, content, opts = {}, cfg = {}) {
         $bubble = $('<div class="bg-orange-200 text-gray-600 border-gray-400 rounded-2xl px-4 py-2.5 text-sm break-words">');
         $bubble.append(_buildSysBalloon(sysTag, sysContent, 'text-gray-500', 'text-gray-400', 120));
 
+    } else if (isBashExec) {
+        // Bash exec (!) command output — dark terminal with hacker green text
+        const rendered = typeof marked !== 'undefined'
+            ? sanitize(marked.parse((content || ''))).replace(/<table/g, '<div class="table-wrapper"><table').replace(/<\/table>/g, '</table></div>')
+            : escape(content);
+        $bubble = $('<div class="chat-prose terminal-output rounded-2xl px-4 py-2.5 text-sm break-words">');
+        $bubble.css({
+            'background-color': '#080e0f',
+            'color': '#359635',
+            'border': '1px solid #174217'
+        });
+        $bubble.attr('role', 'article');
+        $bubble.html(rendered);
+        $bubble.find('pre').css({
+            'background-color': '#030607',
+            'border': '1px solid #174217',
+            'border-radius': '0.375rem'
+        });
+        $bubble.find('code').css({
+            'color': '#359635',
+            'background': 'transparent'
+        });
+        $bubble.find('em').css('color', '#6b8e6b');
+        $bubble.find('img').each(function() {
+            const $img = $(this);
+            _wrapImageWithDownload($img);
+            retrofitImageForLazy($img);
+        });
     } else if (isSlashCmd) {
         // Slash command response — blue styling, visible to user only (not sent to LLM)
         const rendered = typeof marked !== 'undefined'
@@ -1293,6 +1340,252 @@ const DEFAULT_RENDERERS = {
     highlightPython,
     highlightDiff,
 };
+
+// ── artifacts.js ────────────────────────────────────────────────
+
+const _IMAGE_EXTS = ['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp', 'bmp', 'ico'];
+const _VIDEO_EXTS = ['mp4', 'webm', 'mov', 'avi', 'mkv', 'm4v'];
+const _AUDIO_EXTS = ['mp3', 'wav', 'ogg', 'flac', 'aac', 'm4a', 'wma'];
+const _DOC_EXTS   = ['pdf', 'doc', 'docx', 'ppt', 'pptx', 'xls', 'xlsx', 'odt'];
+const _TEXT_EXTS  = ['txt', 'csv', 'json', 'yaml', 'yml', 'xml', 'log', 'md',
+    'py', 'c', 'rs', 'js', 'ts', 'jsx', 'tsx', 'cpp', 'cc', 'cxx',
+    'h', 'hpp', 'java', 'go', 'rb', 'php', 'cs', 'swift', 'kt',
+    'scala', 'r', 'm', 'sh', 'bash', 'zsh', 'ps1', 'sql',
+    'html', 'css', 'scss', 'less', 'toml', 'ini', 'cfg', 'conf',
+    'env', 'lock', 'diff', 'patch', 'vue', 'svelte', 'lua', 'pl', 'pm', 'gradle', 'groovy'];
+
+function _ext(filename) {
+    const parts = String(filename || '').split('.');
+    return parts.length > 1 ? parts.pop().toLowerCase() : '';
+}
+
+function categorizeArtifact(filename) {
+    const ext = _ext(filename);
+    if (_IMAGE_EXTS.includes(ext)) return 'image';
+    if (_VIDEO_EXTS.includes(ext)) return 'video';
+    if (_AUDIO_EXTS.includes(ext)) return 'sound';
+    if (_DOC_EXTS.includes(ext))   return 'document';
+    if (_TEXT_EXTS.includes(ext))  return 'text';
+    return 'data';
+}
+
+function _escape(text) {
+    const div = document.createElement('div');
+    div.textContent = String(text == null ? '' : text);
+    return div.innerHTML;
+}
+
+function _formatSize(size) {
+    if (size == null) return '';
+    return size < 1024 ? size + ' B'
+        : size < 1048576 ? (size / 1024).toFixed(1) + ' KB'
+        : (size / 1048576).toFixed(1) + ' MB';
+}
+
+// Derive the owning agent id from the artifact filepath
+// (shared/agents/<id>/artifacts/<filename>); fall back to the chat agent.
+function _agentIdFor(item, agentIdFallback) {
+    const m = String(item.filepath || '').match(/agents\/([^/]+)\/artifacts\//);
+    return (m && m[1]) || agentIdFallback || '';
+}
+
+function artifactUrl(item, agentIdFallback) {
+    const agentId = _agentIdFor(item, agentIdFallback);
+    return `/api/agents/${encodeURIComponent(agentId)}/artifacts/${encodeURIComponent(item.filename)}`;
+}
+
+// SVG path + colors per category (mirrors getArtifactIcon on the agent detail page).
+function _categoryIcon(category) {
+    switch (category) {
+        case 'document':
+            return { bg: 'bg-blue-50 dark:bg-blue-900/20', color: 'text-blue-500', path: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"></path>' };
+        case 'image':
+            return { bg: 'bg-green-50 dark:bg-green-900/20', color: 'text-green-500', path: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path>' };
+        case 'sound':
+            return { bg: 'bg-purple-50 dark:bg-purple-900/20', color: 'text-purple-500', path: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3"></path>' };
+        case 'video':
+            return { bg: 'bg-rose-50 dark:bg-rose-900/20', color: 'text-rose-500', path: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"></path>' };
+        case 'text':
+            return { bg: 'bg-amber-50 dark:bg-amber-900/20', color: 'text-amber-500', path: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>' };
+        default:
+            return { bg: 'bg-gray-100 dark:bg-gray-700', color: 'text-gray-500', path: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4"></path>' };
+    }
+}
+
+function _iconEl(category, sizeClass) {
+    const icon = _categoryIcon(category);
+    return $(
+        `<div class="flex items-center justify-center ${sizeClass || 'w-10 h-10'} rounded-md flex-shrink-0 ${icon.bg}">` +
+        `<svg class="w-5 h-5 ${icon.color}" fill="none" stroke="currentColor" viewBox="0 0 24 24">${icon.path}</svg>` +
+        `</div>`
+    );
+}
+
+const _DOWNLOAD_SVG = '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>';
+
+function buildSavedArtifactsBlock(artifacts, opts = {}) {
+    const items = (artifacts || []).filter(a => a && a.filename);
+    if (!items.length) return $();
+    const agentIdFallback = opts.agentIdFallback || '';
+
+    const $wrap = $('<div class="flex justify-start" data-saved-artifacts>');
+    const $inner = $('<div class="ml-5 max-w-[80%] w-full">');
+
+    const $header = $('<div class="flex items-center gap-1.5 mb-1 text-[11px] font-medium text-gray-400 dark:text-gray-500">');
+    $header.html(
+        '<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>' +
+        `<span>Saved ${items.length} item${items.length > 1 ? 's' : ''}</span>`
+    );
+    $inner.append($header);
+
+    // Collect image-artifact URLs (in display order) so the lightbox can page
+    // prev/next across sibling images only.
+    const imageUrls = items
+        .filter(item => categorizeArtifact(item.filename) === 'image')
+        .map(item => artifactUrl(item, agentIdFallback));
+
+    const $list = $('<div class="space-y-1.5">');
+    items.forEach(item => $list.append(_buildCard(item, agentIdFallback, imageUrls)));
+    $inner.append($list);
+    $wrap.append($inner);
+    return $wrap;
+}
+
+function _buildCard(item, agentIdFallback, imageUrls) {
+    const category = categorizeArtifact(item.filename);
+    const url = artifactUrl(item, agentIdFallback);
+    const sizeStr = _formatSize(item.size);
+    // For images, build the gallery context (sibling images + this one's index)
+    // so the lightbox can navigate prev/next.
+    const gallery = (category === 'image' && imageUrls && imageUrls.length)
+        ? { urls: imageUrls, index: imageUrls.indexOf(url) }
+        : null;
+
+    const $card = $('<div class="bg-gray-50 dark:bg-gray-700/50 border border-gray-200 dark:border-gray-600 rounded-lg p-2 hover:border-indigo-300 dark:hover:border-indigo-500 transition-colors flex items-center gap-2.5 group">');
+
+    // Thumbnail (image) or category icon.
+    let $thumb;
+    if (category === 'image') {
+        $thumb = $('<div class="w-10 h-10 rounded-md overflow-hidden flex-shrink-0 bg-gray-100 dark:bg-gray-800 flex items-center justify-center cursor-pointer">');
+        const $img = $('<img class="w-full h-full object-cover" alt="">').attr('src', url);
+        // Fallback to a placeholder image icon when the thumbnail fails to load.
+        $img.on('error', function () {
+            $(this).remove();
+            $thumb.append(_iconEl('image', 'w-10 h-10').addClass('rounded-md'));
+        });
+        $thumb.append($img);
+    } else {
+        $thumb = _iconEl(category, 'w-10 h-10').addClass('cursor-pointer');
+    }
+    $thumb.on('click', () => openSavedArtifact(url, item.filename, category, gallery));
+    $card.append($thumb);
+
+    const $meta = $('<div class="flex-1 min-w-0 cursor-pointer">');
+    $meta.append(
+        $('<p class="text-sm font-medium text-gray-800 dark:text-gray-200 truncate">').attr('title', item.filename).text(item.filename),
+        $('<p class="text-xs text-gray-400">').text(sizeStr)
+    );
+    $meta.on('click', () => openSavedArtifact(url, item.filename, category, gallery));
+    $card.append($meta);
+
+    const $dl = $('<a class="p-1.5 text-indigo-500 hover:text-indigo-700 rounded hover:bg-indigo-50 dark:hover:bg-indigo-900/20 transition-colors opacity-0 group-hover:opacity-100 flex-shrink-0" title="Download">')
+        .attr({ href: url, download: item.filename })
+        .html(_DOWNLOAD_SVG);
+    $dl.on('click', (e) => e.stopPropagation());
+    $card.append($dl);
+
+    return $card;
+}
+
+function openSavedArtifact(url, filename, category, gallery) {
+    if (category === 'image') {
+        const urls = (gallery && gallery.urls && gallery.urls.length) ? gallery.urls : [url];
+        let idx = (gallery && typeof gallery.index === 'number') ? gallery.index : 0;
+        if (idx < 0) idx = Math.max(0, urls.indexOf(url));
+        const lb = (window.Lightbox && window.Lightbox.open) ? window.Lightbox : Lightbox;
+        lb.open(urls, idx);
+        return;
+    }
+    _openViewerModal(url, filename, category);
+}
+
+let _escHandler = null;
+
+function _closeViewerModal() {
+    const modal = document.getElementById('chat-artifact-viewer-modal');
+    if (modal) modal.remove();
+    if (_escHandler) { document.removeEventListener('keydown', _escHandler); _escHandler = null; }
+}
+
+function _openViewerModal(url, filename, category) {
+    _closeViewerModal();
+
+    const $overlay = $('<div id="chat-artifact-viewer-modal" class="fixed inset-0 flex items-center justify-center p-4" style="z-index:200;background:rgba(0,0,0,0.6);">');
+    $overlay.on('click', (e) => { if (e.target === $overlay[0]) _closeViewerModal(); });
+
+    const $box = $('<div class="bg-white dark:bg-gray-800 rounded-xl shadow-2xl w-full max-w-4xl mx-4 max-h-[90vh] flex flex-col overflow-hidden">');
+
+    const $head = $('<div class="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-gray-600 flex-shrink-0">');
+    const $title = $('<div class="min-w-0 flex-1 pr-3">');
+    $title.append(
+        $('<h3 class="text-base font-semibold text-gray-800 dark:text-gray-100 truncate">').attr('title', filename).text(filename),
+        $('<p class="text-xs text-gray-400">').text(category.charAt(0).toUpperCase() + category.slice(1))
+    );
+    const $actions = $('<div class="flex items-center gap-2 flex-shrink-0">');
+    const $dl = $('<a class="flex items-center gap-1.5 px-3 py-1.5 text-xs text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 rounded-md transition-colors" title="Download">')
+        .attr({ href: url, download: filename })
+        .html(_DOWNLOAD_SVG + '<span>Download</span>');
+    const $close = $('<button class="flex items-center justify-center w-8 h-8 rounded-md text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors" title="Close">')
+        .html('<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>');
+    $close.on('click', _closeViewerModal);
+    $actions.append($dl, $close);
+    $head.append($title, $actions);
+
+    const $body = $('<div class="flex-1 overflow-y-auto p-6">');
+    $body.html('<div class="flex items-center justify-center py-16"><svg class="animate-spin w-8 h-8 text-indigo-500" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg></div>');
+
+    $box.append($head, $body);
+    $overlay.append($box);
+    $(document.body).append($overlay);
+
+    _escHandler = (e) => { if (e.key === 'Escape') _closeViewerModal(); };
+    document.addEventListener('keydown', _escHandler);
+
+    _renderViewerContent($body, url, filename, category);
+}
+
+async function _renderViewerContent($body, url, filename, category) {
+    const ext = _ext(filename);
+    try {
+        if (ext === 'md') {
+            const text = await (await fetch(url)).text();
+            $body.html('<div class="recap-prose max-w-none">' + sanitize(marked.parse(text)) + '</div>');
+        } else if (ext === 'pdf') {
+            $body.html(`<iframe src="${url}" class="w-full rounded-md border border-gray-200 dark:border-gray-600" style="min-height:70vh;"></iframe>`);
+        } else if (_VIDEO_EXTS.includes(ext)) {
+            const type = ext === 'mov' ? 'quicktime' : ext === 'mkv' ? 'x-matroska' : ext === 'm4v' ? 'mp4' : ext;
+            $body.html(`<div class="flex justify-center"><video controls class="max-w-full max-h-[70vh] rounded-md shadow-lg"><source src="${url}" type="video/${type}">Your browser does not support the video tag.</video></div>`);
+        } else if (_AUDIO_EXTS.includes(ext)) {
+            const type = ext === 'm4a' ? 'mp4' : ext === 'wma' ? 'x-ms-wma' : ext;
+            $body.html(`<div class="flex flex-col items-center gap-4 py-8"><audio controls class="w-full max-w-lg"><source src="${url}" type="audio/${type}">Your browser does not support the audio tag.</audio></div>`);
+        } else if (_IMAGE_EXTS.includes(ext)) {
+            $body.html(`<div class="flex justify-center"><img src="${url}" alt="${_escape(filename)}" class="max-w-full max-h-[70vh] rounded-md shadow-lg object-contain"></div>`);
+        } else if (_TEXT_EXTS.includes(ext) || category === 'text') {
+            const text = await (await fetch(url)).text();
+            $body.html(`<pre class="bg-gray-50 dark:bg-gray-900 rounded-md p-4 text-sm text-gray-800 dark:text-gray-200 overflow-x-auto max-h-[70vh] whitespace-pre-wrap font-mono">${_escape(text)}</pre>`);
+        } else {
+            $body.html(
+                '<div class="flex flex-col items-center gap-4 py-12 text-gray-400">' +
+                '<svg class="w-16 h-16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"></path></svg>' +
+                '<p class="text-sm">Preview not available for this file type.</p>' +
+                `<a href="${url}" download class="inline-flex items-center gap-1.5 px-4 py-2 bg-indigo-500 hover:bg-indigo-600 text-white rounded-md text-sm font-medium transition-colors">${_DOWNLOAD_SVG}<span>Download File</span></a>` +
+                '</div>'
+            );
+        }
+    } catch (e) {
+        $body.html('<div class="flex flex-col items-center gap-3 py-12 text-red-400"><svg class="w-12 h-12" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01M10.29 3.86l-8.6 14.86A1 1 0 002.56 20h18.88a1 1 0 00.87-1.5l-8.6-14.86a1 1 0 00-1.74 0z"></path></svg><p class="text-sm">Failed to load file content.</p></div>');
+    }
+}
 
 // ── transport.js ────────────────────────────────────────────────
 
@@ -1721,6 +2014,9 @@ class Turn {
         this._finalized = false;
         this._preApprovalPhase = 'thinking';
         this._finalContent = null;  // stored from response_chunk (is_final), used for SSE→response bubble
+        this._savedArtifacts = [];  // artifacts saved via save_artifact during this turn
+        this._savedArtifactsRendered = false;
+        this._$savedArtifactsBlock = null;  // live strip element, updated in place
 
         this._log = log('turn');
 
@@ -1897,6 +2193,9 @@ class Turn {
         }
 
         if (evtName === 'tool_executed') {
+            // Surface saved artifacts live (below the thinking stream) the moment a
+            // save_artifact call succeeds — no need to wait for the turn to finish.
+            if (this._captureSavedArtifact(data)) this._renderSavedArtifacts();
             this._mergeToolResult(data);
             this._showThinkingRow();
             // Fire tool:executed for agent-state-bridge
@@ -2024,6 +2323,39 @@ class Turn {
         }
     }
 
+    // Record a successful save_artifact result so it can be shown as a saved-items
+    // strip between the thinking bubble and the final response on finalize.
+    // Returns true if a new artifact was captured (so callers can re-render).
+    _captureSavedArtifact(data) {
+        if (!data || data.tool !== 'save_artifact' || data.error) return false;
+        const result = data.result || {};
+        const filename = result.filename;
+        if (!filename) return false;
+        // Dedup by filename (a re-save overwrites) — keep the latest.
+        this._savedArtifacts = this._savedArtifacts.filter(a => a.filename !== filename);
+        this._savedArtifacts.push({ filename, filepath: result.filepath, size: result.size });
+        return true;
+    }
+
+    // Render (or update in place) the saved-artifacts strip just below the thinking
+    // panel. Called live as each save_artifact succeeds AND again on finalize, so
+    // the strip grows incrementally rather than appearing only at the end.
+    _renderSavedArtifacts() {
+        if (!this._savedArtifacts.length) return;
+        const $block = this._safeRender('saved_artifacts', () =>
+            buildSavedArtifactsBlock(this._savedArtifacts, { agentIdFallback: this._agentId }));
+        if (!$block || !$block.length) return;
+        if (this._$savedArtifactsBlock && this._$savedArtifactsBlock.length) {
+            // Replace the existing strip with the refreshed list (avoids duplicates).
+            this._$savedArtifactsBlock.replaceWith($block);
+        } else {
+            this.$panel.after($block);
+        }
+        this._$savedArtifactsBlock = $block;
+        this._savedArtifactsRendered = true;
+        this._smartScroll();
+    }
+
     _showThinkingRow() {
         if (this._finalized) return; // don't add a pending row to a completed turn
         this.$timeline.find('.tl-thinking-pending').remove();
@@ -2070,6 +2402,9 @@ class Turn {
         // Auto-collapse the timeline when turn completes, keeping UI clean
         this.$timeline.addClass('hidden');
         this.$bubble.find('.tool-trace-chevron').removeClass('rotated');
+
+        // Show saved artifacts (if any) between the thinking bubble and final response
+        this._renderSavedArtifacts();
 
         this.phase = 'done';
         this._onPhaseChange(this, 'final', 'done');
@@ -2219,6 +2554,9 @@ class Turn {
         if (!this._finalized) {
             this.$bubble.remove();
             this.$panel.remove();
+            // The live saved-artifacts strip is a sibling of $panel — remove it too
+            // so an aborted turn doesn't leave an orphaned strip behind.
+            if (this._$savedArtifactsBlock) this._$savedArtifactsBlock.remove();
         }
 
         this._onDispose(this, reason);
@@ -2471,7 +2809,7 @@ class ChatUI {
                 continue;
             }
             if (entry.type === 'system') {
-                const sysMeta = (entry.metadata && entry.metadata.slash_command) ? { metadata: { slash_command: true } } : {};
+                const sysMeta = (entry.metadata && (entry.metadata.slash_command || entry.metadata.bash_exec)) ? { metadata: { slash_command: entry.metadata.slash_command || false, bash_exec: entry.metadata.bash_exec || false } } : {};
                 this.appendMessage('system', entry.content || '', sysMeta);
                 continue;
             }

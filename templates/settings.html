@@ -1958,7 +1958,7 @@ block content %}
 
     async function editTool(toolId) {
         try {
-            const tool = await apiGet(`/api/settings/tools/${toolId}`);
+            const tool = await apiGet(`/api/settings/tools/${encodeURIComponent(toolId)}`);
 
             $("#tool-modal-title").text("Edit Tool");
             $("#tool-edit-id").val(tool.id);
@@ -2040,7 +2040,8 @@ block content %}
             switchToolModalOpTab("prod");
             openModal("tool-modal");
         } catch (error) {
-            alert("Error loading tool: " + error);
+            console.error("Error loading tool:", error);
+            showToast("Error loading tool: " + error, "error");
         }
     }
 

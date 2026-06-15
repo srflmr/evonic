@@ -416,6 +416,25 @@ class SSHBackend(ExecutionBackend):
             return {'error': r.get('stderr', '') or r.get('error', 'rm failed')}
         return {'ok': True}
 
+    def write_file_bytes(self, path: str, data: bytes, create_dirs: bool = True) -> dict:
+        """Write raw bytes to a file on the remote host via SSH.
+
+        Uses base64 encoding over the SSH exec channel for binary-safe
+        transfer, same pattern as write_file but accepts bytes directly.
+        """
+        import base64
+        encoded = base64.b64encode(data).decode('ascii')
+        script = ''
+        if create_dirs:
+            dir_path = path.rsplit('/', 1)[0] if '/' in path else ''
+            if dir_path:
+                script += f'mkdir -p {shlex.quote(dir_path)}\n'
+        script += f'echo {shlex.quote(encoded)} | base64 -d > {shlex.quote(path)}\n'
+        r = self._exec('bash -s', script, 30)
+        if r.get('exit_code', 1) != 0:
+            return {'error': r.get('stderr', '') or r.get('error', 'write_file_bytes failed')}
+        return {'ok': True}
+
     def make_dirs(self, path: str) -> dict:
         r = self._exec(f'mkdir -p {shlex.quote(path)}', '', 10)
         if r.get('exit_code', 1) != 0:

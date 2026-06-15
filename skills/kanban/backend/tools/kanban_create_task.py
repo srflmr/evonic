@@ -79,5 +79,6 @@ def execute(agent: dict, args: dict) -> dict:
 
     return {
         'status': 'success',
+        'task_id': created['id'],
         'task': created,
     }

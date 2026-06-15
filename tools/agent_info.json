@@ -1,0 +1,102 @@
+{
+  "id": "agent_info",
+  "name": "Agent Info",
+  "description": "Get comprehensive information about an agent: settings, tools, skills, channels, portals, KB files, artifacts stats, variables, and models.",
+  "system_prompt": "## Agent Info\n\nYou can inspect any agent's configuration and state using the **agent_info** tool:\n- `agent_id`: The target agent's ID (required)\n- `section`: Comma-separated list of sections to return -- `info`, `tools`, `channels`, `skills`, `portals`, `kb`, `artifacts`, `variables`, `models`. Omit or empty to return all sections.\n\nExample: `agent_info(agent_id=\"adit\", section=\"info,channels\")` returns only the agent's basic info and channel configuration.\n\nUse this to discover another agent's capabilities, channel connections, knowledge base files, and artifact storage before routing tasks to them or setting up cross-agent workflows.",
+  "function": {
+    "name": "agent_info",
+    "description": "Get comprehensive information about an agent: settings, tools, skills, channels, portals, KB files, artifacts stats, variables, and models.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "agent_id": {
+          "type": "string",
+          "description": "The target agent's ID (e.g. 'siwa', 'adit', 'angga')"
+        },
+        "section": {
+          "type": "string",
+          "description": "Comma-separated section names to return. Options: info, tools, skills, channels, portals, kb, artifacts, variables, models. Omit or leave empty to return all sections. Example: 'info,channels,artifacts'"
+        }
+      },
+      "required": [
+        "agent_id"
+      ]
+    }
+  },
+  "mock_response": {
+    "agent_id": "siwa",
+    "info": {
+      "id": "siwa",
+      "name": "Siwa Miwa",
+      "is_super": true,
+      "enabled": true
+    },
+    "channels": [
+      {
+        "id": "550e8400-e29b-41d4-a716-446655440000",
+        "type": "telegram",
+        "name": "Siwa Telegram",
+        "enabled": true,
+        "config": {
+          "mode": "open",
+          "allowed_users": [
+            "123456789"
+          ],
+          "user_names": {
+            "123456789": "User Z"
+          }
+        }
+      }
+    ],
+    "tools": [
+      "bash",
+      "read_file",
+      "write_file",
+      "runpy",
+      "agent_info",
+      "list_agents",
+      "create_agent"
+    ],
+    "skills": [
+      "kanban",
+      "github",
+      "pinchtab"
+    ],
+    "kb": [
+      {
+        "filename": "notes.md",
+        "size": 512,
+        "modified": 1718035200.0
+      },
+      {
+        "filename": "evonic.md",
+        "size": 15200,
+        "modified": 1718035200.0
+      }
+    ],
+    "artifacts": {
+      "count": 12,
+      "total_size": 245760,
+      "by_category": {
+        "text": 5,
+        "image": 3,
+        "document": 4
+      }
+    },
+    "models": {
+      "primary": {
+        "id": "gpt4",
+        "name": "GPT-4o",
+        "provider": "openai",
+        "model_name": "gpt-4o"
+      },
+      "fallback": {
+        "id": "gpt35",
+        "name": "GPT-4o Mini",
+        "provider": "openai",
+        "model_name": "gpt-4o-mini"
+      }
+    }
+  },
+  "mock_response_type": "json"
+}

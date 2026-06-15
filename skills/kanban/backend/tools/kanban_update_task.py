@@ -59,7 +59,9 @@ def execute(agent: dict, args: dict) -> dict:
     # Authorization: only the assignee (or a super agent)
     # may update the task's progress status.
     if new_status is not None:
-        if task.get('assignee') != agent_id and not agent.get('is_super'):
+        parent_id = agent.get('parent_id', '')
+        task_assignee = task.get('assignee')
+        if task_assignee != agent_id and task_assignee != parent_id and not agent.get('is_super'):
             return {
                 'status': 'error',
                 'message': 'Only the assigned agent or a super agent can update this task',

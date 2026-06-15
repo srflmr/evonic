@@ -175,8 +175,11 @@ def _register_builtins():
             is_super = False
         lines = ["**Available commands:**"]
         super_only = {"restart", "cd", "cwd", "shutdown"}
+        web_only = {"investigate"}  # only shown/available on web, not channels
         for name, desc in commands:
             if name in super_only and not is_super:
+                continue
+            if name in web_only and channel_id is not None:
                 continue
             lines.append(f"- `/{name}` — {desc}")
         return "\n".join(lines)
@@ -213,6 +216,87 @@ def _register_builtins():
         "summary",
         summary_handler,
         "Force regenerate session summary",
+    )
+
+    # /investigate — Send investigation request to another agent with session context
+    def investigate_handler(
+        session_id: str,
+        agent_id: str,
+        external_user_id: str,
+        channel_id: Optional[str],
+        args: str,
+    ) -> str:
+        # Web-only: reject on channels
+        if channel_id is not None:
+            return "This command is only available on the web interface."
+
+        from models.db import db
+
+        # Parse target agent-id and context
+        parts = args.strip().split(None, 1)
+        if not parts or not parts[0]:
+            return "Usage: /investigate <agent-id> <context>"
+        target_agent_id = parts[0].strip().lower()
+        context = parts[1].strip() if len(parts) > 1 else ""
+
+        # Validate context
+        if not context:
+            return "Context is required. Usage: /investigate <agent-id> <context>"
+
+        # Validate target agent exists and is enabled
+        target = db.get_agent(target_agent_id)
+        if not target or not target.get("enabled", True):
+            return f"Agent '{target_agent_id}' not found or is disabled."
+
+        # Get current agent info
+        current = db.get_agent(agent_id)
+        current_name = current.get("name", agent_id) if current else agent_id
+
+        # Build session log path
+        jsonl_id = session_id.split("-")[-1]
+        session_log_path = f"agents/{agent_id}/sessions/{jsonl_id}.jsonl"
+
+        # Build investigation message
+        target_name = target.get("name", target_agent_id)
+        message = (
+            f"[INVESTIGATION REQUEST from {current_name}]\n\n"
+            f"Session: {session_id}\n"
+            f"Session log: {session_log_path}\n"
+            f"Context: {context}\n\n"
+            f"Please investigate the session log above. Focus on: {context}"
+        )
+
+        # Deliver via notify_agent (same mechanism as send_agent_message)
+        from backend.agent_runtime.notifier import notify_agent
+
+        _AGENT_MSG_PREFIX = "__agent__"
+        result = notify_agent(
+            agent_id=target_agent_id,
+            tag=f"AGENT/{current_name}",
+            message=message,
+            external_user_id=f"{_AGENT_MSG_PREFIX}{agent_id}",
+            channel_id=None,
+            dedup=False,
+            metadata={
+                "agent_message": True,
+                "from_agent_id": agent_id,
+                "from_agent_name": current_name,
+                "investigation_request": True,
+                "investigation_session_id": session_id,
+                "investigation_session_log": session_log_path,
+            },
+        )
+
+        if not result.get("success"):
+            reason = result.get("reason", "unknown")
+            return f"Failed to deliver investigation request to {target_name}: {reason}."
+
+        return f"Investigation request sent to **{target_name}**."
+
+    command_registry.register(
+        "investigate",
+        investigate_handler,
+        "Send investigation request to another agent with session context",
     )
 
 

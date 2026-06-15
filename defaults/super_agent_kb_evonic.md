@@ -99,21 +99,33 @@ KB is NOT for:
 
 ### What It Does
 
-The memory system stores durable facts about users across conversations. It follows an Extract → Deduplicate → Store → Retrieve pipeline:
+The memory system stores durable facts about users across conversations. The default
+engine is **evomem** — a local knowledge base with hybrid retrieval (lexical + vector)
+**and a self-wiring knowledge graph** (entities and typed relationships). It transparently
+falls back to SQLite FTS5 keyword search when evomem is unavailable.
 
-1. **Extract** — after conversation summarization, an LLM extracts salient facts (names, preferences, decisions, context)
-2. **Deduplicate** — new facts are compared against existing memories; duplicates are skipped, contradictions trigger updates
-3. **Store** — memories are persisted in the per-agent SQLite DB (FTS5 indexed for fast keyword search)
-4. **Retrieve** — at the start of each turn, relevant memories are retrieved using the user's latest message as a search query and injected into the LLM context
+It follows an Extract → Deduplicate → Store → Retrieve pipeline:
+
+1. **Extract** — after conversation summarization, an LLM extracts salient facts (names, preferences, decisions, context) AND named entities + relationships (e.g. "Robin works_at Acme").
+2. **Deduplicate** — new facts are compared against existing memories; duplicates are skipped, contradictions supersede the old fact (in both FTS5 and evomem).
+3. **Store** — facts become structured markdown pages (notes linked to entities via `[[wiki-links]]`); entities and typed edges build the knowledge graph. A dual-write to FTS5 is kept as a safety net.
+4. **Retrieve** — at the start of each turn, relevant memories are retrieved using the user's latest message and injected into the context under a `## Memory` heading.
 
 ### Tools
 
-- **`remember`** — explicitly store a fact. Use this when the user shares important info.
+**Capture:**
+- **`remember`** — explicitly store a fact. Use when the user shares important info.
   - `content`: the fact as a single clear sentence
   - `category`: one of `user_info`, `preference`, `decision`, `context`, `instruction`, `general`
+- **`forget_memory`** — delete a stored fact by id (removed from both FTS5 and evomem).
 
-- **`recall`** — search stored memories by keywords.
-  - `query`: keywords to search for (uses FTS5 full-text search)
+**Retrieve:**
+- **`recall`** — fast keyword lookup of stored facts.
+  - `query`: keywords to search for
+- **`think`** — brain-layer synthesis: reason over everything known about a topic and surface knowledge gaps. Heavier than `recall`; prefer it for open questions ("what do I know about the user's project?").
+  - `query`: the topic/question to synthesize
+- **`graph_query`** — traverse the knowledge graph from an entity to its relationships (employer, companies founded, people advised, etc.).
+  - `entity`: a person/organization/project name (or slug)
 
 ### Memory Categories
 
@@ -126,13 +138,17 @@ The memory system stores durable facts about users across conversations. It foll
 | instruction | Persistent behavioral instructions               |
 | general     | Anything else worth remembering                  |
 
+Facts in user-scoped categories (`user_info`, `preference`, `instruction`, `decision`, `context`) are automatically linked to the canonical `User` entity, so they become graph-adjacent and feed `think`.
+
 ### When to Use
 
 - User shares their name, phone, or email → `remember(category="user_info")`
-- User states a preference ("I prefer short answers") → `remember(category="preference")`
+- User states a durable preference or interest → `remember(category="preference")` (this feeds the graph; reserve `notes.md` for always-apply communication/style rules)
 - User gives persistent instructions ("Always use English") → `remember(category="instruction")`
 - User mentions project context → `remember(category="context")`
-- Before responding in a new conversation, always check with `recall` if there are relevant memories
+- Need to reason about a topic across many facts → `think(query="...")`
+- Need to follow relationships between entities → `graph_query(entity="...")`
+- Memories are auto-injected each turn, so use `recall`/`think` only when you need MORE than what was already provided.
 
 ---
 

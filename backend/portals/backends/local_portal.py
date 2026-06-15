@@ -83,6 +83,20 @@ class LocalPortalBackend(ExecutionBackend):
         except Exception as e:
             return {'error': str(e)}
 
+    def delete_file(self, path: str) -> dict:
+        """Delete a file from the host filesystem."""
+        try:
+            os.remove(path)
+            return {'ok': True}
+        except FileNotFoundError:
+            return {'error': f'File not found: {path}'}
+        except IsADirectoryError:
+            return {'ok': True, 'detail': 'Path is a directory — skipping.'}
+        except PermissionError:
+            return {'error': f'Permission denied: {path}'}
+        except Exception as e:
+            return {'error': str(e)}
+
     # ------------------------------------------------------------------
     # Path resolution — identity (noop)
     # ------------------------------------------------------------------

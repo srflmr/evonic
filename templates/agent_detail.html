@@ -134,6 +134,24 @@ html.dark #channel-detail-modal .bg-amber-100 { background: #451a03 !important; 
 html.dark #channel-detail-modal .bg-indigo-50 { background: #1e1b4b !important; }
 html.dark #channel-detail-modal .text-indigo-600 { color: #a5b4fc !important; }
 html.dark #channel-detail-modal .hover\:bg-indigo-100:hover { background: #312e81 !important; }
+/* Dark mode: SP full-screen modal */
+html.dark #system-prompt-modal > div { background: #1f2937; }
+html.dark #system-prompt-modal .border-gray-200 { border-color: #374151; }
+html.dark #system-prompt-modal .border-gray-700 { border-color: #374151; }
+html.dark #system-prompt-modal .text-gray-800 { color: #f3f4f6; }
+html.dark #system-prompt-modal .text-gray-200 { color: #e5e7eb; }
+html.dark #system-prompt-modal .text-gray-400 { color: #9ca3af; }
+html.dark #system-prompt-modal .text-gray-500 { color: #9ca3af; }
+html.dark #system-prompt-modal .text-gray-600 { color: #d1d5db; }
+html.dark #system-prompt-modal .text-gray-300 { color: #d1d5db; }
+html.dark #system-prompt-modal .bg-gray-50 { background: #374151; }
+html.dark #system-prompt-modal .bg-gray-100 { background: #374151; }
+html.dark #system-prompt-modal .bg-gray-700 { background: #374151; }
+html.dark #system-prompt-modal .bg-gray-900 { background: #111827; }
+html.dark #system-prompt-modal .hover\:bg-gray-200:hover { background: #4b5563; }
+html.dark #system-prompt-modal .hover\:bg-gray-600:hover { background: #4b5563; }
+html.dark #system-prompt-modal .hover\:text-gray-600:hover { color: #d1d5db; }
+
 </style>
 <div class="px-2 py-1 md:py-4 flex-1 min-h-0 flex flex-col h-[calc(100dvh-var(--header-h,56px))]">
     {% if workspace_invalid %}
@@ -275,6 +293,7 @@ html.dark #channel-detail-modal .hover\:bg-indigo-100:hover { background: #312e8
             <div class="mb-4">
                 <label class="block mb-1 text-gray-600 dark:text-gray-300 text-sm font-medium">System Prompt</label>
                 <textarea id="agent-system-prompt" rows="10" placeholder="Define the agent's persona and behavior..." class="w-full p-2.5 border border-gray-300 rounded-md text-sm font-mono focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/10">{{ agent.system_prompt or '' }}</textarea>
+                <a href="javascript:void(0)" onclick="openSystemPromptModal()" class="inline-block mt-1 text-xs text-indigo-500 hover:text-indigo-700 dark:text-indigo-400 dark:hover:text-indigo-300 transition-colors">Edit in full screen &#8599;</a>
             </div>
             <div class="mb-4">
                 <label class="flex items-center gap-3 cursor-pointer select-none">
@@ -411,7 +430,7 @@ html.dark #channel-detail-modal .hover\:bg-indigo-100:hover { background: #312e8
                         <label class="flex items-center gap-3 cursor-pointer select-none">
                             {{ toggle_widget(id='agent-artifacts', checked=agent.artifacts_enabled) }}
                             <div>
-                                <span class="text-gray-600 dark:text-gray-300 text-sm font-medium">Artifacts (Saved Files)</span>
+                                <span class="text-gray-600 dark:text-gray-300 text-sm font-medium">Artifacts</span>
                                 <p class="text-xs text-gray-400 mt-0.5">Allow agent to save files (reports, analysis, images, etc.) to its artifacts directory. When enabled, the agent's SYSTEM.md is updated with instructions to use the <code>save_artifact</code> tool. Files appear in the Artifacts tab.</p>
                             </div>
                         </label>
@@ -423,6 +442,15 @@ html.dark #channel-detail-modal .hover\:bg-indigo-100:hover { background: #312e8
                             <div>
                                 <span class="text-gray-600 dark:text-gray-300 text-sm font-medium">Safety Checker</span>
                                 <p class="text-xs text-gray-400 mt-0.5">Heuristic safety check on Bash/Python scripts. Disable for full autopilot — agent runs all code without approval prompts.</p>
+                            </div>
+                        </label>
+                    </div>
+                    <div>
+                        <label class="flex items-center gap-3 cursor-pointer select-none">
+                            {{ toggle_widget(id='agent-bash-exec', checked=agent.bash_exec_enabled) }}
+                            <div>
+                                <span class="text-gray-600 dark:text-gray-300 text-sm font-medium">Bash Exec (web <code>!</code>)</span>
+                                <p class="text-xs text-gray-400 mt-0.5">Let web users run a shell command directly by prefixing the message with <code>!</code> (e.g. <code>!ls -la</code>). Runs immediately, bypassing the agent — its output is hidden from the agent's context. Not available on channels (Telegram/WhatsApp). Default ON for the super agent.</p>
                             </div>
                         </label>
                     </div>
@@ -620,7 +648,7 @@ html.dark #channel-detail-modal .hover\:bg-indigo-100:hover { background: #312e8
                 </div>
                 <div class="flex items-center gap-2">
                     <button id="artifacts-prev-btn" onclick="goArtifactPage('prev')"
-                        class="px-3 py-1.5 text-sm font-medium text-gray-600 dark:text-gray-300 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md hover:bg-gray-50 dark:hover:bg-gray-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
+                        class="px-3 py-1.5 text-sm font-medium text-gray-600 dark:text-gray-300 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md hover:bg-gray-50 dark:hover:bg-gray-600 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition-colors">
                         <span class="flex items-center gap-1">
                             <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path></svg>
                             Previous
@@ -630,7 +658,7 @@ html.dark #channel-detail-modal .hover\:bg-indigo-100:hover { background: #312e8
                         <!-- Page buttons rendered dynamically -->
                     </div>
                     <button id="artifacts-next-btn" onclick="goArtifactPage('next')"
-                        class="px-3 py-1.5 text-sm font-medium text-gray-600 dark:text-gray-300 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md hover:bg-gray-50 dark:hover:bg-gray-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
+                        class="px-3 py-1.5 text-sm font-medium text-gray-600 dark:text-gray-300 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md hover:bg-gray-50 dark:hover:bg-gray-600 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition-colors">
                         <span class="flex items-center gap-1">
                             Next
                             <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
@@ -1209,7 +1237,7 @@ html.dark #channel-detail-modal .hover\:bg-indigo-100:hover { background: #312e8
     </div>
 </div>
 
-<script src="{{ url_for('static', filename='js/chat-ui.js') }}?v=43" defer></script>
+<script src="{{ url_for('static', filename='js/chat-ui.js') }}?v=47" defer></script>
 <script src="{{ url_for('static', filename='js/agent-state.js') }}?v=4" defer></script>
 <script>
 function showToast(message, type = 'success') {
@@ -1691,6 +1719,7 @@ async function saveAdvanced() {
             agent_messaging_enabled: document.getElementById('agent-messaging-enabled').checked ? 1 : 0,
             artifacts_enabled: document.getElementById('agent-artifacts').checked ? 1 : 0,
             safety_checker_enabled: document.getElementById('agent-safety-checker').checked ? 1 : 0,
+            bash_exec_enabled: document.getElementById('agent-bash-exec').checked ? 1 : 0,
             message_wrapper_enabled: document.getElementById('agent-message-wrapper').checked ? 1 : 0,
             run_as_user: document.getElementById('agent-run-as-user').value.trim() || null,
         })
@@ -4284,7 +4313,7 @@ function renderArtifactPagination() {
         const active = p === _artifactsPage
             ? 'bg-indigo-600 text-white border-indigo-600'
             : 'bg-white dark:bg-gray-700 text-gray-600 dark:text-gray-300 border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-600';
-        pageHtml += `<button onclick="goArtifactPage(${p})" class="w-8 h-8 text-sm font-medium rounded-md border ${active} transition-colors">${p}</button>`;
+        pageHtml += `<button onclick="goArtifactPage(${p})" class="w-8 h-8 text-sm font-medium rounded-md border ${active} cursor-pointer transition-colors">${p}</button>`;
     }
     pageButtons.innerHTML = pageHtml;
 }
@@ -5141,6 +5170,84 @@ document.addEventListener('keydown', function(e) {
         savePlanFile();
     }
 });
+// --- System Prompt Full-Screen Editor ---
+
+var _spModalOriginal = '';
+
+function openSystemPromptModal() {
+    var textarea = document.getElementById('agent-system-prompt');
+    var modalTextarea = document.getElementById('system-prompt-modal-textarea');
+    _spModalOriginal = textarea.value;
+    modalTextarea.value = textarea.value;
+    document.getElementById('system-prompt-modal').classList.remove('hidden');
+    setTimeout(function() { modalTextarea.focus(); }, 100);
+}
+
+function closeSystemPromptModal() {
+    var modalTextarea = document.getElementById('system-prompt-modal-textarea');
+    if (modalTextarea.value !== _spModalOriginal) {
+        if (!confirm('You have unsaved changes. Close anyway?')) return;
+    }
+    document.getElementById('system-prompt-modal').classList.add('hidden');
+}
+
+function saveSystemPromptFromModal() {
+    var modalTextarea = document.getElementById('system-prompt-modal-textarea');
+    var saveBtn = document.getElementById('sp-modal-save-btn');
+    var newContent = modalTextarea.value;
+    var originalText = saveBtn.textContent;
+    saveBtn.textContent = 'Saving...';
+    saveBtn.disabled = true;
+
+    fetch('/api/agents/' + encodeURIComponent(AGENT_ID), {
+        method: 'PUT',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({system_prompt: newContent})
+    })
+    .then(function(res) { return res.json(); })
+    .then(function(data) {
+        if (!data.success) { showToast('Failed to save system prompt.', 'error'); return; }
+        document.getElementById('agent-system-prompt').value = newContent;
+        _spModalOriginal = newContent;
+        saveBtn.textContent = '\u2713 Saved';
+        saveBtn.classList.add('bg-green-500', 'text-white');
+        saveBtn.classList.remove('bg-indigo-600', 'hover:bg-indigo-700');
+        setTimeout(function() {
+            saveBtn.textContent = 'Save';
+            saveBtn.disabled = false;
+            saveBtn.classList.remove('bg-green-500', 'text-white');
+            saveBtn.classList.add('bg-indigo-600', 'hover:bg-indigo-700');
+        }, 1500);
+        showToast('System prompt saved!', 'success');
+    })
+    .catch(function(err) {
+        saveBtn.textContent = originalText;
+        saveBtn.disabled = false;
+        showToast('Failed to save: ' + (err.message || 'Unknown error'), 'error');
+    });
+}
+
+// Click-outside backdrop closes SP modal
+document.addEventListener('DOMContentLoaded', function() {
+    var spBackdrop = document.getElementById('system-prompt-modal');
+    if (!spBackdrop) return;
+    spBackdrop.addEventListener('click', function(e) {
+        if (e.target === spBackdrop) closeSystemPromptModal();
+    });
+});
+
+// Global Escape/Ctrl+S handler extended for SP modal
+document.addEventListener('keydown', function(e) {
+    var spModal = document.getElementById('system-prompt-modal');
+    if (!spModal || spModal.classList.contains('hidden')) return;
+    if (e.key === 'Escape') {
+        closeSystemPromptModal();
+    } else if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+        e.preventDefault();
+        saveSystemPromptFromModal();
+    }
+});
+
 </script>
 
 <!-- Plan File Editor Modal -->
@@ -5176,4 +5283,37 @@ document.addEventListener('keydown', function(e) {
         </div>
     </div>
 </div>
+<!-- System Prompt Full-Screen Editor Modal -->
+<div id="system-prompt-modal" class="hidden fixed inset-0 bg-black/50 flex items-center justify-center z-[150]">
+    <div class="bg-white dark:bg-gray-800 rounded-xl w-[90%] max-w-[700px] shadow-xl flex flex-col overflow-hidden" style="max-height: 85vh;">
+        <div class="flex items-center justify-between px-5 py-3 border-b border-gray-200 dark:border-gray-700 flex-shrink-0">
+            <h3 class="text-sm font-semibold text-gray-800 dark:text-gray-200">&#9998; System Prompt Editor</h3>
+            <button onclick="closeSystemPromptModal()" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700" aria-label="Close editor" title="Close (Esc)">
+                <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+            </button>
+        </div>
+        <div class="flex-1 min-h-0 flex flex-col p-5">
+            <textarea id="system-prompt-modal-textarea"
+                class="flex-1 w-full p-4 text-sm font-mono text-gray-800 dark:text-gray-200 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-600 rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:focus:ring-indigo-400 focus:border-transparent transition-colors"
+                style="min-height: 60vh;"
+                placeholder="Define the agent's persona and behavior..."
+                spellcheck="false"></textarea>
+        </div>
+        <div class="px-5 py-3 border-t border-gray-200 dark:border-gray-700 flex items-center justify-between flex-shrink-0">
+            <span class="text-xs text-gray-400 dark:text-gray-500">Ctrl+S to save &middot; Esc to close</span>
+            <div class="flex gap-2">
+                <button onclick="closeSystemPromptModal()" id="sp-modal-cancel-btn"
+                    class="px-4 py-1.5 text-xs font-medium text-gray-600 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-lg transition-colors">
+                    Cancel
+                </button>
+                <button onclick="saveSystemPromptFromModal()" id="sp-modal-save-btn"
+                    class="px-4 py-1.5 text-xs font-medium text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 rounded-lg transition-colors">
+                    Save
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+
 {% endblock %}

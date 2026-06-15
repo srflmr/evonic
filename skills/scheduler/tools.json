@@ -22,7 +22,7 @@
           },
           "trigger_config": {
             "type": "object",
-            "description": "Trigger parameters. For 'date': {\"run_date\": \"2026-04-21T09:00:00\"}. For 'interval': {\"seconds\": 300} or {\"minutes\": 5} or {\"hours\": 1}. For 'cron': {\"hour\": 9, \"minute\": 0} or {\"day_of_week\": \"mon-fri\", \"hour\": 9}."
+            "description": "Trigger parameters. For 'date': {\"run_date\": \"2026-06-14T05:40:00\"} — USE LOCAL WIB/UTC+7 TIME DIRECTLY, DO NOT CONVERT TO UTC. Naive ISO 8601 strings are treated as local server time. The response includes 'fires_at' (local) and 'fires_at_utc' fields so you can verify. For 'interval': {\"seconds\": 300} or {\"minutes\": 5} or {\"hours\": 1}. For 'cron': {\"hour\": 9, \"minute\": 0} or {\"day_of_week\": \"mon-fri\", \"hour\": 9}."
           },
           "action_type": {
             "type": "string",
