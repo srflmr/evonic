@@ -48,6 +48,17 @@ class SlashCommandRegistry:
 # Global registry instance
 command_registry = SlashCommandRegistry()
 
+SUBAGENT_USER_DIRECT_PREFIX = (
+    "You were spawned directly by the user via the `/sub` command"
+    " \u2014 not delegated by your parent agent."
+    " Execute the task below directly and report your result."
+    " Since your response will appear in the parent agent\u2019s chat,"
+    " begin your response with a brief line indicating you are"
+    " responding to the user\u2019s direct /sub request"
+    " so the parent agent has context.\n\n"
+    "--- USER TASK ---\n"
+)
+
 
 def parse_command(message: str) -> Optional[Tuple[str, str]]:
     """Parse a message and extract command + args if it starts with /.
@@ -176,10 +187,19 @@ def _register_builtins():
         lines = ["**Available commands:**"]
         super_only = {"restart", "cd", "cwd", "shutdown"}
         web_only = {"investigate"}  # only shown/available on web, not channels
+        # /sub requires the subagent skill
+        has_subagent = False
+        try:
+            skills = db.get_agent_skills(agent_id)
+            has_subagent = "subagent" in skills
+        except Exception:
+            pass
         for name, desc in commands:
             if name in super_only and not is_super:
                 continue
             if name in web_only and channel_id is not None:
+                continue
+            if name == "sub" and not has_subagent:
                 continue
             lines.append(f"- `/{name}` — {desc}")
         return "\n".join(lines)
@@ -262,8 +282,8 @@ def _register_builtins():
             f"[INVESTIGATION REQUEST from {current_name}]\n\n"
             f"Session: {session_id}\n"
             f"Session log: {session_log_path}\n"
-            f"Context: {context}\n\n"
-            f"Please investigate the session log above. Focus on: {context}"
+            f"Request: {context}\n\n"
+            f"Please investigate the session log above."
         )
 
         # Deliver via notify_agent (same mechanism as send_agent_message)
@@ -901,6 +921,78 @@ def _register_builtins():
         "Show or set agent's LLM model — /model [id]",
     )
 
+
+
+    # /sub — Spawn a sub-agent with a direct task (requires subagent skill)
+    def sub_handler(
+        session_id: str,
+        agent_id: str,
+        external_user_id: str,
+        channel_id: Optional[str],
+        args: str,
+    ) -> str:
+        if not args or not args.strip():
+            return "Usage: /sub <task description>"
+
+        from models.db import db
+
+        # Check if agent has subagent skill assigned
+        skills = db.get_agent_skills(agent_id)
+        if "subagent" not in skills:
+            return "This command requires the `subagent` skill to be assigned to this agent."
+
+        # Fetch parent agent
+        parent_agent = db.get_agent(agent_id)
+        if not parent_agent:
+            return "Error: Agent not found."
+
+        # Spawn sub-agent
+        from backend.subagent_manager import subagent_manager
+        try:
+            sub_id = subagent_manager.spawn(parent_agent)
+        except ValueError as e:
+            return f"Failed to spawn sub-agent: {e}"
+
+        # Resolve report_to destination
+        from backend.agent_report_to import resolve_report_to_for_subagent_spawn
+        report_to_id, report_to_channel_id = resolve_report_to_for_subagent_spawn(
+            agent_id, external_user_id, channel_id
+        )
+
+        # Build task message with direct-spawn prefix
+        task_text = args.strip()
+        message = SUBAGENT_USER_DIRECT_PREFIX + task_text
+
+        # Send task message to the sub-agent
+        from backend.agent_runtime.notifier import notify_agent
+        result = notify_agent(
+            agent_id=sub_id,
+            tag="SUBSPAWN",
+            message=message,
+            external_user_id=external_user_id,
+            channel_id=channel_id,
+            dedup=False,
+            trigger_llm=True,
+            metadata={
+                "agent_message": True,
+                "from_agent_id": agent_id,
+                "subagent_user_direct": True,
+                "report_to_id": report_to_id,
+                "report_to_channel_id": report_to_channel_id,
+            },
+        )
+
+        if not result.get("success"):
+            reason = result.get("reason", "unknown")
+            return f"Sub-agent spawned ({sub_id}) but failed to deliver task: {reason}."
+
+        return f"Sub-agent spawned: **{sub_id}** — task sent."
+
+    command_registry.register(
+        "sub",
+        sub_handler,
+        "Spawn a sub-agent with a direct task",
+    )
 
 # Register builtins at import time
 _register_builtins()
