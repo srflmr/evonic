@@ -70,6 +70,9 @@ AGENTS_DIR = os.path.join(BASE_DIR, 'agents')
 WORKSPACE_DIR = os.path.join(BASE_DIR, 'shared', 'agents')
 
 SLUG_RE = re.compile(r'^[a-z0-9_]+$')
+
+# Sub-agent IDs follow the pattern parent_id_sub_N — reject user-created IDs that match this.
+SUBAGENT_ID_RE = re.compile(r'_sub_\d+$')
 USER_ID_RE = re.compile(r'^[a-zA-Z0-9_\-\.@]{1,128}$')
 
 # Tools managed exclusively by the artifacts_enabled agent setting.
@@ -232,6 +235,8 @@ def api_create_agent():
     agent_id = data.get('id', '').strip().lower()
     if not agent_id or not SLUG_RE.match(agent_id):
         return jsonify({'error': 'Invalid ID. Use only lowercase alphanumeric characters and underscores (snake_case).'}), 400
+    if SUBAGENT_ID_RE.search(agent_id):
+        return jsonify({'error': 'Agent ID cannot end with a sub-agent pattern (e.g. _sub_1). This naming convention is reserved for internal use.'}), 400
     if db.get_agent(agent_id):
         return jsonify({'error': 'Agent ID already exists.'}), 400
     if len(data.get('name', '')) > 200:
@@ -355,6 +360,8 @@ def api_clone_agent(agent_id):
         return jsonify({
             'error': 'Invalid ID. Use only lowercase alphanumeric characters and underscores (snake_case).'
         }), 400
+    if SUBAGENT_ID_RE.search(new_id):
+        return jsonify({'error': 'Agent ID cannot end with a sub-agent pattern (e.g. _sub_1). This naming convention is reserved for internal use.'}), 400
     if not new_name:
         new_name = f"{source.get('name', agent_id)} (Clone)"
 
@@ -566,11 +573,22 @@ def _artifacts_dir(agent_id: str) -> str:
     return d
 
 
+def _resolve_to_parent_agent_id(agent_id: str) -> str:
+    """If agent_id is a sub-agent, return its parent's ID; otherwise return agent_id."""
+    from backend.subagent_manager import subagent_manager
+    if subagent_manager.is_subagent(agent_id):
+        sub = subagent_manager.get(agent_id)
+        if sub:
+            return sub.get('parent_id', agent_id)
+    return agent_id
+
+
 # ==================== Agent Artifacts API ====================
 
 
 @agents_bp.route('/api/agents/<agent_id>/artifacts', methods=['GET'])
 def api_list_artifacts(agent_id):
+    agent_id = _resolve_to_parent_agent_id(agent_id)
     if not db.get_agent(agent_id):
         return jsonify({'error': 'Agent not found'}), 404
     artifacts_dir = _artifacts_dir(agent_id)
@@ -654,6 +672,7 @@ def api_list_artifacts(agent_id):
 
 @agents_bp.route('/api/agents/<agent_id>/artifacts/<path:filename>', methods=['GET'])
 def api_get_artifact(agent_id, filename):
+    agent_id = _resolve_to_parent_agent_id(agent_id)
     if not db.get_agent(agent_id):
         return jsonify({'error': 'Agent not found'}), 404
     if '/' in filename or '\\' in filename or '..' in filename:
@@ -671,6 +690,7 @@ def api_get_artifact(agent_id, filename):
 
 @agents_bp.route('/api/agents/<agent_id>/artifacts/<path:filename>', methods=['DELETE'])
 def api_delete_artifact(agent_id, filename):
+    agent_id = _resolve_to_parent_agent_id(agent_id)
     if not db.get_agent(agent_id):
         return jsonify({'error': 'Agent not found'}), 404
     if not session.get('authenticated'):
@@ -686,6 +706,7 @@ def api_delete_artifact(agent_id, filename):
 
 @agents_bp.route('/api/agents/<agent_id>/artifacts', methods=['POST'])
 def api_create_artifact(agent_id):
+    agent_id = _resolve_to_parent_agent_id(agent_id)
     if not db.get_agent(agent_id):
         return jsonify({'error': 'Agent not found'}), 404
     data = request.get_json()

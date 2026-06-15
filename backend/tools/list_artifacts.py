@@ -8,6 +8,8 @@ category type filter, sorting, and result limiting.
 
 import os
 
+from backend.tools._workspace import effective_agent_id
+
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 TEXT_DOCUMENT_EXTENSIONS = frozenset({
@@ -63,7 +65,7 @@ def _grep_file(filepath, needle):
 
 
 def execute(agent, args):
-    agent_id = agent.get('id', agent.get('agent_id', ''))
+    agent_id = effective_agent_id(agent)
     if not agent_id:
         return {'error': 'Agent ID not found in context'}
 

@@ -10,8 +10,15 @@ Permission is controlled by setting 'kanban:edit_task_super_only':
 - Status updates are always gated by the assignee check
 """
 
+import re
 from datetime import datetime, timezone
 from plugins.kanban.db import kanban_db
+
+
+def _is_subagent_of(assignee_id: str, agent_id: str) -> bool:
+    if not assignee_id or not agent_id:
+        return False
+    return bool(re.match(f"^{re.escape(agent_id)}_sub_\\d+$", assignee_id))
 
 
 def _now():
@@ -59,7 +66,17 @@ def execute(agent: dict, args: dict) -> dict:
     # Authorization: only the assignee (or a super agent)
     # may update the task's progress status.
     if new_status is not None:
-        if task.get('assignee') != agent_id and not agent.get('is_super'):
+        parent_id = agent.get('parent_id', '')
+        task_assignee = task.get('assignee')
+        # Guardrail: unassigned task cannot be status-updated unless agent claims it in the same call
+        if not task_assignee and not agent.get('is_super'):
+            claimed = new_assignee and new_assignee.strip() == agent_id
+            if not claimed:
+                return {
+                    'status': 'error',
+                    'message': 'This task has no assignee. Use kanban_update_task to assign it to yourself, or include assignee with this status update.',
+                }
+        if task_assignee and task_assignee != agent_id and task_assignee != parent_id and not _is_subagent_of(task_assignee, agent_id) and not agent.get('is_super'):
             return {
                 'status': 'error',
                 'message': 'Only the assigned agent or a super agent can update this task',
@@ -119,6 +136,12 @@ def execute(agent: dict, args: dict) -> dict:
                     }
             except Exception:
                 pass  # fail open if DB is not available
+        # Block assignment to sub-agents — assign to parent instead
+        if stripped and _is_subagent_of(stripped, agent_id):
+            return {
+                'status': 'error',
+                'message': 'Assign the task to yourself instead — your sub-agents can process it even when it\'s assigned to you.'
+            }
         fields['assignee'] = stripped
 
     if new_title is not None:
