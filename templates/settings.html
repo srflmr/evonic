@@ -322,6 +322,43 @@ block content %}
                     class="mt-2 text-sm hidden"
                 ></div>
             </div>
+            <!-- Vision Model for describe_image tool -->
+            <div
+                class="p-4 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-600"
+            >
+                <div class="flex items-center justify-between mb-3">
+                    <div>
+                        <div
+                            class="font-medium text-gray-800 dark:text-gray-100"
+                        >
+                            Vision Model
+                        </div>
+                        <div class="text-sm text-gray-500 mt-0.5">
+                            Select the vision-capable model used by the
+                            <code>describe_image</code> tool for image analysis.
+                            Only models with vision support are shown.
+                        </div>
+                    </div>
+                </div>
+                <div class="flex flex-col sm:flex-row items-center gap-3">
+                    <select
+                        id="vision-model-select"
+                        class="w-full sm:flex-1 border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                    >
+                        <option value="">Auto-detect (first vision-capable model)</option>
+                    </select>
+                    <button
+                        onclick="saveVisionModel()"
+                        class="btn-primary px-4 py-2 text-sm w-full sm:w-auto"
+                    >
+                        Save
+                    </button>
+                </div>
+                <div
+                    id="vision-model-status"
+                    class="mt-2 text-sm hidden"
+                ></div>
+            </div>
             <!-- Theme -->
             <div
                 class="flex items-center justify-between p-4 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-600"
@@ -1486,6 +1523,86 @@ block content %}
         }
     }
 
+    async function loadVisionModel() {
+        const select = document.getElementById("vision-model-select");
+        if (!select) return;
+        try {
+            const response = await fetch("/api/models");
+            if (!response.ok) throw new Error("HTTP " + response.status);
+            const data = await response.json();
+            const models = (data.models || []).filter(
+                (m) => m.vision_supported && m.enabled
+            );
+
+            // Get current vision model setting
+            let currentVisionModelId = "";
+            try {
+                const s = await apiGet("/api/settings/general");
+                currentVisionModelId = s.vision_model_id || "";
+            } catch (e) {
+                console.warn("Could not fetch vision model setting:", e);
+            }
+
+            if (models.length === 0) {
+                select.innerHTML =
+                    '<option value="">No vision-capable models — configure one in the Models tab</option>';
+                return;
+            }
+
+            select.innerHTML =
+                '<option value="">Auto-detect (first vision-capable model)</option>' +
+                models
+                    .map(
+                        (m) =>
+                            `<option value="${m.id}" ${
+                                currentVisionModelId === m.id ? "selected" : ""
+                            }>${m.name} (${m.model_name})</option>`
+                    )
+                    .join("");
+        } catch (error) {
+            console.error("Failed to load vision model:", error);
+            select.innerHTML =
+                '<option value="">Error: ' + error.message + "</option>";
+        }
+    }
+
+    async function saveVisionModel() {
+        const select = document.getElementById("vision-model-select");
+        const modelId = select.value;
+        const statusDiv = document.getElementById("vision-model-status");
+
+        // "Auto-detect" means empty string, which is valid
+        try {
+            const response = await fetch("/api/settings/batch", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    settings: { vision_model_id: modelId },
+                }),
+            });
+            const result = await response.json();
+
+            if (result.success) {
+                statusDiv.className = "mt-2 text-sm text-green-600";
+                statusDiv.textContent = "Vision model saved successfully!";
+                statusDiv.classList.remove("hidden");
+                setTimeout(() => statusDiv.classList.add("hidden"), 3000);
+            } else {
+                statusDiv.className = "mt-2 text-sm text-red-600";
+                statusDiv.textContent =
+                    "Error: " +
+                    ((result.errors && result.errors.join(", ")) ||
+                        "Failed to save");
+                statusDiv.classList.remove("hidden");
+            }
+        } catch (error) {
+            console.error("Failed to save vision model:", error);
+            statusDiv.className = "mt-2 text-sm text-red-600";
+            statusDiv.textContent = "Error: " + error.message;
+            statusDiv.classList.remove("hidden");
+        }
+    }
+
     async function loadTaskClassifier() {
         const select = document.getElementById("task-classifier-model-select");
         const toggle = document.getElementById("task-classifier-toggle");
@@ -1604,6 +1721,7 @@ block content %}
         loadGeneralSettings();
         loadTools();
         loadDefaultModel();
+        loadVisionModel();
     });
 
     async function loadGeneralSettings() {

@@ -1501,20 +1501,23 @@ class AgentRuntime:
         # Keep this alias so the rest of _do_process_inner reads naturally.
 
         def _apply_multimodal(msg: dict) -> dict:
-            """Apply multimodal formatting for user messages with image/audio/video if agent supports it."""
+            """Apply multimodal formatting for user messages with audio/video if agent supports it.
+
+            Images are NEVER auto-fed to the main LLM — images are always accessed via
+            the ``describe_image`` tool instead.
+            """
             if msg.get('role') != 'user':
                 return msg
-            img = msg.pop('_image_url', None) if agent.get('vision_enabled') else msg.pop('_image_url', None) and None
+            # Always pop _image_url but NEVER feed it to the LLM.
+            msg.pop('_image_url', None)
             audio = msg.pop('_audio_url', None) if agent.get('audio_enabled') else msg.pop('_audio_url', None) and None
             video = msg.pop('_video_url', None) if agent.get('video_enabled') else msg.pop('_video_url', None) and None
-            if not img and not audio and not video:
+            if not audio and not video:
                 return msg
             parts = []
             text_content = msg.get('content', '')
             if text_content and text_content not in ('[Image]', '[Audio]', '[Video]'):
                 parts.append({"type": "text", "text": text_content})
-            if img:
-                parts.append({"type": "image_url", "image_url": {"url": img}})
             if audio:
                 # OpenAI-compatible input_audio format
                 # Extract base64 data and format from data URL
@@ -1756,6 +1759,8 @@ class AgentRuntime:
                 'disable_turn_prefetch': agent.get('disable_turn_prefetch', 0),
                 'variables': db.get_agent_variables_dict(db_agent_id),
                 'run_as_user': agent.get('run_as_user'),
+                'vision_model_id': agent.get('vision_model_id'),
+                'vision_enabled': agent.get('vision_enabled', 1),
             }
         # Propagate agent_message_depth and from_agent_id from incoming message metadata
         if ctx.external_user_id.startswith("__agent__"):
@@ -2029,16 +2034,15 @@ class AgentRuntime:
         msg_image = _msg_meta.get("image_url") if _msg_meta else None
         msg_audio = _msg_meta.get("audio_url") if _msg_meta else None
         msg_video = _msg_meta.get("video_url") if _msg_meta else None
-        has_image = msg_image and agent.get("vision_enabled")
+        # Images are NEVER auto-fed — use describe_image tool instead.
         has_audio = msg_audio and agent.get("audio_enabled")
         has_video = msg_video and agent.get("video_enabled")
-        if has_image or has_audio or has_video:
+        if has_audio or has_video:
             parts = []
             text_content = msg.get("content", "")
             if text_content and text_content not in ("[Image]", "[Audio]", "[Video]"):
                 parts.append({"type": "text", "text": text_content})
-            if has_image:
-                parts.append({"type": "image_url", "image_url": {"url": msg_image}})
+            # NOTE: Images are never auto-fed — use describe_image tool instead.
             if has_audio:
                 if msg_audio.startswith("data:"):
                     try:

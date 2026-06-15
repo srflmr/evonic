@@ -123,6 +123,8 @@ class TurnPrefetcher:
                 'disable_turn_prefetch': agent.get('disable_turn_prefetch', 0),
                 'variables': db.get_agent_variables_dict(agent_id),
                 'run_as_user': agent.get('run_as_user'),
+                'vision_model_id': agent.get('vision_model_id'),
+                'vision_enabled': agent.get('vision_enabled', 1),
             }
 
             # Re-load messages from JSONL (most expensive I/O, ~10-200ms)

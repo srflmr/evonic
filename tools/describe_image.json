@@ -1,0 +1,29 @@
+{
+  "id": "describe_image",
+  "name": "Describe Image",
+  "description": "Analyze and describe an image using a vision-capable LLM.",
+  "function": {
+    "name": "describe_image",
+    "description": "Analyze an image file using a vision-capable LLM. Returns a text description of what is in the image. Use this to understand visual content without needing to feed the image directly to the main LLM. Requires the agent to have vision_enabled=1.",
+    "parameters": {
+      "properties": {
+        "path": {
+          "description": "Absolute or relative path to the image file (.jpg, .jpeg, .png, .gif, .webp, .bmp).",
+          "type": "string"
+        },
+        "query": {
+          "description": "Optional specific question about the image. If omitted, returns a general description of the image.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "path"
+      ],
+      "type": "object"
+    }
+  },
+  "mock_response": "{\"description\":\"This is a sample image description from the mock response. In production, this would be an actual analysis of the image content by a vision model.\"}",
+  "mock_response_type": "json",
+  "created_at": "2026-06-15T16:00:00.000000",
+  "updated_at": "2026-06-15T16:00:00.000000"
+}

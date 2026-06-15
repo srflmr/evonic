@@ -737,6 +737,7 @@ def api_get_general_settings():
         'max_tool_iterations': int(db.get_setting('max_tool_iterations', str(config.AGENT_MAX_TOOL_ITERATIONS))),
         'agent_sidebar_limit': int(db.get_setting('agent_sidebar_limit', str(config.AGENT_SIDEBAR_LIMIT))),
         'theme': db.get_setting('theme', 'system'),
+        'vision_model_id': db.get_setting('vision_model_id', ''),
     })
 
 
@@ -891,6 +892,23 @@ def api_batch_save():
                 results['default_model_id'] = model_id
             else:
                 errors.append('default_model_id: Model not found')
+
+    # Vision Model
+    if 'vision_model_id' in settings:
+        vision_model_id = settings['vision_model_id']
+        if vision_model_id:
+            model = db.get_model_by_id(vision_model_id)
+            if model and model.get('vision_supported'):
+                db.set_setting('vision_model_id', vision_model_id)
+                results['vision_model_id'] = vision_model_id
+            elif model:
+                errors.append('vision_model_id: Model does not support vision')
+            else:
+                errors.append('vision_model_id: Model not found')
+        else:
+            # Allow clearing the setting
+            db.set_setting('vision_model_id', '')
+            results['vision_model_id'] = ''
 
     if errors:
         return jsonify({

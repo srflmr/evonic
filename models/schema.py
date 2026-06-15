@@ -511,6 +511,12 @@ class SchemaMixin:
             except sqlite3.OperationalError:
                 pass
 
+            # Migration: add vision_model_id for per-agent vision model selection
+            try:
+                cursor.execute("ALTER TABLE agents ADD COLUMN vision_model_id TEXT DEFAULT NULL")
+            except sqlite3.OperationalError:
+                pass
+
             # Agent Variables (per-agent key-value config used by tools/skills)
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS agent_variables (

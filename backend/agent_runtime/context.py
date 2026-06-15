@@ -1136,9 +1136,10 @@ def build_message_entry(msg: dict, agent: dict) -> dict:
     msg_image = _msg_meta.get('image_url') if _msg_meta else None
     msg_audio = _msg_meta.get('audio_url') if _msg_meta else None
     msg_video = _msg_meta.get('video_url') if _msg_meta else None
-    has_image = msg_image and agent.get('vision_enabled')
+    # Images are NEVER auto-fed to the main LLM — always use the describe_image tool instead.
     has_audio = msg_audio and agent.get('audio_enabled')
     has_video = msg_video and agent.get('video_enabled')
+    has_image_attachment = msg_image is not None  # track for attachment note enhancement
 
     # Build attachment context note if attachment_info is present in metadata
     attachment_info = _msg_meta.get('attachment_info') if _msg_meta else None
@@ -1154,20 +1155,27 @@ def build_message_entry(msg: dict, agent: dict) -> dict:
             size_str = f"{size_bytes / 1024:.1f} KB"
         else:
             size_str = f"{size_bytes} B"
-        attachment_note = (
-            f"\n\n[Attachment: {filename} ({mime_type}, {size_str})]"
-            f"\nFile path: {file_path}"
-        )
+        is_image = mime_type and mime_type.startswith("image/")
+        if is_image and has_image_attachment:
+            attachment_note = (
+                f"\n\n[Attachment: {filename} ({mime_type}, {size_str})]"
+                f"\nFile path: {file_path}"
+                "\nUse the `describe_image` tool to view and analyze this image."
+            )
+        else:
+            attachment_note = (
+                f"\n\n[Attachment: {filename} ({mime_type}, {size_str})]"
+                f"\nFile path: {file_path}"
+            )
 
-    if has_image or has_audio or has_video:
+    if has_audio or has_video:
         parts = []
         text_content = msg.get('content', '')
         if attachment_note:
             text_content = text_content.rstrip() + attachment_note
         if text_content and text_content not in ('[Image]', '[Audio]', '[Video]'):
             parts.append({"type": "text", "text": text_content})
-        if has_image:
-            parts.append({"type": "image_url", "image_url": {"url": msg_image}})
+        # NOTE: Images are never auto-fed — use describe_image tool instead.
         if has_audio:
             if msg_audio.startswith("data:"):
                 try:
