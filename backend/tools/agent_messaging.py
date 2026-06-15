@@ -535,6 +535,7 @@ def _on_final_answer(data: dict) -> None:
     report_to_id = None
     report_to_channel_id = None
     original_depth = 0
+    subagent_user_direct = False
     for msg in reversed(messages):
         meta = msg.get('metadata') or {}
         if isinstance(meta, str):
@@ -547,6 +548,7 @@ def _on_final_answer(data: dict) -> None:
             report_to_id = meta.get('report_to_id')
             report_to_channel_id = meta.get('report_to_channel_id') or None
             original_depth = meta.get('agent_message_depth', 0)
+            subagent_user_direct = meta.get('subagent_user_direct', False)
             break
 
     if not report_to_id:
@@ -569,6 +571,7 @@ def _on_final_answer(data: dict) -> None:
             report_to_id = latest_meta.get('report_to_id')
             report_to_channel_id = latest_meta.get('report_to_channel_id') or None
             original_depth = latest_meta.get('agent_message_depth', 0)
+            subagent_user_direct = latest_meta.get('subagent_user_direct', False)
 
     if not report_to_id:
         _logger.warning(
@@ -597,6 +600,10 @@ def _on_final_answer(data: dict) -> None:
     # Forward B's reply to A's user session
     agent_b = db.get_agent(agent_b_id)
     agent_b_name = agent_b.get('name', agent_b_id) if agent_b else agent_b_id
+
+    # Prepend direct-sub-agent marker if this sub-agent was spawned via /sub command
+    if subagent_user_direct:
+        answer = "[Sub-agent response \u2014 spawned directly by user via /sub command]\n\n" + answer
 
     # Append a hint so Agent A knows it can continue the conversation if needed
     forwarded_message = (
