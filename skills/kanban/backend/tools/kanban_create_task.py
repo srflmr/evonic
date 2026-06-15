@@ -6,8 +6,15 @@ Permission is controlled by setting 'kanban:create_task_super_only':
 - '1' (default/enabled): only super agent can create tasks (default)
 """
 
+import re
 from datetime import datetime, timezone
 from plugins.kanban.db import kanban_db
+
+
+def _is_subagent_of(assignee_id: str, agent_id: str) -> bool:
+    if not assignee_id or not agent_id:
+        return False
+    return bool(re.match(f"^{re.escape(agent_id)}_sub_\\d+$", assignee_id))
 
 
 def _now():
@@ -52,6 +59,12 @@ def execute(agent: dict, args: dict) -> dict:
                 }
         except Exception:
             pass  # fail open if DB is not available
+    # Block assignment to sub-agents — assign to parent instead
+    if assignee and _is_subagent_of(assignee, agent.get('id', '')):
+        return {
+            'status': 'error',
+            'message': 'Assign the task to yourself instead — your sub-agents can process it even when it\'s assigned to you.'
+        }
 
     now = _now()
     task_data = {

@@ -2,8 +2,15 @@
 Kanban update status tool — move a task to in-progress or done.
 """
 
+import re
 from datetime import datetime, timezone
 from plugins.kanban.db import kanban_db
+
+
+def _is_subagent_of(assignee_id: str, agent_id: str) -> bool:
+    if not assignee_id or not agent_id:
+        return False
+    return bool(re.match(f"^{re.escape(agent_id)}_sub_\\d+$", assignee_id))
 
 
 def _now():
@@ -28,7 +35,8 @@ def execute(agent: dict, args: dict) -> dict:
     if not task_assignee and not agent.get('is_super'):
         return {'status': 'error', 'message': 'This task has no assignee. Use kanban_update_task to assign it to yourself first, then update the status.'}
     parent_id = agent.get('parent_id', '')
-    if task_assignee != agent_id and task_assignee != parent_id and not agent.get('is_super'):
+    is_parent_of_assignee = _is_subagent_of(task_assignee, agent_id)
+    if task_assignee != agent_id and task_assignee != parent_id and not is_parent_of_assignee and not agent.get('is_super'):
         return {'status': 'error', 'message': 'Only the assigned agent or a super agent can update this task'}
 
     old_status = task.get('status')
