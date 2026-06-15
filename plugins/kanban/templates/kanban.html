@@ -69,6 +69,30 @@ html.dark .drag-over { --tw-ring-color: rgb(99 102 241); background-color: rgb(4
     min-height: 4.5rem;
     resize: none;
 }
+
+/* Kanban skeleton loading cards */
+.kanban-skeleton { display: flex; flex-direction: column; gap: 0.5rem; }
+.kanban-error-state { display: none; }
+.kanban-error-state.show { display: flex; }
+.skeleton-card {
+    background: #fff;
+    border: 1px solid #e5e7eb;
+    border-radius: 0.5rem;
+    padding: 0.75rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+html.dark .skeleton-card {
+    background: #374151;
+    border-color: #4b5563;
+}
+.skeleton-card .sk-title { height: 0.75rem; width: 75%; }
+.skeleton-card .sk-desc  { height: 0.625rem; width: 55%; }
+.skeleton-card .sk-meta  { height: 0.625rem; width: 40%; }
+.skeleton-card .sk-actions { display: flex; gap: 0.25rem; margin-top: 0.25rem; border-top: 1px solid #f3f4f6; padding-top: 0.5rem; }
+html.dark .skeleton-card .sk-actions { border-color: #4b5563; }
+.skeleton-card .sk-btn { height: 1.5rem; border-radius: 0.25rem; flex: 1; }
 </style>
 
 <!-- Board header -->
@@ -115,21 +139,39 @@ html.dark .drag-over { --tw-ring-color: rgb(99 102 241); background-color: rgb(4
             <span class="font-semibold text-gray-700 dark:text-gray-200">Todo</span>
             <span id="count-todo" class="text-xs bg-gray-100 text-gray-500 dark:bg-gray-600 dark:text-gray-100 rounded-full px-2 py-0.5">0</span>
         </div>
-        <div class="task-list flex flex-col gap-2 flex-1 min-h-[60px]" id="list-todo"></div>
+        <div class="task-list flex flex-col gap-2 flex-1 min-h-[60px]" id="list-todo">
+            <div class="kanban-skeleton" id="skel-todo">
+                <div class="skeleton-card"><div class="skeleton-line sk-title"></div><div class="skeleton-line sk-desc"></div><div class="skeleton-line sk-meta"></div><div class="sk-actions"><div class="skeleton-line sk-btn"></div><div class="skeleton-line sk-btn"></div></div></div>
+                <div class="skeleton-card"><div class="skeleton-line sk-title"></div><div class="skeleton-line sk-desc"></div><div class="skeleton-line sk-meta"></div><div class="sk-actions"><div class="skeleton-line sk-btn"></div><div class="skeleton-line sk-btn"></div></div></div>
+                <div class="skeleton-card"><div class="skeleton-line sk-title"></div><div class="skeleton-line sk-desc"></div><div class="skeleton-line sk-meta"></div><div class="sk-actions"><div class="skeleton-line sk-btn"></div><div class="skeleton-line sk-btn"></div></div></div>
+                <div class="skeleton-card"><div class="skeleton-line sk-title"></div><div class="skeleton-line sk-desc"></div><div class="skeleton-line sk-meta"></div><div class="sk-actions"><div class="skeleton-line sk-btn"></div><div class="skeleton-line sk-btn"></div></div></div>
+            </div>
+        </div>
     </div>
     <div class="flex-1 min-w-[280px]  dark:bg-gray-800 bg-gray-200 rounded-xl p-4 flex flex-col border border-gray-500" data-status="in-progress">
         <div class="flex items-center gap-2 mb-3">
             <span class="font-semibold text-gray-700 dark:text-gray-200">In Progress</span>
             <span id="count-in-progress" class="text-xs bg-gray-100 text-gray-500 dark:bg-gray-600 dark:text-gray-100 rounded-full px-2 py-0.5">0</span>
         </div>
-        <div class="task-list flex flex-col gap-2 flex-1 min-h-[60px]" id="list-in-progress"></div>
+        <div class="task-list flex flex-col gap-2 flex-1 min-h-[60px]" id="list-in-progress">
+            <div class="kanban-skeleton" id="skel-in-progress">
+                <div class="skeleton-card"><div class="skeleton-line sk-title"></div><div class="skeleton-line sk-desc"></div><div class="skeleton-line sk-meta"></div><div class="sk-actions"><div class="skeleton-line sk-btn"></div><div class="skeleton-line sk-btn"></div></div></div>
+                <div class="skeleton-card"><div class="skeleton-line sk-title"></div><div class="skeleton-line sk-desc"></div><div class="skeleton-line sk-meta"></div><div class="sk-actions"><div class="skeleton-line sk-btn"></div><div class="skeleton-line sk-btn"></div></div></div>
+            </div>
+        </div>
     </div>
     <div class="flex-1 min-w-[280px] bg-gray-200 dark:bg-gray-800 rounded-xl p-4 flex flex-col border border-gray-500" data-status="done">
         <div class="flex items-center gap-2 mb-3">
             <span class="font-semibold text-gray-700 dark:text-gray-200">Done</span>
             <span id="count-done" class="text-xs bg-gray-100 text-gray-500 dark:bg-gray-600 dark:text-gray-100 rounded-full px-2 py-0.5">0</span>
         </div>
-        <div class="task-list flex flex-col gap-2 flex-1 min-h-[60px]" id="list-done"></div>
+        <div class="task-list flex flex-col gap-2 flex-1 min-h-[60px]" id="list-done">
+            <div class="kanban-skeleton" id="skel-done">
+                <div class="skeleton-card"><div class="skeleton-line sk-title"></div><div class="skeleton-line sk-desc"></div><div class="skeleton-line sk-meta"></div><div class="sk-actions"><div class="skeleton-line sk-btn"></div><div class="skeleton-line sk-btn"></div></div></div>
+                <div class="skeleton-card"><div class="skeleton-line sk-title"></div><div class="skeleton-line sk-desc"></div><div class="skeleton-line sk-meta"></div><div class="sk-actions"><div class="skeleton-line sk-btn"></div><div class="skeleton-line sk-btn"></div></div></div>
+                <div class="skeleton-card"><div class="skeleton-line sk-title"></div><div class="skeleton-line sk-desc"></div><div class="skeleton-line sk-meta"></div><div class="sk-actions"><div class="skeleton-line sk-btn"></div><div class="skeleton-line sk-btn"></div></div></div>
+            </div>
+        </div>
     </div>
     <div class="flex-1 min-w-[280px] dark:bg-gray-800 bg-gray-200 rounded-xl p-4 flex flex-col border border-gray-500" data-status="archived">
         <div class="flex items-center justify-between mb-3">
@@ -142,8 +184,22 @@ html.dark .drag-over { --tw-ring-color: rgb(99 102 241); background-color: rgb(4
             </div>
             <button onclick="clearAllArchived()" class="text-xs text-gray-500 dark:text-gray-400 hover:text-gray-700 font-medium underline">Clear All</button>
         </div>
-        <div class="task-list flex flex-col gap-2 flex-1 min-h-[60px]" id="list-archived"></div>
+        <div class="task-list flex flex-col gap-2 flex-1 min-h-[60px]" id="list-archived">
+            <div class="kanban-skeleton" id="skel-archived">
+                <div class="skeleton-card"><div class="skeleton-line sk-title"></div><div class="skeleton-line sk-desc"></div><div class="skeleton-line sk-meta"></div><div class="sk-actions"><div class="skeleton-line sk-btn"></div><div class="skeleton-line sk-btn"></div></div></div>
+                <div class="skeleton-card"><div class="skeleton-line sk-title"></div><div class="skeleton-line sk-desc"></div><div class="skeleton-line sk-meta"></div><div class="sk-actions"><div class="skeleton-line sk-btn"></div><div class="skeleton-line sk-btn"></div></div></div>
+            </div>
+        </div>
     </div>
+</div>
+
+<!-- Error state banner (hidden initially, shown on fetch failure) -->
+<div id="kanban-error-banner" class="kanban-error-state mx-6 mb-4 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl items-center justify-between gap-3">
+    <div class="flex items-center gap-3">
+        <svg class="w-5 h-5 text-red-500 dark:text-red-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+        <span class="text-sm text-red-700 dark:text-red-300">Failed to load tasks. Please check your connection.</span>
+    </div>
+    <button onclick="loadTasks()" class="shrink-0 px-3 py-1.5 text-xs font-medium text-red-700 dark:text-red-300 bg-red-100 dark:bg-red-900/40 hover:bg-red-200 dark:hover:bg-red-900/60 rounded-lg transition">Retry</button>
 </div>
 
 <!-- Create/Edit Modal -->
@@ -538,11 +594,28 @@ html.dark .drag-over { --tw-ring-color: rgb(99 102 241); background-color: rgb(4
         }
     }
 
+    function hideKanbanSkeleton() {
+        document.querySelectorAll('.kanban-skeleton').forEach(function(el) { el.style.display = 'none'; });
+    }
+
+    function showKanbanError() {
+        hideKanbanSkeleton();
+        var banner = document.getElementById('kanban-error-banner');
+        if (banner) banner.classList.add('show');
+    }
+
+    function hideKanbanError() {
+        var banner = document.getElementById('kanban-error-banner');
+        if (banner) banner.classList.remove('show');
+    }
+
     function loadTasks(callback) {
         if (loadTasksInFlight) return;
         loadTasksInFlight = true;
         $.get(`${API}/tasks`, function(data) {
             loadTasksInFlight = false;
+            hideKanbanSkeleton();
+            hideKanbanError();
             const newTasks = data.tasks || [];
             const newFP = computeTasksFingerprint(newTasks);
             tasks = newTasks;
@@ -553,6 +626,8 @@ html.dark .drag-over { --tw-ring-color: rgb(99 102 241); background-color: rgb(4
             if (typeof callback === 'function') callback();
         }).fail(function() {
             loadTasksInFlight = false;
+            hideKanbanSkeleton();
+            showKanbanError();
             console.error('Failed to load tasks');
         });
     }
