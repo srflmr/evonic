@@ -60,6 +60,7 @@ def execute(agent: dict, args: dict) -> dict:
         'status': 'todo',
         'priority': priority,
         'assignee': assignee,
+        'created_by': agent.get('id'),
         'created_at': now,
         'updated_at': now,
     }

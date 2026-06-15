@@ -31,6 +31,7 @@ class KanbanDB:
     def __init__(self, db_path: str = DB_PATH):
         self.db_path = db_path
         self._init_tables()
+        self._migrate_created_by()
         self._migrate_columns()
         self._migrate_remove_free_pick()
         self._migrate_archived_at()
@@ -66,6 +67,7 @@ class KanbanDB:
                     status      TEXT NOT NULL DEFAULT 'todo',
                     priority    TEXT NOT NULL DEFAULT 'low',
                     assignee    TEXT,
+                    created_by  TEXT,
                     completed_at TEXT,
                     started_at  TEXT,
                     created_at  TEXT NOT NULL,
@@ -139,6 +141,7 @@ class KanbanDB:
                     status      TEXT NOT NULL DEFAULT 'todo',
                     priority    TEXT NOT NULL DEFAULT 'low',
                     assignee    TEXT,
+                    created_by  TEXT,
                     completed_at TEXT,
                     created_at  TEXT NOT NULL,
                     updated_at  TEXT NOT NULL
@@ -146,13 +149,20 @@ class KanbanDB:
             """)
             conn.execute("""
                 INSERT INTO tasks_new (id, title, description, status, priority,
-                                       assignee, completed_at, created_at, updated_at)
+                                       assignee, created_by, completed_at, created_at, updated_at)
                 SELECT id, title, description, status, priority,
-                       assignee, completed_at, created_at, updated_at
+                       assignee, created_by, completed_at, created_at, updated_at
                 FROM tasks
             """)
             conn.execute("DROP TABLE tasks")
             conn.execute("ALTER TABLE tasks_new RENAME TO tasks")
+
+    def _migrate_created_by(self):
+        """Add created_by column if it doesn't exist."""
+        with self._connect() as conn:
+            cols = {row[1] for row in conn.execute("PRAGMA table_info(tasks)").fetchall()}
+            if 'created_by' not in cols:
+                conn.execute("ALTER TABLE tasks ADD COLUMN created_by TEXT")
 
     def _migrate_archived_at(self):
         """Add archived_at column if it doesn't exist."""
@@ -358,13 +368,13 @@ class KanbanDB:
         with self._connect() as conn:
             cur = conn.execute("""
                 INSERT INTO tasks
-                (title, description, status, priority, assignee,
+                (title, description, status, priority, assignee, created_by,
                  completed_at, created_at, updated_at)
-                VALUES (?,?,?,?,?,?,?,?)
+                VALUES (?,?,?,?,?,?,?,?,?)
             """, (
                 task['title'], task.get('description', ''),
                 task.get('status', 'todo'), task.get('priority', 'low'),
-                task.get('assignee'),
+                task.get('assignee'), task.get('created_by'),
                 task.get('completed_at'), task['created_at'], task['updated_at'],
             ))
             new_id = cur.lastrowid

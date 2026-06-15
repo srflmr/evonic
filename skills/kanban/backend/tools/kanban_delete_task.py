@@ -2,12 +2,15 @@
 Kanban delete task tool — permanently remove a task from the Kanban board.
 
 Permission is controlled by setting 'kanban:delete_task_super_only':
-- When enabled (default): only super agent can delete tasks
-- When disabled: regular agents can delete (subject to human approval)
+- When enabled (default): only super agent and the task creator can delete tasks
+- When disabled: all regular agents can delete (subject to human approval)
 
-Permission model (two-tier for regular agents when allowed):
+Permission model:
 - Super agent: deletes immediately.
-- Regular agent: returns requires_approval → llm_loop triggers human-in-the-loop → re-executes with _skip_safety=True.
+- Task owner (agent who created the task): can delete even when delete_task_super_only=true,
+  subject to human approval for regular agents.
+- Regular agent (non-owner): requires delete_task_super_only=false, then human approval
+  → re-executes with _skip_safety=True.
 """
 
 from plugins.kanban.db import kanban_db
@@ -26,9 +29,11 @@ def execute(agent: dict, args: dict) -> dict:
 
     # Permission check
     is_super = agent.get('is_super')
+    is_owner = task.get('created_by') and task.get('created_by') == agent.get('id')
 
-    # Check delete_task_super_only setting via skill config
-    if not is_super:
+    # Task owners can delete their own tasks regardless of delete_task_super_only
+    # Non-owners must still pass the super_only gate
+    if not is_super and not is_owner:
         try:
             from backend.skills_manager import skills_manager
             config = skills_manager.get_skill_config('kanban')
@@ -38,7 +43,7 @@ def execute(agent: dict, args: dict) -> dict:
         if super_only:
             return {
                 'status': 'error',
-                'message': 'You are not authorized to delete tasks. Only the super agent can delete tasks.'
+                'message': 'You are not authorized to delete tasks. Only the super agent or task owners can delete tasks.'
             }
 
     skip_safety = agent.get('_skip_safety')
