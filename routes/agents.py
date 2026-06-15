@@ -70,6 +70,9 @@ AGENTS_DIR = os.path.join(BASE_DIR, 'agents')
 WORKSPACE_DIR = os.path.join(BASE_DIR, 'shared', 'agents')
 
 SLUG_RE = re.compile(r'^[a-z0-9_]+$')
+
+# Sub-agent IDs follow the pattern parent_id_sub_N — reject user-created IDs that match this.
+SUBAGENT_ID_RE = re.compile(r'_sub_\d+$')
 USER_ID_RE = re.compile(r'^[a-zA-Z0-9_\-\.@]{1,128}$')
 
 # Tools managed exclusively by the artifacts_enabled agent setting.
@@ -232,6 +235,8 @@ def api_create_agent():
     agent_id = data.get('id', '').strip().lower()
     if not agent_id or not SLUG_RE.match(agent_id):
         return jsonify({'error': 'Invalid ID. Use only lowercase alphanumeric characters and underscores (snake_case).'}), 400
+    if SUBAGENT_ID_RE.search(agent_id):
+        return jsonify({'error': 'Agent ID cannot end with a sub-agent pattern (e.g. _sub_1). This naming convention is reserved for internal use.'}), 400
     if db.get_agent(agent_id):
         return jsonify({'error': 'Agent ID already exists.'}), 400
     if len(data.get('name', '')) > 200:
@@ -355,6 +360,8 @@ def api_clone_agent(agent_id):
         return jsonify({
             'error': 'Invalid ID. Use only lowercase alphanumeric characters and underscores (snake_case).'
         }), 400
+    if SUBAGENT_ID_RE.search(new_id):
+        return jsonify({'error': 'Agent ID cannot end with a sub-agent pattern (e.g. _sub_1). This naming convention is reserved for internal use.'}), 400
     if not new_name:
         new_name = f"{source.get('name', agent_id)} (Clone)"
 

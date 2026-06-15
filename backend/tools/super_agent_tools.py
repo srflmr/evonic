@@ -422,6 +422,8 @@ def _exec_create_agent(args: dict) -> dict:
     name = (args.get('name') or '').strip()
     if not agent_id or not _re.match(r'^[a-z0-9_]+$', agent_id):
         return {'error': 'Invalid ID. Use only lowercase alphanumeric characters and underscores (snake_case).'}
+    if _re.search(r'_sub_\d+$', agent_id):
+        return {'error': 'Agent ID cannot end with a sub-agent pattern (e.g. _sub_1). This naming convention is reserved for internal use.'}
     if not name:
         return {'error': 'Name is required.'}
     if db.get_agent(agent_id):
@@ -582,6 +584,9 @@ def _exec_apply_skillset(args: dict) -> dict:
         return {'error': 'skill_id is required.'}
     if not agent_id or not _re.match(r'^[a-z0-9_]+$', agent_id):
         return {'error': 'Invalid agent_id. Use only lowercase alphanumeric characters and underscores (snake_case).'}
+
+    if _re.search(r'_sub_\d+$', agent_id):
+        return {'error': 'Agent ID cannot end with a sub-agent pattern (e.g. _sub_1). This naming convention is reserved for internal use.'}
 
     if db.get_agent(agent_id):
         return {'error': f"Agent ID '{agent_id}' already exists."}
