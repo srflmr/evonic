@@ -5,5 +5,5 @@ strip_ansi = true
 strip_lines = [
     '^\\s*$',
 ]
-truncate_lines_at = 200
+truncate_lines_at = 8000
 max_lines = 100

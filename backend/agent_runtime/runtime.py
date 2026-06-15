@@ -1510,6 +1510,28 @@ class AgentRuntime:
                 return msg
             # Always pop _image_url but NEVER feed it to the LLM.
             msg.pop('_image_url', None)
+            # Append attachment_info note so agents see file path metadata.
+            _att = msg.pop('attachment_info', None) or msg.get('attachment_info')
+            if _att and isinstance(_att, dict):
+                fp = _att.get('file_path', '')
+                fn = _att.get('filename', '')
+                mt = _att.get('mime_type', '')
+                sb = int(_att.get('size_bytes', 0) or 0)
+                is_img = bool(mt and mt.startswith('image/'))
+                if sb >= 1048576:
+                    sz = f"{sb / 1048576:.1f} MB"
+                elif sb >= 1024:
+                    sz = f"{sb / 1024:.1f} KB"
+                else:
+                    sz = f"{sb} B"
+                note = (
+                    f"\n\n[Attachment: {fn} ({mt}, {sz})]"
+                    f"\nFile path: {fp}"
+                )
+                if is_img:
+                    note += "\nUse the `describe_image` tool to view and analyze this image."
+                content = msg.get('content', '') or ''
+                msg['content'] = content.rstrip() + note
             audio = msg.pop('_audio_url', None) if agent.get('audio_enabled') else msg.pop('_audio_url', None) and None
             video = msg.pop('_video_url', None) if agent.get('video_enabled') else msg.pop('_video_url', None) and None
             if not audio and not video:
@@ -1562,6 +1584,9 @@ class AgentRuntime:
                     _vid = _cur_meta.get('video_url')
                     if _vid:
                         _cur_msg['_video_url'] = _vid
+                    _att = _cur_meta.get('attachment_info')
+                    if _att:
+                        _cur_msg['attachment_info'] = _att
                     messages.append(_apply_multimodal(_cur_msg))
         else:
             # Prefer JSONL-based context if the log has entries for this session

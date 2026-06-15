@@ -219,7 +219,7 @@ def execute(agent, args: dict) -> dict:
             return {"error": "Access denied — attachment belongs to a different agent."}
         resolved_path = row.get('file_path')
         if not resolved_path or not os.path.isfile(resolved_path):
-            return {"error": "Attachment file is missing on disk (it may have expired)."}
+            return {"error": "Attachment file is missing on disk. It may have been moved by save_artifact, manually deleted, or expired via retention cleanup."}
     elif raw_path:
         # Path-based access: resolve and enforce agent root prefix.
         target_agent_id = agent_id

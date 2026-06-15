@@ -13,15 +13,44 @@ Two usage modes:
 """
 
 import os
+import pwd
+import shutil
 
 from backend.tools._workspace import effective_agent_id
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+_ATTACHMENTS_ROOT = os.path.join(BASE_DIR, 'data', 'attachments')
 
 
-def _artifacts_dir(agent_id: str) -> str:
+def _resolve_run_as_user(agent: dict) -> str | None:
+    """Return the agent's run_as_user if set and valid, otherwise None."""
+    raw = (agent.get('run_as_user') or '').strip()
+    if not raw:
+        return None
+    try:
+        pwd.getpwnam(raw)
+    except KeyError:
+        return None
+    return raw
+
+
+def _chown_to_run_as(path: str, run_as_user: str | None) -> None:
+    """Chown a file or directory to the agent's run_as_user."""
+    if run_as_user is None:
+        return
+    try:
+        pw = pwd.getpwnam(run_as_user)
+        uid = pw.pw_uid
+        gid = pw.pw_gid
+        os.chown(path, uid, gid)
+    except (OSError, KeyError):
+        pass
+
+
+def _artifacts_dir(agent_id: str, run_as_user: str | None = None) -> str:
     d = os.path.join(BASE_DIR, 'shared', 'agents', agent_id, 'artifacts')
     os.makedirs(d, exist_ok=True)
+    _chown_to_run_as(d, run_as_user)
     return d
 
 
@@ -29,6 +58,8 @@ def execute(agent: dict, args: dict) -> dict:
     agent_id = effective_agent_id(agent)
     if not agent_id:
         return {'error': 'Agent ID not found in context'}
+
+    run_as_user = _resolve_run_as_user(agent)
 
     filename = args.get('filename', '').strip()
     content = args.get('content', '')
@@ -42,7 +73,7 @@ def execute(agent: dict, args: dict) -> dict:
     if '/' in filename or '\\' in filename or '..' in filename:
         return {'error': 'Invalid filename: must not contain "/", "\\", or "..". Use a plain basename like "chart.png" or "output.json"'}
 
-    artifacts_dir = _artifacts_dir(agent_id)
+    artifacts_dir = _artifacts_dir(agent_id, run_as_user)
     filepath = os.path.join(artifacts_dir, filename)
 
     try:
@@ -125,13 +156,26 @@ def execute(agent: dict, args: dict) -> dict:
             with open(filepath, 'wb') as f:
                 f.write(source_bytes)
 
+            _chown_to_run_as(filepath, run_as_user)
+
             # --- Verify: compare destination size vs source bytes length ---
             dest_size = os.stat(filepath).st_size
             source_len = len(source_bytes)
 
             warning = None
 
-            if dest_size == source_len:
+            # Determine whether to delete the source file.
+            # NEVER delete files inside the attachments root — those are
+            # managed by the attachment system and may still be needed by
+            # read_attachment / future agent turns.
+            resolved_real = os.path.realpath(resolved)
+            attachments_real = os.path.realpath(_ATTACHMENTS_ROOT)
+            is_attachment = resolved_real.startswith(attachments_real + os.sep)
+
+            if is_attachment:
+                # Copy-only: source is a user-uploaded attachment; keep it
+                pass
+            elif dest_size == source_len:
                 # Success — delete source file (move behavior)
                 delete_result = backend.delete_file(resolved)
                 if 'error' in delete_result:
@@ -140,6 +184,8 @@ def execute(agent: dict, args: dict) -> dict:
                 # Size mismatch — retry once (overwrite destination)
                 with open(filepath, 'wb') as f:
                     f.write(source_bytes)
+
+                _chown_to_run_as(filepath, run_as_user)
 
                 dest_size = os.stat(filepath).st_size
 
@@ -181,6 +227,8 @@ def execute(agent: dict, args: dict) -> dict:
             content = normalize_code_quotes(content)
             with open(filepath, 'w', encoding='utf-8') as f:
                 f.write(content)
+
+            _chown_to_run_as(filepath, run_as_user)
 
         stat = os.stat(filepath)
         return {

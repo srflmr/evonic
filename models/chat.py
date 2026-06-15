@@ -789,13 +789,13 @@ class AgentChatDB:
             row = cursor.fetchone()
             if row:
                 return dict(row)
-            # Priority 2: fallback to web session (no channel), exclude test/system
+            # Priority 2: fallback to web session (no channel), exclude system-only IDs.
+            # web_test IS a valid web session — intentionally NOT excluded here.
             cursor.execute("""
                 SELECT * FROM chat_sessions
                 WHERE agent_id = ? AND (archived IS NULL OR archived = 0)
                   AND external_user_id NOT LIKE '__agent__%'
                   AND external_user_id != '__scheduler__'
-                  AND external_user_id != 'web_test'
                   AND external_user_id != '__system__'
                 ORDER BY updated_at DESC LIMIT 1
             """, (agent_id,))

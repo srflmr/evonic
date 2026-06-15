@@ -17,8 +17,8 @@ from typing import Any, Dict, List, Optional
 
 _logger = logging.getLogger(__name__)
 
-# Auto-destroy after 10 minutes of idle
-_SUBAGENT_IDLE_TTL = 600  # seconds
+# Auto-destroy after 30 minutes of idle (default), configurable via env
+_SUBAGENT_IDLE_TTL = int(os.environ.get("EVONIC_SUBAGENT_IDLE_TTL", "1800"))
 _MAX_SUBAGENTS_PER_PARENT = 10
 
 

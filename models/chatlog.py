@@ -510,6 +510,9 @@ def _reconstruct_llm_messages(entries: List[dict]) -> List[Dict[str, Any]]:
             wrapped = _meta.get('wrapped')
             if wrapped:
                 msg['_wrapped'] = True
+            att = _meta.get('attachment_info')
+            if att:
+                msg['attachment_info'] = att
             messages.append(msg)
             i += 1
 
