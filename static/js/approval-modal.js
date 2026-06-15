@@ -244,84 +244,47 @@ document.addEventListener('evonic:approval-resolved', function(e) {
     }
 });
 
-// Global realtime listener: subscribe via RealtimeClient to the unified stream.
+// Global realtime listener: subscribe to the shared RealtimeClient instance.
 // This receives approval events (any agent, any session) via the 'approvals' channel.
+// Visibility pause/resume and page-unload cleanup are handled by the shared instance.
 (function() {
-    var _sse = null;
-
-    function _connectSSE() {
-        if (_sse) return;
-
-        // Use RealtimeClient if available
-        if (typeof RealtimeClient !== 'undefined') {
-            var rt = window._evApprovalRT = window._evApprovalRT || new RealtimeClient({
-                channels: 'approvals'
-            });
-            rt.on('approvals', 'approval_required', function(data) {
+    if (typeof getSharedRealtime === 'undefined') {
+        // Fallback: old EventSource if RealtimeClient not loaded
+        var _sse = null;
+        function _connectOld() {
+            if (_sse) return;
+            try { _sse = new EventSource('/api/approvals/stream'); } catch (e) { return; }
+            _sse.addEventListener('approval_required', function(e) {
+                var data = JSON.parse(e.data);
                 if (!data.approval_id) return;
                 _currentData = data;
                 populateModal(data);
                 openModal();
             });
-            rt.on('approvals', 'approval_resolved', function(data) {
+            _sse.addEventListener('approval_resolved', function(e) {
+                var data = JSON.parse(e.data);
                 if (_currentData && data.approval_id === _currentData.approval_id) {
                     closeModal();
                 }
             });
-            rt.start();
-            _sse = { close: function() { rt.stop(); } };
-            return;
+            _sse.onerror = function() { _sse.close(); _sse = null; setTimeout(_connectOld, 3000); };
         }
-
-        // Fallback: old EventSource
-        try {
-            _sse = new EventSource('/api/approvals/stream');
-        } catch (e) {
-            return;
-        }
-
-        _sse.addEventListener('approval_required', function(e) {
-            var data = JSON.parse(e.data);
-            if (!data.approval_id) return;
-            _currentData = data;
-            populateModal(data);
-            openModal();
-        });
-
-        _sse.addEventListener('approval_resolved', function(e) {
-            var data = JSON.parse(e.data);
-            if (_currentData && data.approval_id === _currentData.approval_id) {
-                closeModal();
-            }
-        });
-
-        _sse.onerror = function() {
-            _sse.close();
-            _sse = null;
-            setTimeout(_startSSE, 3000);
-        };
+        _connectOld();
+        return;
     }
 
-    function _startSSE() {
-        if (_sse) return;
-        _connectSSE();
-    }
-
-    // Start SSE when the page loads and when it becomes visible
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', _startSSE);
-    } else {
-        _startSSE();
-    }
-    document.addEventListener('visibilitychange', function() {
-        if (document.visibilityState === 'visible') {
-            _startSSE();
-        }
+    // Use shared RealtimeClient — no separate connection needed.
+    var rt = getSharedRealtime();
+    rt.on('approvals', 'approval_required', function(data) {
+        if (!data.approval_id) return;
+        _currentData = data;
+        populateModal(data);
+        openModal();
     });
-    // Close SSE/RealtimeClient on page unload to free HTTP connections during navigation
-    window.addEventListener('beforeunload', function() {
-        if (_sse) { _sse.close(); _sse = null; }
-        if (window._evApprovalRT) { window._evApprovalRT.stop(); }
+    rt.on('approvals', 'approval_resolved', function(data) {
+        if (_currentData && data.approval_id === _currentData.approval_id) {
+            closeModal();
+        }
     });
 })();
 })();

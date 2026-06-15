@@ -106,39 +106,39 @@
         }
     }
 
-    // -- RealtimeClient connection (unified SSE) -----------------------------------
+    // -- Shared RealtimeClient connection (unified SSE) --------------------------
+
+    var _updateRegistered = false;
 
     function connectSSE() {
-        if (sse) return;
+        if (_updateRegistered) return;
 
-        // Use RealtimeClient if available
-        if (typeof RealtimeClient !== 'undefined') {
-            var rt = window._evUpdateRT = window._evUpdateRT || new RealtimeClient({
-                channels: 'update'
-            });
-            rt.on('update', 'status', function(data) {
+        if (typeof getSharedRealtime === 'undefined') {
+            // Fallback: old EventSource
+            if (sse) return;
+            sse = new EventSource('/api/system/update/stream');
+            sse.addEventListener('status', function(e) {
+                var data = JSON.parse(e.data);
                 renderBannerState(data);
             });
-            rt.on('update', 'done', function() {
+            sse.addEventListener('done', function() {
                 if (sse) { sse.close(); sse = null; }
             });
-            rt.start();
-            sse = { close: function() { rt.stop(); } };
+            sse.onerror = function() {
+                if (sse) { sse.close(); sse = null; }
+            };
             return;
         }
 
-        // Fallback: old EventSource
-        sse = new EventSource('/api/system/update/stream');
-        sse.addEventListener('status', function(e) {
-            var data = JSON.parse(e.data);
+        // Use shared RealtimeClient — no separate connection needed.
+        _updateRegistered = true;
+        var rt = getSharedRealtime();
+        rt.on('update', 'update_status', function(data) {
             renderBannerState(data);
         });
-        sse.addEventListener('done', function() {
-            if (sse) { sse.close(); sse = null; }
+        rt.on('update', 'update_done', function() {
+            _updateRegistered = false;
         });
-        sse.onerror = function() {
-            if (sse) { sse.close(); sse = null; }
-        };
     }
 
     // -- Restart handler (exposed globally for inline onclick) ------------

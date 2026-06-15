@@ -633,18 +633,29 @@ function startWorkplaceEventStream() {
         } catch (_) {}
     }
 
-    // Use RealtimeClient if available
-    if (typeof RealtimeClient !== 'undefined') {
-        var rt = new RealtimeClient({
-            channels: '', // no global channels
-            workplace: HOME_ID
-        });
+    // Use shared RealtimeClient with workplace scope
+    if (typeof getSharedRealtime !== 'undefined') {
+        var rt = getSharedRealtime({workplace: HOME_ID});
         rt.on('workplace', 'connector_connected', onConnectorEvent);
         rt.on('workplace', 'connector_disconnected', onConnectorEvent);
         rt.on('workplace', 'connector_paired', onConnectorEvent);
         rt.on('workplace', 'workplace_status_changed', onConnectorEvent);
-        rt.start();
-        homeEventSource = { close: function() { rt.stop(); } };
+        homeEventSource = { close: function() {} };
+        return;
+    }
+
+    // Fallback: old EventSource or RealtimeClient (pre-shared singleton)
+    if (typeof RealtimeClient !== 'undefined') {
+        var rt2 = new RealtimeClient({
+            channels: '',
+            workplace: HOME_ID
+        });
+        rt2.on('workplace', 'connector_connected', onConnectorEvent);
+        rt2.on('workplace', 'connector_disconnected', onConnectorEvent);
+        rt2.on('workplace', 'connector_paired', onConnectorEvent);
+        rt2.on('workplace', 'workplace_status_changed', onConnectorEvent);
+        rt2.start();
+        homeEventSource = { close: function() { rt2.stop(); } };
         return;
     }
 

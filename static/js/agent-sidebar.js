@@ -524,10 +524,10 @@ function _onTurnComplete(payload) {
     showBubblePopup(payload.agent_id, payload.agent_name, payload.response, payload.session_id, payload.external_user_id);
 }
 
-/** Subscribe via RealtimeClient for real-time busy state updates and turn-complete notifications */
+/** Subscribe via shared RealtimeClient for real-time busy state updates and turn-complete notifications */
 var _statusSSE = null;
 function subscribeBusySSE() {
-    if (typeof RealtimeClient === 'undefined') {
+    if (typeof getSharedRealtime === 'undefined') {
         // Fallback: use old EventSource if RealtimeClient not loaded
         try {
             _statusSSE = new EventSource('/api/agents/status/stream');
@@ -549,12 +549,15 @@ function subscribeBusySSE() {
             });
             _statusSSE.addEventListener('error', function () {});
         } catch (_) {}
+        // Old EventSource needs its own cleanup
+        window.addEventListener('beforeunload', function () {
+            if (_statusSSE instanceof EventSource) { _statusSSE.close(); _statusSSE = null; }
+        });
         return;
     }
 
-    var rt = window._evRealtime = window._evRealtime || new RealtimeClient({
-        channels: 'status'
-    });
+    // Use shared RealtimeClient — no separate connection needed.
+    var rt = getSharedRealtime();
     rt.on('status', 'agent_busy_changed', function (payload) {
         var avatar = document.querySelector(
             '#agent-sidebar .agent-avatar[data-agent-id="' + CSS.escape(payload.agent_id) + '"]'
@@ -564,14 +567,7 @@ function subscribeBusySSE() {
         }
     });
     rt.on('status', 'agent_turn_complete', _onTurnComplete);
-    rt.start();
 }
-
-// Close SSE/RealtimeClient on page unload to free HTTP connections during navigation
-window.addEventListener('beforeunload', function () {
-    if (_statusSSE instanceof EventSource) { _statusSSE.close(); _statusSSE = null; }
-    if (window._evRealtime) { window._evRealtime.stop(); }
-});
 
 /** Toggle sidebar collapsed state */
 function toggleSidebar() {

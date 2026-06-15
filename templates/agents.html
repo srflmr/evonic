@@ -407,11 +407,9 @@ function updateAgentBusyBadge(agentId, busy) {
 }
 
 function startAgentStatusStream() {
-    // Use RealtimeClient if available
-    if (typeof RealtimeClient !== 'undefined') {
-        var rt = window._evAgentsRT = window._evAgentsRT || new RealtimeClient({
-            channels: 'status'
-        });
+    // Use shared RealtimeClient if available
+    if (typeof getSharedRealtime !== 'undefined') {
+        var rt = getSharedRealtime();
         rt.on('status', 'agent_busy_changed', function(data) {
             const agentId = data.agent_id;
             if (!agentId) return;
@@ -422,7 +420,25 @@ function startAgentStatusStream() {
             }
             updateAgentBusyBadge(agentId, data.busy);
         });
-        rt.start();
+        return;
+    }
+
+    // Use standalone RealtimeClient (pre-shared singleton fallback)
+    if (typeof RealtimeClient !== 'undefined') {
+        var rt2 = window._evAgentsRT = window._evAgentsRT || new RealtimeClient({
+            channels: 'status'
+        });
+        rt2.on('status', 'agent_busy_changed', function(data) {
+            const agentId = data.agent_id;
+            if (!agentId) return;
+            if (data.busy) {
+                busyAgents[agentId] = true;
+            } else {
+                delete busyAgents[agentId];
+            }
+            updateAgentBusyBadge(agentId, data.busy);
+        });
+        rt2.start();
         return;
     }
 

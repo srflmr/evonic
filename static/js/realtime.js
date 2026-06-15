@@ -52,6 +52,8 @@ var RealtimeClient = (function () {
         this._paused = false;
         this._pauseBuffer = {};   // channel -> [events] buffered during pause
         this._onAuthExpired = opts.onAuthExpired || function () { window.location.href = '/login'; };
+        this._visibilityBound = false;
+        this._unloadHandlers = [];  // cleanup hooks registered by consumers
     }
 
     // ---- Public API ----
@@ -308,6 +310,8 @@ var RealtimeClient = (function () {
     // ---- Visibility change handling ----
 
     RealtimeClient.prototype._bindVisibility = function () {
+        if (this._visibilityBound) return;
+        this._visibilityBound = true;
         var self = this;
         document.addEventListener('visibilitychange', function () {
             if (document.hidden) {
@@ -316,6 +320,12 @@ var RealtimeClient = (function () {
                 self.resume();
             }
         });
+    };
+
+    // ---- Unload hook (consumers register cleanup callbacks) ----
+
+    RealtimeClient.prototype.onUnload = function (fn) {
+        this._unloadHandlers.push(fn);
     };
 
     // ---- SSE comment handler (invoked by caller when EventSource
@@ -338,3 +348,54 @@ var RealtimeClient = (function () {
 
     return RealtimeClient;
 })();
+
+/**
+ * getSharedRealtime([opts]) — Returns the single shared RealtimeClient instance
+ * for global channels (status, approvals, update). The first caller triggers
+ * creation + start; subsequent callers receive the same instance for handler
+ * registration. The singleton is creation-order agnostic — any script can call
+ * it at any point during page load and handlers registered before start() will
+ * fire on the first connection.
+ *
+ * Options (accepted only on the first call):
+ *   opts.workplace  — if provided, creates a separate workplace-scoped instance
+ *                     keyed by workplace ID, not the global singleton.
+ */
+function getSharedRealtime(opts) {
+    opts = opts || {};
+
+    // Workplace-scoped instances are separate from the global singleton.
+    var workplaceId = opts.workplace;
+    if (workplaceId) {
+        var wpKey = '_evWorkplaceRT_' + workplaceId;
+        if (!window[wpKey]) {
+            window[wpKey] = new RealtimeClient({
+                channels: '',
+                workplace: workplaceId
+            });
+            window[wpKey].start();
+        }
+        return window[wpKey];
+    }
+
+    // Global singleton for status, approvals, update.
+    if (!window._evSharedRT) {
+        window._evSharedRT = new RealtimeClient({
+            channels: 'status,approvals,update'
+        });
+        window._evSharedRT.start();
+
+        // Single consolidated beforeunload handler.
+        window.addEventListener('beforeunload', function () {
+            if (window._evSharedRT) {
+                var rt = window._evSharedRT;
+                // Run registered consumer cleanup hooks before stopping.
+                for (var i = 0; i < rt._unloadHandlers.length; i++) {
+                    try { rt._unloadHandlers[i](); } catch (_) {}
+                }
+                rt.stop();
+            }
+        });
+    }
+    return window._evSharedRT;
+}

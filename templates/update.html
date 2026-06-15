@@ -124,19 +124,32 @@
     function connectSSE() {
         if (sse) return;
 
-        // Use RealtimeClient if available
-        if (typeof RealtimeClient !== 'undefined') {
-            var rt = window._evUpdatePageRT = window._evUpdatePageRT || new RealtimeClient({
-                channels: 'update'
-            });
-            rt.on('update', 'status', function(data) {
+        // Use shared RealtimeClient if available
+        if (typeof getSharedRealtime !== 'undefined') {
+            var rt = getSharedRealtime();
+            rt.on('update', 'update_status', function(data) {
                 applyState(data);
             });
-            rt.on('update', 'done', function() {
+            rt.on('update', 'update_done', function() {
+                sse = null;
+            });
+            sse = { close: function() {} };
+            return;
+        }
+
+        // Use standalone RealtimeClient (pre-shared singleton fallback)
+        if (typeof RealtimeClient !== 'undefined') {
+            var rt2 = window._evUpdatePageRT = window._evUpdatePageRT || new RealtimeClient({
+                channels: 'update'
+            });
+            rt2.on('update', 'status', function(data) {
+                applyState(data);
+            });
+            rt2.on('update', 'done', function() {
                 if (sse) { sse.close(); sse = null; }
             });
-            rt.start();
-            sse = { close: function() { rt.stop(); } };
+            rt2.start();
+            sse = { close: function() { rt2.stop(); } };
             return;
         }
 
