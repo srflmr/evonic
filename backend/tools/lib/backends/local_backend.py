@@ -107,8 +107,10 @@ class LocalBackend(ExecutionBackend):
             cmd,
             stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
             text=True, cwd=self._cwd(), env=run_env,
+            start_new_session=True,
         )
-        process_tracker.register(self._session_id, proc, proc.pid)
+        process_tracker.register(self._session_id, proc, proc.pid,
+                                 kill_method='killpg')
         try:
             stdout, stderr, reason = self._poll_proc(proc, script, timeout, t0)
             if stdout is None:
@@ -155,8 +157,10 @@ class LocalBackend(ExecutionBackend):
             cmd,
             stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
             text=True, cwd=self._cwd(), env=run_env,
+            start_new_session=True,
         )
-        process_tracker.register(self._session_id, proc, proc.pid)
+        process_tracker.register(self._session_id, proc, proc.pid,
+                                 kill_method='killpg')
         try:
             stdout, stderr, reason = self._poll_proc(proc, code, timeout, t0)
             if stdout is None:
