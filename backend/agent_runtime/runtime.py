@@ -1083,7 +1083,17 @@ class AgentRuntime:
             # Must run BEFORE the not meta.get('agent_message') guard because
             # send_agent_message already sets agent_message=True in metadata.
             if agent.get('inter_agent_clear_context'):
-                db.clear_session(session_id, agent_id=db_agent_id)
+                # Skip clearing if the last message in this session arrived
+                # less than 7 seconds ago — the sending agent may be sending
+                # multiple messages concurrently.
+                last_ts = db.get_last_message_timestamp(session_id, agent_id=db_agent_id)
+                if last_ts and (time.time() - last_ts) < 7:
+                    _logger.debug(
+                        "Skipped inter-agent clear for session %s: "
+                        "last message was %.1fs ago (within 7s window)",
+                        session_id, time.time() - last_ts)
+                else:
+                    db.clear_session(session_id, agent_id=db_agent_id)
             if not meta.get('agent_message'):
                 sender_id = external_user_id[len("__agent__"):]
                 sender_agent = db.get_agent(sender_id)

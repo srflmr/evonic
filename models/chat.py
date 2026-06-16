@@ -507,6 +507,22 @@ class AgentChatDB:
             cursor.execute("DELETE FROM chat_sessions")
             conn.commit()
 
+    def get_last_message_timestamp(self, session_id: str) -> Optional[float]:
+        """Return the unix timestamp of the most recent message in a session.
+
+        Returns None if the session has no messages.
+        """
+        with self._connect() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT strftime('%s', created_at) FROM chat_messages "
+                "WHERE session_id = ? ORDER BY created_at DESC LIMIT 1",
+                (session_id,))
+            row = cursor.fetchone()
+            if row and row[0]:
+                return float(row[0])
+            return None
+
     # ---- Summarization ----
 
     def get_summary(self, session_id: str) -> Optional[Dict[str, Any]]:
