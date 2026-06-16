@@ -1074,19 +1074,22 @@ class AgentRuntime:
         # Flag user message as wrapped if preference wrapper is enabled for this agent
         if _should_wrap_user_message(agent):
             meta['wrapped'] = True
-        # Enrich metadata for agent-originated messages
-        if external_user_id.startswith("__agent__") and not meta.get('agent_message'):
-            sender_id = external_user_id[len("__agent__"):]
-            sender_agent = db.get_agent(sender_id)
-            meta['agent_message'] = True
-            meta['from_agent_id'] = sender_id
-            meta['from_agent_name'] = sender_agent.get('name', sender_id) if sender_agent else sender_id
+        # Enrich metadata and handle inter-agent clearing
+        if external_user_id.startswith("__agent__"):
             # Clear session context before saving the new message when
             # inter_agent_clear_context is enabled for this agent.
             # This ensures the agent processes the message with a fresh
             # context containing only the sender's message.
+            # Must run BEFORE the not meta.get('agent_message') guard because
+            # send_agent_message already sets agent_message=True in metadata.
             if agent.get('inter_agent_clear_context'):
                 db.clear_session(session_id, agent_id=db_agent_id)
+            if not meta.get('agent_message'):
+                sender_id = external_user_id[len("__agent__"):]
+                sender_agent = db.get_agent(sender_id)
+                meta['agent_message'] = True
+                meta['from_agent_id'] = sender_id
+                meta['from_agent_name'] = sender_agent.get('name', sender_id) if sender_agent else sender_id
         _db_retry(db.add_chat_message, session_id, 'user', message or "[Image]",
                   agent_id=db_agent_id, metadata=meta if meta else None, label="save user message")
         _cl_user = chatlog_manager.get(db_agent_id, session_id)
