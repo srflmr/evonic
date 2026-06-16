@@ -50,6 +50,8 @@ def _seed_graph_data(db_path: str):
         (2, "howto-report.md", "Report Guide", "kb", '["guide","reporting"]', old),
         (3, "changelog-format.md", "Changelog Format", "kb", '["guide"]', newer),
         (4, "api-docs.md", "API Docs", "kb", '["reference"]', old),
+        # Isolated KB page: no incoming and no outgoing links
+        (5, "isolated.md", "Isolated", "kb", '["reference"]', old),
         # Non-KB pages
         (10, "entities/acme", "Acme Corp", "entity", '["entity"]', old),
         (11, "notes/some-fact", "A Fact", "note", "[]", old),
@@ -130,10 +132,10 @@ class TestGetKbGraphMetadata:
             meta = get_kb_graph_metadata("test-agent")
 
         pages = meta["pages"]
-        # api-docs.md has no links in or out
-        assert pages["api-docs.md"]["incoming_count"] == 0
-        assert pages["api-docs.md"]["incoming_slugs"] == []
-        assert pages["api-docs.md"]["outgoing_slugs"] == []
+        # isolated.md has no links in or out
+        assert pages["isolated.md"]["incoming_count"] == 0
+        assert pages["isolated.md"]["incoming_slugs"] == []
+        assert pages["isolated.md"]["outgoing_slugs"] == []
 
     def test_dangling_links_not_counted(self):
         db_dir = _make_temp_evomem_db()
@@ -207,8 +209,8 @@ class TestGetKbGraphMetadata:
 
 class TestKbListingFormat:
     def _make_fake_kb_dir(self, files: dict, tmp_path):
-        kb_dir = tmp_path / "kb"
-        kb_dir.mkdir()
+        kb_dir = tmp_path / "test-agent" / "kb"
+        kb_dir.mkdir(parents=True)
         for fname, (content, fm_desc, fm_tags) in files.items():
             fpath = kb_dir / fname
             lines = ["---"]
@@ -285,8 +287,8 @@ class TestKbListingFormat:
         assert "My important notes" in text
 
     def test_zero_kb_files_graceful(self, tmp_path):
-        kb_dir = tmp_path / "kb"
-        kb_dir.mkdir()
+        kb_dir = tmp_path / "test-agent" / "kb"
+        kb_dir.mkdir(parents=True)
 
         from backend.agent_runtime.context import _build_kb_listing
 
@@ -398,8 +400,8 @@ class TestEdgeCases:
         long_desc = "x" * 200
         from backend.agent_runtime.context import _build_kb_listing
 
-        kb_dir = tmp_path / "kb"
-        kb_dir.mkdir()
+        kb_dir = tmp_path / "test-agent" / "kb"
+        kb_dir.mkdir(parents=True)
         fpath = kb_dir / "notes.md"
         fpath.write_text(
             f"---\ndescription: {long_desc}\n---\ncontent", encoding="utf-8"
@@ -416,8 +418,8 @@ class TestEdgeCases:
     def test_special_chars_in_slug(self, tmp_path):
         from backend.agent_runtime.context import _build_kb_listing
 
-        kb_dir = tmp_path / "kb"
-        kb_dir.mkdir()
+        kb_dir = tmp_path / "test-agent" / "kb"
+        kb_dir.mkdir(parents=True)
         fname = "my-file_v2.1 (copy).md"
         fpath = kb_dir / fname
         fpath.write_text("---\ndescription: test\n---\ncontent", encoding="utf-8")

@@ -66,12 +66,25 @@ if not isinstance(_SAVED_AR, types.ModuleType) or not hasattr(_SAVED_AR, 'AgentR
 else:
     _ar_stub = _SAVED_AR
 
-_llm_loop_path = os.path.join(_AR_PATH, 'llm_loop.py')
-_spec = _ilu.spec_from_file_location('backend.agent_runtime.llm_loop', _llm_loop_path)
-_llm_loop_mod = _ilu.module_from_spec(_spec)
-sys.modules['backend.agent_runtime.llm_loop'] = _llm_loop_mod
-_ar_stub.llm_loop = _llm_loop_mod
-_spec.loader.exec_module(_llm_loop_mod)
+# If llm_loop is already loaded (the real package was imported by an earlier test
+# module), reuse that exact module object.  runtime.py binds it once via
+# `from backend.agent_runtime import llm_loop as _loop`, so exec'ing a duplicate
+# here would replace the sys.modules entry with a divergent copy while the live
+# AgentRuntime keeps using the original.  That breaks
+# patch('backend.agent_runtime.llm_loop.*') for later test modules
+# (e.g. test_skill_session_persistence.py), since the patch hits our copy but the
+# runtime runs the original.
+_existing_loop = sys.modules.get('backend.agent_runtime.llm_loop')
+if isinstance(_existing_loop, types.ModuleType) and hasattr(_existing_loop, '_emergency_compact_messages'):
+    _llm_loop_mod = _existing_loop
+    _ar_stub.llm_loop = _llm_loop_mod
+else:
+    _llm_loop_path = os.path.join(_AR_PATH, 'llm_loop.py')
+    _spec = _ilu.spec_from_file_location('backend.agent_runtime.llm_loop', _llm_loop_path)
+    _llm_loop_mod = _ilu.module_from_spec(_spec)
+    sys.modules['backend.agent_runtime.llm_loop'] = _llm_loop_mod
+    _ar_stub.llm_loop = _llm_loop_mod
+    _spec.loader.exec_module(_llm_loop_mod)
 _emergency_compact_messages = _llm_loop_mod._emergency_compact_messages
 
 

@@ -256,10 +256,12 @@ class TestCycleHandling:
         with patch("backend.agent_runtime.evomem_client._get_brain_dir", return_value=db_dir):
             result = execute({"agent_id": "test"}, {"filename": "notes.md"})
         text = result["result"]
-        # notes → changelog → notes. Both should show each other as neighbors.
+        # notes ↔ changelog is a mutual link, so changelog-format.md appears
+        # once as an outgoing reference and once as an incoming referrer.
         assert "changelog-format.md" in text
-        # No infinite repetition
-        assert text.count("changelog-format.md") == 1
+        # The cycle must terminate: it shows up in both directions (2x), not
+        # repeated infinitely.
+        assert text.count("changelog-format.md") == 2
 
 
 # ─── Edge cases ────────────────────────────────────────────────────────────

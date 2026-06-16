@@ -30,6 +30,9 @@ class TestOpenRedirectPrevention(unittest.TestCase):
         # load_dotenv() during reload may overwrite our env var with .env values,
         # so force the config attribute to the test hash directly.
         config.ADMIN_PASSWORD_HASH = TEST_PASSWORD_HASH
+        # Same for the Turnstile secret: a real .env value re-enables captcha
+        # verification on POST /login, so force it empty to disable captcha.
+        config.TURNSTILE_SECRET_KEY = ""
 
         from routes.auth import auth_bp
         from flask import Flask
