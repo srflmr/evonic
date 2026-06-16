@@ -119,6 +119,10 @@ class TestStoreMemory:
 
     def test_dual_write_attempted_when_evomem_configured(self, monkeypatch):
         monkeypatch.setenv("EVONIC_MEMORY_ENGINE", "evomem")
+        # is_available() checks a cwd-relative binary path, so force it True to
+        # keep get_engine() == "evomem" regardless of the test's working dir.
+        monkeypatch.setattr(
+            "backend.agent_runtime.evomem_client.is_available", lambda: True)
         with patch("backend.agent_runtime.memory_manager.db.add_memory", return_value=42), \
              patch("backend.agent_runtime.memory_manager._extract_dimension", return_value="test.dim"), \
              patch("backend.agent_runtime.memory_manager._backfill_null_dimensions"), \
@@ -176,6 +180,10 @@ class TestEvomemRetrievalFormatting:
 
     def test_formats_evomem_hits_into_markdown(self, monkeypatch):
         monkeypatch.setenv("EVONIC_MEMORY_ENGINE", "evomem")
+        # is_available() checks a cwd-relative binary path, so force it True to
+        # keep get_engine() == "evomem" regardless of the test's working dir.
+        monkeypatch.setattr(
+            "backend.agent_runtime.evomem_client.is_available", lambda: True)
         fake_hits = {
             "query": "preference",
             "hits": [
@@ -246,6 +254,10 @@ class TestEvomemStore:
 
     def test_returns_true_when_write_succeeds(self, monkeypatch):
         monkeypatch.setenv("EVONIC_MEMORY_ENGINE", "evomem")
+        # is_available() checks a cwd-relative binary path, so force it True to
+        # keep get_engine() == "evomem" regardless of the test's working dir.
+        monkeypatch.setattr(
+            "backend.agent_runtime.evomem_client.is_available", lambda: True)
         with patch(
             "backend.agent_runtime.memory_manager.evomem_writer.write_note",
             return_value="notes/mem-1"

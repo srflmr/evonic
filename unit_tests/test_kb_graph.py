@@ -10,6 +10,13 @@ from datetime import datetime, timezone, timedelta
 import pytest
 from unittest.mock import patch
 
+# Anchor to the repo root so the tool-definition path resolves regardless of
+# the pytest working directory.
+_TOOL_JSON = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+    "tools", "kb_graph.json",
+)
+
 
 # ─── helpers ────────────────────────────────────────────────────────────────
 
@@ -72,11 +79,10 @@ def _make_test_db() -> str:
 
 class TestToolRegistration:
     def test_tool_json_exists(self):
-        import os as _os
-        assert _os.path.isfile("tools/kb_graph.json")
+        assert os.path.isfile(_TOOL_JSON)
 
     def test_tool_json_valid(self):
-        with open("tools/kb_graph.json") as f:
+        with open(_TOOL_JSON) as f:
             data = json.load(f)
         assert data["id"] == "kb_graph"
         assert data["function"]["name"] == "kb_graph"
