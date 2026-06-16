@@ -102,14 +102,7 @@ def check_long_running(script: str) -> dict | None:
     pid_file = f"/tmp/evonic_build_{ts}.pid"
 
     run_script = _build_wrapper_script(script, session_name, log_file, pid_file)
-    monitor_script = f"tail -f {log_file}"
-    # Check all three backends: tmux session, screen session, or PID file from nohup
-    check_status_script = (
-        f'tmux has-session -t {session_name} 2>/dev/null && echo "RUNNING" || '
-        f'(screen -list | grep -q {session_name} && echo "RUNNING" || '
-        f'([ -f {pid_file} ] && kill -0 $(cat {pid_file}) 2>/dev/null && echo "RUNNING" || echo "DONE"))'
-    )
-    check_exit_code_script = f"tail -1 {log_file} | grep -oP '(?<=EXIT_CODE=)\\d+'"
+    status = build_status_scripts(session_name, log_file, pid_file)
 
     return {
         "matched_command": matched["description"],
@@ -123,9 +116,26 @@ def check_long_running(script: str) -> dict | None:
         ),
         "run_script": run_script,
         "log_file": log_file,
-        "monitor_script": monitor_script,
+        **status,
+    }
+
+
+def build_status_scripts(session_name: str, log_file: str, pid_file: str) -> dict:
+    """Build the shell snippets used to monitor a wrapped background process.
+
+    Shared by ``check_long_running`` (returned to the agent) and the background
+    job watcher so both poll completion the same way.
+    """
+    # Check all three backends: tmux session, screen session, or PID file from nohup
+    check_status_script = (
+        f'tmux has-session -t {session_name} 2>/dev/null && echo "RUNNING" || '
+        f'(screen -list | grep -q {session_name} && echo "RUNNING" || '
+        f'([ -f {pid_file} ] && kill -0 $(cat {pid_file}) 2>/dev/null && echo "RUNNING" || echo "DONE"))'
+    )
+    return {
+        "monitor_script": f"tail -f {log_file}",
         "check_status_script": check_status_script,
-        "check_exit_code_script": check_exit_code_script,
+        "check_exit_code_script": f"tail -1 {log_file} | grep -oP '(?<=EXIT_CODE=)\\d+'",
     }
 
 

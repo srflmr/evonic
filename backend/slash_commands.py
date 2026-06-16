@@ -996,5 +996,98 @@ def _register_builtins():
         "Spawn a sub-agent with a direct task",
     )
 
+    # /detach — Hand off the running long-running process to a background watcher
+    def detach_handler(
+        session_id: str,
+        agent_id: str,
+        external_user_id: str,
+        channel_id: Optional[str],
+        args: str,
+    ) -> str:
+        from backend.agent_runtime import agent_runtime
+        from backend.agent_runtime.background_jobs import (
+            background_jobs, create_detach_schedule)
+
+        jobs = background_jobs.active_for_session(session_id)
+        if not jobs:
+            return (
+                "No detachable background process found. /detach only works for "
+                "builds/downloads launched via the long-running guard (tmux/screen)."
+            )
+
+        # End the current polling turn so the agent stops waiting and can chat.
+        agent_runtime.request_stop(session_id)
+
+        detached = []
+        for job in jobs:
+            schedule_id = create_detach_schedule(
+                job, agent_id, external_user_id, channel_id)
+            if schedule_id:
+                background_jobs.mark_detached(job.job_id, schedule_id)
+                detached.append(job)
+
+        if not detached:
+            return "Failed to detach: could not create the background watcher."
+
+        names = ", ".join(f"`{j.command}`" for j in detached)
+        return (
+            f"Detached {len(detached)} background job(s): {names}.\n"
+            "They keep running — I'll report back when they finish (even if the "
+            "server restarts). Check anytime with /jobs."
+        )
+
+    command_registry.register(
+        "detach",
+        detach_handler,
+        "Detach the running long-running process to the background",
+    )
+
+    # /jobs — List background jobs tracked for this session
+    def jobs_handler(
+        session_id: str,
+        agent_id: str,
+        external_user_id: str,
+        channel_id: Optional[str],
+        args: str,
+    ) -> str:
+        import time as _time
+        from backend.agent_runtime.background_jobs import (
+            background_jobs, SCHEDULE_OWNER_TYPE)
+        from backend.scheduler import scheduler
+
+        lines = []
+
+        # Attached (not yet detached) jobs — live only in the in-memory registry.
+        for j in background_jobs.active_for_session(session_id):
+            elapsed = int(_time.time() - j.started_at)
+            lines.append(f"- `{j.command}` — ⏳ running (attached), {elapsed}s "
+                         f"· log: {j.log_file}")
+
+        # Detached jobs — persisted poll schedules for this session.
+        try:
+            schedules = scheduler.list_schedules(
+                owner_type=SCHEDULE_OWNER_TYPE, owner_id=agent_id)
+        except Exception:
+            schedules = []
+        for s in schedules:
+            cfg = s.get("action_config") or {}
+            if cfg.get("session_id") != session_id:
+                continue
+            cmd = cfg.get("command", "?")
+            log_file = cfg.get("log_file", "")
+            lines.append(f"- `{cmd}` — ⏳ running (detached, watched), "
+                         f"· log: {log_file}")
+
+        if not lines:
+            return ("No active background jobs for this session. "
+                    "(Finished jobs are reported in chat and then cleared.)")
+        return "**Background jobs:**\n" + "\n".join(lines)
+
+    command_registry.register(
+        "jobs",
+        jobs_handler,
+        "List background jobs for this session",
+    )
+
 # Register builtins at import time
 _register_builtins()

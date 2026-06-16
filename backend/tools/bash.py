@@ -84,6 +84,16 @@ def execute(agent: dict, args: dict) -> dict:
             ),
         }
 
+    # Register a background job when the agent runs a long-running guard wrapper
+    # (BYPASS_MARKER). This lets /detach hand the process off to a watcher.
+    try:
+        from backend.agent_runtime.background_jobs import parse_wrapper_script, background_jobs
+        _wrap = parse_wrapper_script(script)
+        if _wrap:
+            background_jobs.register(session_id, **_wrap)
+    except Exception:
+        pass  # Never let job tracking break command execution
+
     # ------------------------------------------------------------------
     # HMADS safety check (pipeline: system rules + custom user rules)
     # ------------------------------------------------------------------

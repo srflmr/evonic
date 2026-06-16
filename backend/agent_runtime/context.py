@@ -866,6 +866,8 @@ def build_system_prompt(agent: Dict[str, Any]) -> str:
         ("/help", "Show available commands"),
         ("/summary", "Force regenerate session summary"),
         ("/stop", "Stop the agent's current processing loop"),
+        ("/detach", "Move the running long-running process (build/download) to the background so we can keep chatting — tracking is persistent (survives restarts) and you'll be notified to report the result when it finishes; the watcher is removed automatically, no cleanup needed"),
+        ("/jobs", "List background jobs for this session"),
     ]
     slash_commands.append(("/plan", "Switch to plan mode"))
     slash_commands.append(("/unfocus", "Force-clear focus mode — use when agent is stuck in focus after a failed task"))

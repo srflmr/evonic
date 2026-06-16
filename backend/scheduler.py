@@ -433,6 +433,7 @@ class Scheduler:
         error_message = None
         action_summary = None
         action_output = None
+        _cancel_after = None  # set to schedule_id to self-delete after this run
         start_ms = time.monotonic()
 
         try:
@@ -464,6 +465,15 @@ class Scheduler:
                 action_summary = f"{method} {url} -> {status_code}"
                 if resp_body:
                     action_output = resp_body
+            elif action_type == 'poll_background_job':
+                from backend.agent_runtime.background_jobs import run_poll_action
+                result = run_poll_action(action_config)
+                action_summary = (f"poll '{action_config.get('command', '?')}': "
+                                  f"{result.get('state', '?')}")
+                if result.get('done'):
+                    # Job finished (or timed out) — agent already notified.
+                    # Self-delete so the interval stops running.
+                    _cancel_after = schedule_id
             else:
                 log.warning("Unknown action_type '%s' for %s",
                             action_type, schedule_id)
@@ -560,6 +570,15 @@ class Scheduler:
             'owner_id': schedule['owner_id'],
             'action_type': action_type, 'fired_at': fired_at,
         })
+
+        # Self-cleanup for finished background-job polls — runs last so the
+        # row updates above don't touch an already-deleted schedule.
+        if _cancel_after:
+            try:
+                self.cancel_schedule(_cancel_after)
+            except Exception as e:
+                log.warning("poll_background_job %s: self-cancel failed: %s",
+                            _cancel_after, e)
 
     def _action_emit_event(self, config: dict):
         from backend.event_stream import event_stream
