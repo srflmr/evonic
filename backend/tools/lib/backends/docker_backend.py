@@ -425,7 +425,7 @@ class DockerBackend(ExecutionBackend):
         cmd = ['exec', '-i'] + env_args + [container_id, 'bash', '-s']
         t0 = time.time()
         proc = _docker_popen(*cmd)
-        process_tracker.register(self._session_id, proc, proc.pid)
+        process_tracker.register(self._session_id, proc, proc.pid, container_id=container_id)
         try:
             stdout, stderr = self._poll_proc(proc, _PATH_PREFIX + script, timeout + 5, t0)
             if stdout is None:
@@ -537,7 +537,7 @@ class DockerBackend(ExecutionBackend):
         cmd = ['exec', '-i'] + env_args + [container_id, 'python3', '-']
         t0 = time.time()
         proc = _docker_popen(*cmd)
-        process_tracker.register(self._session_id, proc, proc.pid)
+        process_tracker.register(self._session_id, proc, proc.pid, container_id=container_id)
         try:
             stdout, stderr = self._poll_proc(proc, code, timeout + 5, t0)
             if stdout is None:
