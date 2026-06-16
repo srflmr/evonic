@@ -977,6 +977,21 @@ def run_tool_loop(agent: Dict[str, Any],
         reasoning_content = msg.get('reasoning_content') or msg.get('reasoning')
         tool_calls = msg.get('tool_calls')
 
+        # Fallback: parse Gemma4's native <|tool_call> pipe-delimited format
+        # BEFORE checking for Qwen XML format. Gemma4's <|tool_call> contains
+        # the <tool_call> substring, so it must be checked first to prevent
+        # false routing to the Qwen parser and corrupting parameters.
+        if not tool_calls and raw_content and '<|tool_call>' in raw_content:
+            from evaluator.gemma4_parser import (
+                extract_gemma4_tool_calls,
+                gemma4_tool_calls_to_openai_format,
+                extract_gemma4_content,
+            )
+            gemma4_calls = extract_gemma4_tool_calls(raw_content)
+            if gemma4_calls:
+                tool_calls = gemma4_tool_calls_to_openai_format(gemma4_calls)
+                raw_content = extract_gemma4_content(raw_content)
+
         # Fallback: parse Qwen's native <tool_call> XML format when the model
         # doesn't return structured tool_calls in the OpenAI response field.
         if not tool_calls and raw_content and '<tool_call>' in raw_content:
@@ -1067,17 +1082,24 @@ def run_tool_loop(agent: Dict[str, Any],
                 continue
 
         # Fallback: recover tool calls from thinking/CoT content.
-        # Covers the case where the model emits <tool_call> XML inside <think> tags
-        # or in the separate reasoning_content field (llama.cpp --reasoning mode)
-        # instead of in the main response body.
+        # Handles models that emit tool calls inside thinking blocks instead
+        # of the main response body. Check Gemma4 pipe-delimited format first
+        # to avoid the <tool_call> substring matching Qwen's XML parser.
         if not tool_calls:
             cot_text = reasoning_text or thinking
-            if cot_text and '<tool_call>' in cot_text:
-                from evaluator.qwen_parser import extract_qwen_tool_calls, qwen_tool_calls_to_openai_format
-                cot_calls = extract_qwen_tool_calls(cot_text)
-                if cot_calls:
-                    tool_calls = qwen_tool_calls_to_openai_format(cot_calls)
-                    _logger.debug("Recovered %d tool call(s) from thinking/CoT content", len(tool_calls))
+            if cot_text:
+                if '<|tool_call>' in cot_text:
+                    from evaluator.gemma4_parser import extract_gemma4_tool_calls, gemma4_tool_calls_to_openai_format
+                    cot_calls = extract_gemma4_tool_calls(cot_text)
+                    if cot_calls:
+                        tool_calls = gemma4_tool_calls_to_openai_format(cot_calls)
+                        _logger.debug("Recovered %d Gemma4 tool call(s) from thinking/CoT content", len(tool_calls))
+                elif '<tool_call>' in cot_text:
+                    from evaluator.qwen_parser import extract_qwen_tool_calls, qwen_tool_calls_to_openai_format
+                    cot_calls = extract_qwen_tool_calls(cot_text)
+                    if cot_calls:
+                        tool_calls = qwen_tool_calls_to_openai_format(cot_calls)
+                        _logger.debug("Recovered %d Qwen tool call(s) from thinking/CoT content", len(tool_calls))
 
         # --- Output Parser: detect malformed tool calls embedded in text ---
         # If the model produced no native tool_calls but its text contains
