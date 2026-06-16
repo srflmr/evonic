@@ -39,6 +39,7 @@ from backend.plugin_manager import get_busy_message
 from backend.slash_commands import parse_command, execute_command
 from backend.agent_runtime.prefetch import TurnPrefetcher
 import atexit
+import json
 import re
 from config import AGENT_MAX_TOOL_RESULT_CHARS as MAX_TOOL_RESULT_CHARS
 from config import STALE_SESSION_INJECTION_ENABLED, STALE_SESSION_THRESHOLD_SECONDS
@@ -1094,6 +1095,19 @@ class AgentRuntime:
                         session_id, time.time() - last_ts)
                 else:
                     db.clear_session(session_id, agent_id=db_agent_id)
+                    # Reset fallback model so the agent starts fresh with
+                    # its primary model on the next inter-agent message.
+                    try:
+                        _as_raw = db.get_agent_state(db_agent_id)
+                        _as = json.loads(_as_raw) if _as_raw else {}
+                        if _as.pop('active_fallback_model_id', None):
+                            db.upsert_agent_state(
+                                json.dumps(_as), agent_id=db_agent_id)
+                            _logger.info(
+                                "Reset fallback model for agent %s after "
+                                "inter-agent clear", db_agent_id)
+                    except Exception:
+                        pass
             if not meta.get('agent_message'):
                 sender_id = external_user_id[len("__agent__"):]
                 sender_agent = db.get_agent(sender_id)
