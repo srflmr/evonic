@@ -5,6 +5,8 @@ Returns outgoing references, incoming references, dangling links,
 and same-tag related documents for a given KB file.
 """
 
+from __future__ import annotations
+
 from datetime import datetime, timezone, timedelta
 
 from backend.agent_runtime.evomem_client import query_kb_graph
