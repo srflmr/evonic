@@ -439,7 +439,7 @@ html.dark #system-prompt-modal .hover\:text-gray-600:hover { color: #d1d5db; }
                             {{ toggle_widget(id='agent-builtin-tools', checked=(agent.builtin_tools_enabled if agent.builtin_tools_enabled is not none else True)) }}
                             <div>
                                 <span class="text-gray-600 dark:text-gray-300 text-sm font-medium">Built-in Tools</span>
-                                <p class="text-xs text-gray-400 mt-0.5">Provide core tools (read, use_skill, set_mode, remember, recall, etc.). Disable to run this agent with only its assigned plugin tools — useful for minimal tool surface or testing.</p>
+                                <p class="text-xs text-gray-400 mt-0.5">Provide core tools (read, use_skill, set_mode, remember, recall, etc.). Disable to run this agent with only its assigned tools — useful for minimal tool surface or testing.</p>
                             </div>
                         </label>
                     </div>
