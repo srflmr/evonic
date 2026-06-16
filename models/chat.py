@@ -142,6 +142,7 @@ class AgentChatDB:
             """)
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_sessions_lookup ON chat_sessions(agent_id, channel_id, external_user_id)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_messages_session ON chat_messages(session_id)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_messages_session_created ON chat_messages(session_id, created_at DESC)")
             # Migration: add last_message_ts column to chat_summaries (JSONL watermark)
             try:
                 cursor.execute("ALTER TABLE chat_summaries ADD COLUMN last_message_ts INTEGER")
@@ -511,6 +512,9 @@ class AgentChatDB:
         """Return the unix timestamp of the most recent message in a session.
 
         Returns None if the session has no messages.
+
+        Performance: the composite index (session_id, created_at DESC)
+        lets SQLite seek directly to the newest row — O(log n), no sort.
         """
         with self._connect() as conn:
             cursor = conn.cursor()
