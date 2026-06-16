@@ -425,6 +425,15 @@ html.dark #system-prompt-modal .hover\:text-gray-600:hover { color: #d1d5db; }
                             </div>
                         </label>
                     </div>
+                    <div>
+                        <label class="flex items-center gap-3 cursor-pointer select-none">
+                            {{ toggle_widget(id='agent-inter-agent-clear', checked=agent.inter_agent_clear_context) }}
+                            <div>
+                                <span class="text-gray-600 dark:text-gray-300 text-sm font-medium">Clear on Inter-Agent Message</span>
+                                <p class="text-xs text-gray-400 mt-0.5">When another agent sends a message to this agent, clear all previous conversation history first. The agent will process the message with a fresh context containing only the sender's message.</p>
+                            </div>
+                        </label>
+                    </div>
 
                     <div>
                         <label class="flex items-center gap-3 cursor-pointer select-none">
@@ -1717,6 +1726,7 @@ async function saveAdvanced() {
             disable_parallel_tool_execution: document.getElementById('agent-parallel-exec').checked ? 1 : 0,
             disable_turn_prefetch: document.getElementById('agent-prefetch').checked ? 1 : 0,
             agent_messaging_enabled: document.getElementById('agent-messaging-enabled').checked ? 1 : 0,
+            inter_agent_clear_context: document.getElementById('agent-inter-agent-clear').checked ? 1 : 0,
             artifacts_enabled: document.getElementById('agent-artifacts').checked ? 1 : 0,
             safety_checker_enabled: document.getElementById('agent-safety-checker').checked ? 1 : 0,
             bash_exec_enabled: document.getElementById('agent-bash-exec').checked ? 1 : 0,

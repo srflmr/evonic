@@ -1081,6 +1081,12 @@ class AgentRuntime:
             meta['agent_message'] = True
             meta['from_agent_id'] = sender_id
             meta['from_agent_name'] = sender_agent.get('name', sender_id) if sender_agent else sender_id
+            # Clear session context before saving the new message when
+            # inter_agent_clear_context is enabled for this agent.
+            # This ensures the agent processes the message with a fresh
+            # context containing only the sender's message.
+            if agent.get('inter_agent_clear_context'):
+                db.clear_session(session_id, agent_id=db_agent_id)
         _db_retry(db.add_chat_message, session_id, 'user', message or "[Image]",
                   agent_id=db_agent_id, metadata=meta if meta else None, label="save user message")
         _cl_user = chatlog_manager.get(db_agent_id, session_id)
