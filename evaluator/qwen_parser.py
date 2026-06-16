@@ -18,7 +18,15 @@ Multiple tool calls may appear in a single response.
 import re
 import json
 import uuid
+import logging
 from typing import Dict, Any, Optional, List, Tuple
+
+_logger = logging.getLogger(__name__)
+
+# Valid identifier: must start with letter/underscore, followed by alphanumeric/underscore.
+# This rejects garbage keys like 'pattern="**/*.py",path="/..."<tool_call|>call'
+# that the regex might capture when parsing non-Qwen content.
+_VALID_IDENTIFIER = re.compile(r'^[a-zA-Z_][a-zA-Z0-9_]*$')
 
 
 def is_qwen_format(text: str) -> bool:
@@ -57,12 +65,32 @@ def extract_qwen_tool_calls(text: str) -> Optional[List[Dict[str, Any]]]:
             continue
         func_name = func_match.group(1).strip()
 
+        # Validate function name: must be a simple identifier.
+        # Non-Qwen content (e.g. mangled Gemma4 output) often produces
+        # garbage function names containing JSON artifacts or angle brackets.
+        if not _VALID_IDENTIFIER.match(func_name):
+            _logger.warning(
+                "Qwen parser: rejected invalid function name %r "
+                "(likely non-Qwen content misrouted to Qwen parser)",
+                func_name,
+            )
+            return None
+
         # Extract parameters from <parameter=NAME>VALUE</parameter>
         # Value may be multiline
         param_pattern = re.compile(r'<parameter=([^>]+)>(.*?)</parameter>', re.DOTALL)
         arguments = {}
         for param_match in param_pattern.finditer(block):
             param_name = param_match.group(1).strip()
+            # Validate parameter name: must be a simple identifier.
+            # Reject keys containing quotes, brackets, angle brackets, pipes, etc.
+            if not _VALID_IDENTIFIER.match(param_name):
+                _logger.warning(
+                    "Qwen parser: rejected invalid param name %r "
+                    "(likely non-Qwen content misrouted to Qwen parser)",
+                    param_name,
+                )
+                return None
             param_value = param_match.group(2)
             # Strip exactly one leading/trailing newline to preserve indentation in code blocks
             if param_value.startswith('\n'):
