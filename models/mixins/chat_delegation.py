@@ -128,6 +128,16 @@ class ChatDelegationMixin:
             chatlog_manager.get(agent_id, session_id).clear()
             self._remove_session_index(session_id)
 
+    def get_last_message_timestamp(self, session_id: str, agent_id: str = None) -> Optional[float]:
+        """Return the unix timestamp of the most recent message in a session.
+
+        Returns None if the session has no messages.
+        """
+        agent_id = agent_id or self._find_agent_for_session(session_id)
+        if not agent_id:
+            return None
+        return self._chat_db(agent_id).get_last_message_timestamp(session_id)
+
     def get_summary(self, session_id: str, agent_id: str = None):
         agent_id = agent_id or self._find_agent_for_session(session_id)
         if not agent_id:

@@ -164,17 +164,23 @@ def run_tool_loop(agent: Dict[str, Any],
     chatlog.append({'type': 'turn_begin', 'session_id': session_id, 'ts': _loop_ts})
     event_stream.emit('turn_begin', {'session_id': session_id, 'ts': _loop_ts})
 
-    builtin_exec = tool_registry.get_builtin_executor(agent_context)
     real_exec = tool_registry.get_real_executor(agent_context)
 
-    # Chain-of-responsibility: collect executors in order, iterate until one returns non-None
-    _builtin_chain = [builtin_exec]
-    if agent_context.get('is_super'):
-        from backend.tools.super_agent_tools import get_super_agent_executor
-        _builtin_chain.append(get_super_agent_executor(agent_context))
-    if agent_context.get('is_super') or agent_context.get('agent_messaging_enabled'):
-        from backend.tools.agent_messaging import get_agent_messaging_executor
-        _builtin_chain.append(get_agent_messaging_executor(agent_context))
+    # Built-in tool executors (read, use_skill, set_mode, remember, recall, etc.)
+    # When builtin_tools_enabled is False, skip all built-in executors entirely.
+    if agent.get('builtin_tools_enabled', True):
+        builtin_exec = tool_registry.get_builtin_executor(agent_context)
+
+        # Chain-of-responsibility: collect executors in order, iterate until one returns non-None
+        _builtin_chain = [builtin_exec]
+        if agent_context.get('is_super'):
+            from backend.tools.super_agent_tools import get_super_agent_executor
+            _builtin_chain.append(get_super_agent_executor(agent_context))
+        if agent_context.get('is_super') or agent_context.get('agent_messaging_enabled'):
+            from backend.tools.agent_messaging import get_agent_messaging_executor
+            _builtin_chain.append(get_agent_messaging_executor(agent_context))
+    else:
+        _builtin_chain = []
 
     def builtin_exec(fn_name, args):
         for _exec in _builtin_chain:

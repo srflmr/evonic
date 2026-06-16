@@ -548,6 +548,11 @@ function renderEntries(entries, { persistent = false } = {}) {
             if (thinkingId) { chatUI.finalizeThinkingBubble(thinkingId); thinkingId = null; }
             chatUI.appendMessage('error', entry.content || '');
         } else if (type === 'system') {
+            // Dedup: suppress system entry that was already rendered by the POST handler
+            if (_pendingSlashResponse !== null && entry.content === _pendingSlashResponse && (entry.metadata || {}).slash_command) {
+                _pendingSlashResponse = null;
+                continue;
+            }
             chatUI.appendMessage('system', entry.content || '');
         } else if (type === 'turn_end') {
             if (thinkingId) { chatUI.finalizeThinkingBubble(thinkingId, entry.thinking_duration); thinkingId = null; }
@@ -707,6 +712,7 @@ async function selectSession(sessionId) {
     _pendingIntermediateResponse = null;
     _pollThinkingId = null;
     _pollInFlight = false;
+    _pendingSlashResponse = null;
     renderSessionList();
 
     const res = await fetch(`/api/sessions/${sessionId}`);
@@ -1035,14 +1041,26 @@ function connectSessionStream(sessionId, afterSeq = 0) {
         try { payload = JSON.parse(e.data); } catch(_) {}
 
         if (payload.slash_command && payload.response) {
-            // Slash command response — finalize any thinking bubble and display the response
+            // Slash command response — finalize any thinking bubble and display the response.
+            // Guard against duplicate: both POST callback and SSE 'done' can deliver this.
+            // Whichever fires first wins; the second silently skips the render.
+            const alreadyRendered = (
+                _pendingSlashResponse !== null &&
+                _pendingSlashResponse === payload.response
+            );
             const wasAtBottom = chatUI.isNearBottom(80);
             if (_sseThinkingId) {
                 chatUI.finalizeThinkingBubble(_sseThinkingId);
                 _sseThinkingId = null;
             }
-            chatUI.appendMessage('assistant', payload.response);
-            if (wasAtBottom) requestAnimationFrame(() => chatUI.scrollToBottom());
+            if (!alreadyRendered) {
+                // Not rendered yet — display the response and mark it so POST/poll skip it
+                chatUI.appendMessage('assistant', payload.response);
+                if (wasAtBottom) requestAnimationFrame(() => chatUI.scrollToBottom());
+                _pendingSlashResponse = payload.response;
+            }
+            // If alreadyRendered is true: POST handler already rendered + set _pendingSlashResponse.
+            // Leave _pendingSlashResponse as-is so the poll can still dedup the stored entry.
             _sseCompleted = true;
             // Reconnect so we're ready for the next incoming message
             es.close();
@@ -1122,6 +1140,7 @@ function startSidebarPolling() {
 
 let _pendingReplyText = null; // text of optimistically-rendered reply; suppressed in poll
 let _pendingFileUpload = false; // skip next user entry in poll (file upload dedup)
+let _pendingSlashResponse = null; // content of just-rendered slash command response; suppressed in poll
 
 // ==================== File Upload Helpers ====================
 
@@ -1246,13 +1265,17 @@ async function doSendReply() {
         clearFileInput();
         return;
     }
-    // Slash command response — display immediately (belt & suspenders with SSE path)
+    // Slash command response — display immediately, then suppress duplicate renders.
+    // Guard: if SSE already rendered it (race), skip to avoid double display.
     if (res.slash_command && res.response) {
         $input.val('');
         const wasAtBottom = chatUI.isNearBottom(80);
-        chatUI.appendMessage('assistant', res.response);
-        if (wasAtBottom) requestAnimationFrame(() => chatUI.scrollToBottom());
+        if (_pendingSlashResponse === null) {
+            chatUI.appendMessage('assistant', res.response);
+            if (wasAtBottom) requestAnimationFrame(() => chatUI.scrollToBottom());
+        }
         _pendingReplyText = null;
+        _pendingSlashResponse = res.response;
         if (file) { _pendingFileUpload = true; clearFileInput(); }
         return;
     }

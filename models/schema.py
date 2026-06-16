@@ -517,6 +517,18 @@ class SchemaMixin:
             except sqlite3.OperationalError:
                 pass
 
+            # Migration: add inter_agent_clear_context for clearing session context on inter-agent message
+            try:
+                cursor.execute("ALTER TABLE agents ADD COLUMN inter_agent_clear_context BOOLEAN DEFAULT 0")
+            except sqlite3.OperationalError:
+                pass
+
+            # Migration: add builtin_tools_enabled to make built-in tools optional per-agent
+            try:
+                cursor.execute("ALTER TABLE agents ADD COLUMN builtin_tools_enabled BOOLEAN DEFAULT 1")
+            except sqlite3.OperationalError:
+                pass
+
             # Agent Variables (per-agent key-value config used by tools/skills)
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS agent_variables (

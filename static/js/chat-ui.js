@@ -1212,8 +1212,7 @@ function buildMessageBubble(role, content, opts = {}, cfg = {}) {
         const agentTag = agentMatch ? agentMatch[1] : '';
         const agentContent = agentTag ? content.slice(agentMatch[0].length) : content;
         $bubble = $('<div class="bg-blue-100 text-blue-900 border border-blue-300 rounded-2xl px-4 py-2.5 text-sm break-words">');
-        if (agentTag) $bubble.append($('<span class="text-xs font-semibold text-blue-500 mr-1.5">').text(agentTag));
-        $bubble.append(document.createTextNode(agentContent));
+        $bubble.append(_buildSysBalloon(agentTag, agentContent, 'text-blue-500', 'text-blue-400', 120));
 
     } else if (isSystemUser) {
         const sysMatch = content.match(/^(\[(?:SYSTEM(?:\/[^\]]*)?|System\/[^\]]*)\])\s*/);

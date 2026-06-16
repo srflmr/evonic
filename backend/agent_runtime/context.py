@@ -920,7 +920,8 @@ def build_tools(agent: Dict[str, Any]) -> List[Dict[str, Any]]:
     """Build the OpenAI function tool list for this agent."""
     tools = []
 
-    # Always include built-in tools (read, etc.)
+    # Built-in tools (read, use_skill, set_mode, remember, recall, etc.)
+    # Can be disabled per-agent via builtin_tools_enabled advanced setting.
     # Pass workplace_id so built-in factories can tailor descriptions for remote agents
     # (e.g. read() tool mentions /_self/kb/ when workplace_id is set).
     agent_context = {
@@ -928,7 +929,8 @@ def build_tools(agent: Dict[str, Any]) -> List[Dict[str, Any]]:
         'is_super': bool(agent.get('is_super')),
         'workplace_id': agent.get('workplace_id'),
     }
-    tools.extend(tool_registry.get_builtin_tools(agent_context))
+    if agent.get('builtin_tools_enabled', True):
+        tools.extend(tool_registry.get_builtin_tools(agent_context))
 
     # Super agent gets its own administrative built-in tools
     if agent.get('is_super'):

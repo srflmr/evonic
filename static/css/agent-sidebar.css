@@ -33,7 +33,7 @@ html.dark {
     width: 64px;
     min-width: 64px;
     flex-shrink: 0;
-    height: auto;
+    height: calc(100vh - 56px);
     background: var(--sidebar-bg);
     display: flex;
     flex-direction: column;
