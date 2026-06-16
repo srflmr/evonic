@@ -554,7 +554,7 @@ html.dark #system-prompt-modal .hover\:text-gray-600:hover { color: #d1d5db; }
                 <h3 class="text-base font-semibold text-gray-800 dark:text-gray-100">Tools</h3>
                 <span id="tools-badge" class="hidden px-2 py-0.5 text-xs font-medium rounded-full bg-gray-200 text-gray-600"></span>
             </div>
-            <p class="text-xs text-gray-400 mb-4">Toggle tools on/off to assign them to this agent. Built-in tools are always available. Click a tool name to view details.</p>
+            <p class="text-xs text-gray-400 mb-4">Toggle tools on/off to assign them to this agent. {% if agent.builtin_tools_enabled is not false %}Built-in tools are always available.{% else %}Built-in tools are currently disabled — enable them in the Advanced tab.{% endif %} Click a tool name to view details.</p>
             <!-- Filter bar -->
             <div class="flex flex-wrap items-center gap-2 mb-4">
                 <input type="text" id="tool-filter" placeholder="Filter tools..." autocomplete="off"
@@ -1286,6 +1286,7 @@ window._agentEpoch = 0;
 window._softSwitched = false;
 const ORIGINAL_WORKSPACE = '{{ agent.workspace or '' }}';
 const ARTIFACTS_ENABLED = {{ 'true' if agent.artifacts_enabled else 'false' }};
+const BUILTIN_TOOLS_ENABLED = {{ 'true' if agent.builtin_tools_enabled is not false else 'false' }};
 // Tools managed exclusively by the Artifacts (Saved Files) toggle in agent settings.
 // They are read-only in the Tools tab — cannot be toggled manually.
 const ARTIFACT_TOOL_IDS = ['save_artifact', 'list_artifacts', 'read_attachment', 'cleanup_attachments', 'portal_copy', 'copy_status'];
@@ -1720,6 +1721,7 @@ async function saveGeneral() {
 
 async function saveAdvanced() {
     const btnId = 'saveAdvancedBtn';
+    const oldBuiltinTools = document.getElementById('agent-builtin-tools').checked;
     setSaveLoading(btnId, true);
     try {
     const res = await fetch(`/api/agents/${AGENT_ID}`, {
@@ -1769,6 +1771,10 @@ async function saveAdvanced() {
     }
 
     showToast("Advanced settings saved!", "success");
+    // Refresh tools list if builtin_tools_enabled toggled
+    if (oldBuiltinTools !== document.getElementById('agent-builtin-tools').checked) {
+        loadTools();
+    }
     } finally {
         setSaveLoading(btnId, false);
     }
@@ -2007,7 +2013,7 @@ function renderToolsList() {
 
     const sortByName = (a, b) => (a.name || a.id).localeCompare(b.name || b.id);
     const isArtifactTool = (t) => ARTIFACT_TOOL_IDS.includes(t.id);
-    const builtins  = allToolsDefs.filter(t => t._builtin).sort(sortByName);
+    const builtins  = BUILTIN_TOOLS_ENABLED ? allToolsDefs.filter(t => t._builtin).sort(sortByName) : [];
     const assigned  = allToolsDefs.filter(t => !t._builtin && !isArtifactTool(t) && isToolAssigned(t.id)).sort(sortByName);
     const available = allToolsDefs.filter(t => !t._builtin && !isArtifactTool(t) && !isToolAssigned(t.id)).sort(sortByName);
     const artifactTools = allToolsDefs.filter(t => isArtifactTool(t)).sort(sortByName);
@@ -2073,6 +2079,19 @@ function renderToolsList() {
             </label>
         </div>`;
     };
+
+    // Info banner when built-in tools are disabled globally for this agent
+    if (!BUILTIN_TOOLS_ENABLED) {
+        html += `<div class="flex items-start gap-2.5 p-3 bg-blue-50 dark:bg-blue-900/40 border border-blue-200 dark:border-blue-700 rounded-md mb-2">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-5 h-5 text-blue-500 flex-shrink-0 mt-0.5">
+                <path fill-rule="evenodd" d="M18 10a8 8 0 1 1-16 0 8 8 0 0 1 16 0Zm-7-4a1 1 0 1 1-2 0 1 1 0 0 1 2 0ZM9 9a.75.75 0 0 0 0 1.5h.253a.25.25 0 0 1 .244.304l-.459 2.066A1.75 1.75 0 0 0 10.747 15H11a.75.75 0 0 0 0-1.5h-.253a.25.25 0 0 1-.244-.304l.459-2.066A1.75 1.75 0 0 0 9.253 9H9Z" clip-rule="evenodd"/>
+            </svg>
+            <div>
+                <p class="text-sm font-medium text-blue-800 dark:text-blue-200">Built-in tools are disabled</p>
+                <p class="text-xs text-blue-600 dark:text-blue-300 mt-0.5">Enable them in the Advanced settings tab to make built-in tools available to this agent.</p>
+            </div>
+        </div>`;
+    }
 
     html += [...builtins, ...assigned, ...available].map(renderRow).join('');
 
