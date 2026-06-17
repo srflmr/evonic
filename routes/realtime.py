@@ -714,11 +714,33 @@ def api_realtime_stream():
             mimetype='application/json'
         )
 
+    # SSE connection limiting — max 5 concurrent per user/IP (FINDING-004)
+    from flask import session as _flask_session
+    from models.api_rate_limit import sse_register, sse_unregister, SSE_MAX_CONCURRENT
+    _sse_id = (
+        f"user:{_flask_session.get('_user_id', 'admin')}"
+        if _flask_session.get('authenticated')
+        else f"ip:{request.remote_addr or '0.0.0.0'}"
+    )
+    _sse_allowed, _sse_count = sse_register(_sse_id)
+    if not _sse_allowed:
+        return Response(
+            json.dumps({
+                'error': 'too_many_sse_connections',
+                'message': f'Maximum {SSE_MAX_CONCURRENT} concurrent SSE connections allowed.',
+                'retry_after': 30,
+            }),
+            status=429,
+            headers={'Retry-After': '30'},
+            mimetype='application/json'
+        )
+
     # Thundering herd mitigation — check approximate connection count
     with _conn_lock:
         conn_count = len(_connections)
     max_conn = int(os.environ.get('WORKER_CONNECTIONS', 512))
     if max_conn > 0 and conn_count >= max_conn * 0.8:
+        sse_unregister(_sse_id)
         return Response(
             json.dumps({'error': 'Server busy, please retry later'}),
             status=503,
@@ -955,6 +977,9 @@ def api_realtime_stream():
             # Remove connection from registry
             with _conn_lock:
                 _connections.pop(conn_id, None)
+
+            # Unregister SSE connection (FINDING-004)
+            sse_unregister(_sse_id)
 
             # Check for circuit-breaker channel_disabled events
             for ch_name in all_channels:

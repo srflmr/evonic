@@ -75,6 +75,22 @@ def api_update_stream():
     from models.db import db
     db.close()
 
+    # SSE connection limiting (max 5 concurrent per user/IP, FINDING-004)
+    from flask import session as _flsk_sess
+    from models.api_rate_limit import sse_register, sse_unregister, SSE_MAX_CONCURRENT
+    _sse_ident = (
+        'user:' + (_flsk_sess.get('_user_id', 'admin') if _flsk_sess.get('authenticated') else '')
+        if _flsk_sess.get('authenticated')
+        else 'ip:' + (request.remote_addr or '0.0.0.0')
+    )
+    _ok, _cnt = sse_register(_sse_ident)
+    if not _ok:
+        return jsonify({
+            'error': 'too_many_sse_connections',
+            'message': 'Maximum ' + str(SSE_MAX_CONCURRENT) + ' concurrent SSE connections allowed.',
+            'retry_after': 30,
+        }), 429, {'Retry-After': '30'}
+
     q = update_manager.register_listener()
 
     def generate():
@@ -97,6 +113,7 @@ def api_update_stream():
                     yield f"event: done\ndata: {json.dumps({'status': snapshot['status']})}\n\n"
         finally:
             update_manager.unregister_listener(q)
+            sse_unregister(_sse_ident)
 
     return Response(
         stream_with_context(generate()),
