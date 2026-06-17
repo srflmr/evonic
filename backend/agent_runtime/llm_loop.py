@@ -70,6 +70,77 @@ def _count_tokens(text: str) -> int:
         return len(text) // 4
 
 
+def _sanitize_tool_call_pairs(messages: List[Dict[str, Any]]) -> bool:
+    """Repair orphaned tool_calls / tool messages in-place before sending to the API.
+
+    The provider rejects (HTTP 400) any history where an assistant message with
+    `tool_calls` is not immediately followed by a `tool` response for every
+    `tool_call_id`, or where a `tool` message has no declaring assistant. This can
+    slip through history reconstruction (SQLite-fallback path, prefetch, or live
+    edge cases). Mirror the proven repair in models/chatlog.py:
+
+    1. Inject a synthetic error `tool` response for any declared tool_call_id that
+       has no matching response.
+    2. Drop `tool` messages whose tool_call_id was never declared (orphaned) or is
+       a duplicate response.
+
+    Idempotent — a no-op on well-formed histories. Returns True if it changed
+    `messages`, so callers can gate a retry on "something was actually repaired".
+    """
+    repaired = False
+    out: List[Dict[str, Any]] = []
+    i = 0
+    n = len(messages)
+    declared_ids: set = set()
+    responded_ids: set = set()
+    while i < n:
+        msg = messages[i]
+        if msg.get('role') == 'assistant' and msg.get('tool_calls'):
+            tc_ids = [tc.get('id') for tc in msg.get('tool_calls', []) if tc.get('id')]
+            declared_ids.update(tc_ids)
+            out.append(msg)
+            # Collect the contiguous run of tool responses that follow.
+            j = i + 1
+            seen_here: set = set()
+            while j < n and messages[j].get('role') == 'tool':
+                _tcid = messages[j].get('tool_call_id', '')
+                if _tcid in tc_ids and _tcid not in seen_here and _tcid not in responded_ids:
+                    seen_here.add(_tcid)
+                    responded_ids.add(_tcid)
+                    out.append(messages[j])
+                else:
+                    # Orphaned or duplicate tool response — drop it.
+                    repaired = True
+                j += 1
+            # Inject synthetic responses for any tool_call_id left unanswered.
+            for _mid in tc_ids:
+                if _mid not in seen_here:
+                    out.append({
+                        'role': 'tool',
+                        'tool_call_id': _mid,
+                        'content': '{"error": "Tool execution was interrupted before completion."}',
+                    })
+                    responded_ids.add(_mid)
+                    repaired = True
+            i = j
+        elif msg.get('role') == 'tool':
+            # A tool message not immediately preceded by its declaring assistant.
+            _tcid = msg.get('tool_call_id', '')
+            if _tcid in declared_ids and _tcid not in responded_ids:
+                responded_ids.add(_tcid)
+                out.append(msg)
+            else:
+                repaired = True  # orphaned or duplicate — drop
+            i += 1
+        else:
+            out.append(msg)
+            i += 1
+
+    if repaired:
+        messages[:] = out
+    return repaired
+
+
 def _persist_agent_state_split(ms, agent_id, session_id, db_agent_id=None):
     """Persist agent state, splitting per-session vs global fields.
 
@@ -570,6 +641,13 @@ def run_tool_loop(agent: Dict[str, Any],
                                 agent_id, _sev, _score_pct, _rule,
                             )
 
+        # Repair any orphaned tool_calls/tool messages before sending. Prevents the
+        # provider 400 ("assistant message with tool_calls must be followed by tool
+        # messages") that slips through history reconstruction on some paths.
+        # Idempotent → no-op on well-formed histories.
+        if _sanitize_tool_call_pairs(messages):
+            _logger.warning("Repaired orphaned tool_call/tool pairs before LLM call (session=%s)", session_id)
+
         # LOCK ORDERING: Main path — llm_lock only. No other locks held here.
         # Keep thinking enabled unless the thinking budget was exceeded, in which
         # case we disable thinking to force the model to commit without deliberating.
@@ -969,6 +1047,15 @@ def run_tool_loop(agent: Dict[str, Any],
                 chatlog.append({'type': 'error', 'session_id': session_id, 'content': error_msg,
                                 'metadata': {'error': True, 'thinking_duration': _err_dur}})
                 chatlog.append({'type': 'turn_end', 'session_id': session_id, 'thinking_duration': _err_dur})
+                # Emit final_answer so downstream consumers (e.g. sub-agent → parent
+                # auto-forward) still fire on the error path, mirroring the success
+                # and stop exit paths.
+                event_stream.emit('final_answer', {
+                    'agent_id': agent_id, 'session_id': session_id,
+                    'external_user_id': external_user_id, 'channel_id': channel_id,
+                    'answer': error_msg, 'tool_trace': tool_trace, 'timeline': timeline,
+                    'error': True,
+                })
                 return {"text": error_msg, "error": True}, tool_trace, timeline
 
         choice = result['response'].get('choices', [{}])[0]

@@ -441,5 +441,185 @@ class TestContextSizeCompaction(unittest.TestCase):
         self.assertTrue(any('resuming' in m or 'summary' in m for m in user_msgs))
 
 
+# ---------------------------------------------------------------------------
+# Tests: orphaned tool_call/tool pair sanitization (400 "insufficient tool
+# messages" recovery)
+# ---------------------------------------------------------------------------
+
+def _asst_tc(call_id, name='read_file'):
+    return {"role": "assistant", "content": "",
+            "tool_calls": [{"id": call_id, "type": "function",
+                            "function": {"name": name, "arguments": "{}"}}]}
+
+
+def _tc_err(detail="LLM API error: 400 - An assistant message with 'tool_calls' "
+                   "must be followed by tool messages responding to each 'tool_call_id'."):
+    return {'success': False, 'error_type': 'api_error', 'error_detail': detail, 'response': {}}
+
+
+class TestSanitizeToolCallPairs(unittest.TestCase):
+    """Unit tests for _sanitize_tool_call_pairs."""
+
+    def setUp(self):
+        self.sanitize = _llm_loop_mod._sanitize_tool_call_pairs
+
+    def test_noop_on_well_formed_history(self):
+        messages = [
+            {"role": "system", "content": "sys"},
+            {"role": "user", "content": "hi"},
+            _asst_tc("c1"),
+            {"role": "tool", "tool_call_id": "c1", "content": "result"},
+            {"role": "assistant", "content": "done"},
+        ]
+        original = [dict(m) for m in messages]
+        changed = self.sanitize(messages)
+        self.assertFalse(changed)
+        self.assertEqual(messages, original)
+
+    def test_injects_synthetic_response_for_orphaned_tool_calls(self):
+        messages = [
+            {"role": "user", "content": "hi"},
+            _asst_tc("c1"),
+            # No tool response for c1 — orphaned.
+            {"role": "user", "content": "next"},
+        ]
+        changed = self.sanitize(messages)
+        self.assertTrue(changed)
+        # A synthetic tool response for c1 must now follow the assistant message.
+        tool_msgs = [m for m in messages if m.get('role') == 'tool']
+        self.assertEqual(len(tool_msgs), 1)
+        self.assertEqual(tool_msgs[0]['tool_call_id'], 'c1')
+        self.assertIn('interrupted', tool_msgs[0]['content'])
+        # Position: synthetic response immediately after its assistant message.
+        idx = next(i for i, m in enumerate(messages) if m.get('tool_calls'))
+        self.assertEqual(messages[idx + 1]['role'], 'tool')
+
+    def test_drops_orphaned_tool_message(self):
+        messages = [
+            {"role": "user", "content": "hi"},
+            {"role": "tool", "tool_call_id": "ghost", "content": "stray"},
+            {"role": "assistant", "content": "done"},
+        ]
+        changed = self.sanitize(messages)
+        self.assertTrue(changed)
+        self.assertFalse(any(m.get('role') == 'tool' for m in messages))
+
+    def test_partial_tool_responses_filled(self):
+        messages = [
+            {"role": "user", "content": "hi"},
+            {"role": "assistant", "content": "",
+             "tool_calls": [
+                 {"id": "c1", "type": "function", "function": {"name": "a", "arguments": "{}"}},
+                 {"id": "c2", "type": "function", "function": {"name": "b", "arguments": "{}"}},
+             ]},
+            {"role": "tool", "tool_call_id": "c1", "content": "ok"},
+            # c2 missing
+        ]
+        changed = self.sanitize(messages)
+        self.assertTrue(changed)
+        responded = {m['tool_call_id'] for m in messages if m.get('role') == 'tool'}
+        self.assertEqual(responded, {"c1", "c2"})
+
+    def test_drops_duplicate_tool_response(self):
+        messages = [
+            _asst_tc("c1"),
+            {"role": "tool", "tool_call_id": "c1", "content": "first"},
+            {"role": "tool", "tool_call_id": "c1", "content": "dup"},
+        ]
+        changed = self.sanitize(messages)
+        self.assertTrue(changed)
+        tool_msgs = [m for m in messages if m.get('role') == 'tool']
+        self.assertEqual(len(tool_msgs), 1)
+        self.assertEqual(tool_msgs[0]['content'], 'first')
+
+
+class TestApiErrorOrphanRecovery(unittest.TestCase):
+    """run_tool_loop should repair orphaned tool_calls and retry on a 400 api_error."""
+
+    def _make_agent_context(self):
+        return {'user_id': 'u1', 'channel_id': 'ch1', 'is_super': False, 'agent_state': None}
+
+    def _make_agent(self, agent_id='test_agent'):
+        return {'id': agent_id, 'name': 'Test', 'model': None,
+                'send_intermediate_responses': False, 'summarize_threshold': 0}
+
+    def _run_tool_loop(self, llm, messages, session_id):
+        run_tool_loop = _llm_loop_mod.run_tool_loop
+        mock_db = MagicMock()
+        mock_db.get_setting.side_effect = lambda key, default=None: default or '0'
+        mock_db.add_chat_message.return_value = None
+        mock_db.get_agent_default_model.return_value = None
+        mock_db.get_agent_fallback_model.return_value = None
+        mock_db.get_summary.return_value = None
+        mock_tr = MagicMock()
+        mock_tr.get_builtin_executor.return_value = lambda n, a: None
+        mock_tr.get_real_executor.return_value = lambda n, a: None
+        import backend.event_stream as _es_mod
+        with patch.object(_llm_loop_mod, 'db', mock_db), \
+             patch.object(_llm_loop_mod, 'tool_registry', mock_tr), \
+             patch.object(_es_mod, 'event_stream', MagicMock()) as mock_es, \
+             patch.object(_llm_loop_mod, 'LLMClient', return_value=llm), \
+             patch.object(_llm_loop_mod, 'llm_client', llm):
+            result = run_tool_loop(
+                agent=self._make_agent(),
+                agent_context=self._make_agent_context(),
+                messages=messages,
+                tools=[],
+                session_id=session_id,
+                llm_lock=threading.Lock(),
+                stop_event=threading.Event(),
+                session_skill_mds={},
+                session_skill_tools={},
+                llm_log_path=None,
+            )
+            return result, mock_es
+
+    def test_proactive_sanitize_prevents_400(self):
+        """A pre-existing orphaned tool_calls in history is repaired before the
+        first call, so the LLM call succeeds on the first try."""
+        llm = MagicMock()
+        llm.chat_completion.side_effect = [_ok('All good.')]
+        messages = [
+            {"role": "system", "content": "sys"},
+            {"role": "user", "content": "hi"},
+            _asst_tc("c1"),  # orphaned — no tool response
+            {"role": "user", "content": "continue"},
+        ]
+        (result, _, _), _ = self._run_tool_loop(llm, messages, 'sess_orphan1')
+        self.assertEqual(llm.chat_completion.call_count, 1)
+        # History sent to the model now contains a synthetic tool response.
+        sent = llm.chat_completion.call_args[1]['messages']
+        self.assertTrue(any(m.get('role') == 'tool' and m.get('tool_call_id') == 'c1'
+                            for m in sent))
+        self.assertIn('all good', str(result).lower())
+
+    def test_api_error_returns_humanized_final_answer(self):
+        """A 400 api_error that proactive sanitize can't fix returns a humanized
+        message AND emits a final_answer event (error path), without looping."""
+        llm = MagicMock()
+        llm.chat_completion.side_effect = [_tc_err(), _tc_err(), _tc_err(), _tc_err()]
+        messages = [
+            {"role": "system", "content": "sys"},
+            {"role": "user", "content": "hi"},  # no orphan — sanitizer is a no-op
+        ]
+        (result, _, _), mock_es = self._run_tool_loop(llm, messages, 'sess_orphan3')
+        self.assertTrue(result.get('error'))
+        self.assertIn('repaired', result.get('text', '').lower())
+        # final_answer must be emitted on the error path (Fix C).
+        emitted = [c[0][0] for c in mock_es.emit.call_args_list]
+        self.assertIn('final_answer', emitted)
+        # Bounded — must not loop forever.
+        self.assertLessEqual(llm.chat_completion.call_count, 3)
+
+
+class TestHumanizeInsufficientToolMessages(unittest.TestCase):
+    def test_maps_insufficient_tool_messages(self):
+        humanize = _llm_loop_mod._humanize_llm_error
+        msg = humanize("LLM API error: 400 - An assistant message with 'tool_calls' "
+                       "must be followed by tool messages responding to each 'tool_call_id'.")
+        self.assertIn('repaired', msg.lower())
+        self.assertNotIn('400', msg)
+
+
 if __name__ == '__main__':
     unittest.main()
