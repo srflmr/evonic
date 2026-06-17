@@ -156,7 +156,7 @@ def login_submit():
         'csrf_token', csrf_token,
         httponly=False,       # JS must read this cookie
         samesite='Lax',
-        secure=not config.DEBUG,
+        secure=not config.FORCE_INSECURE_COOKIES,
         path='/',
         max_age=604800,       # 7 days, matching session lifetime
     )

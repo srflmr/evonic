@@ -920,3 +920,103 @@ def api_batch_save():
 
     return jsonify({'success': True, 'results': results})
 
+
+# ---- User Management (Admin) ----
+
+
+@settings_bp.route('/api/settings/users', methods=['GET'])
+def api_list_users():
+    """List all users with optional status filter.
+
+    Query params:
+        filter: all | approved | blocked | pending  (default: all)
+        limit: int (default: 50)
+        offset: int (default: 0)
+    """
+    status_filter = request.args.get('filter', 'all')
+    limit = min(int(request.args.get('limit', 50)), 200)
+    offset = max(int(request.args.get('offset', 0)), 0)
+
+    with db._connect() as conn:
+        conn.row_factory = db._row_factory
+        cursor = conn.cursor()
+
+        conditions = ['u.deleted_at IS NULL']
+        params = []
+
+        if status_filter == 'approved':
+            conditions.append('u.is_approved = 1 AND u.blocked_at IS NULL')
+        elif status_filter == 'blocked':
+            conditions.append('u.is_approved = 2')
+        elif status_filter == 'pending':
+            conditions.append('(u.is_approved = 0 OR u.is_approved IS NULL)')
+
+        where = ' AND '.join(conditions)
+
+        cursor.execute(f"""
+            SELECT u.*,
+                   (SELECT COUNT(*) FROM user_audit_log WHERE user_id = u.id AND action IN ('blocked', 'unblocked')) as audit_count
+            FROM users u
+            WHERE {where}
+            ORDER BY u.last_active_at DESC NULLS LAST
+            LIMIT ? OFFSET ?
+        """, params + [limit, offset])
+
+        users = [dict(r) for r in cursor.fetchall()]
+
+        # Count total for pagination
+        cursor.execute(f'SELECT COUNT(*) FROM users u WHERE {where}', params)
+        total = cursor.fetchone()[0]
+
+    return jsonify({'users': users, 'total': total, 'limit': limit, 'offset': offset})
+
+
+@settings_bp.route('/api/admin/blocked-users', methods=['GET'])
+def api_blocked_users():
+    """List all blocked users (dedicated endpoint)."""
+    with db._connect() as conn:
+        conn.row_factory = db._row_factory
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT u.*,
+                   (SELECT created_at FROM user_audit_log
+                    WHERE user_id = u.id AND action = 'blocked'
+                    ORDER BY created_at DESC LIMIT 1) as blocked_at_audit,
+                   (SELECT actor_id FROM user_audit_log
+                    WHERE user_id = u.id AND action = 'blocked'
+                    ORDER BY created_at DESC LIMIT 1) as blocked_by
+            FROM users u
+            WHERE u.is_approved = 2 AND u.deleted_at IS NULL
+            ORDER BY u.blocked_at DESC
+        """)
+        users = [dict(r) for r in cursor.fetchall()]
+
+    return jsonify({'users': users, 'total': len(users)})
+
+
+@settings_bp.route('/api/settings/users/<user_id>/block', methods=['POST'])
+def api_block_user(user_id):
+    """Block a user by ID."""
+    data = request.get_json() or {}
+    reason = data.get('reason', '')
+    ok = db.block_user(user_id, reason=reason, actor_type='admin', actor_id='web_admin')
+    if ok:
+        return jsonify({'success': True, 'user_id': user_id})
+    return jsonify({'error': 'User not found or already blocked'}), 404
+
+
+@settings_bp.route('/api/settings/users/<user_id>/unblock', methods=['POST'])
+def api_unblock_user(user_id):
+    """Unblock a user by ID."""
+    ok = db.unblock_user(user_id, actor_type='admin', actor_id='web_admin')
+    if ok:
+        return jsonify({'success': True, 'user_id': user_id})
+    return jsonify({'error': 'User not found or not blocked'}), 404
+
+
+@settings_bp.route('/api/settings/users/<user_id>/audit', methods=['GET'])
+def api_user_audit(user_id):
+    """Get audit log for a specific user."""
+    logs = db.get_audit_log(user_id=user_id)
+    return jsonify({'user_id': user_id, 'audit_logs': logs})
+

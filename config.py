@@ -165,6 +165,12 @@ HOST = os.getenv("HOST", "0.0.0.0")
 PORT = _get_env_int("PORT", 8080, min_val=1, max_val=65535)
 DEBUG = os.getenv("DEBUG", "0") == "1"
 
+# Cookie security — FORCE_INSECURE_COOKIES=true disables the Secure flag
+# for all cookies (session + CSRF). Intended for local development without
+# HTTPS. Default False: cookies ALWAYS have Secure=True regardless of DEBUG.
+FORCE_INSECURE_COOKIES = os.getenv("FORCE_INSECURE_COOKIES", "0") == "1"
+SESSION_COOKIE_SECURE = not FORCE_INSECURE_COOKIES
+
 # Authentication
 ADMIN_PASSWORD_HASH = os.getenv("ADMIN_PASSWORD_HASH", "")
 TURNSTILE_SITE_KEY = os.getenv("TURNSTILE_SITE_KEY", "")

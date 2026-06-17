@@ -126,6 +126,7 @@ from datetime import timedelta
 app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=7)
 app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
 app.config['SESSION_COOKIE_HTTPONLY'] = True
+app.config['SESSION_COOKIE_SECURE'] = config.SESSION_COOKIE_SECURE
 
 # Global upload size limit (defense-in-depth for all endpoints)
 app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50 MB
@@ -547,7 +548,7 @@ def set_csrf_cookie(response):
             'csrf_token', token,
             httponly=False,
             samesite='Lax',
-            secure=not config.DEBUG,
+            secure=not config.FORCE_INSECURE_COOKIES,
             path='/',
             max_age=604800,
         )

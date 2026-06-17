@@ -1,0 +1,310 @@
+<div class="space-y-4">
+    <!-- Header -->
+    <div class="flex items-center justify-between">
+        <div>
+            <h3 class="font-medium text-gray-800 dark:text-gray-100">User Management</h3>
+            <p class="text-sm text-gray-500 mt-0.5">View and manage registered users. Block or unblock users, and view audit trail.</p>
+        </div>
+    </div>
+
+    <!-- Filter Bar -->
+    <div class="flex items-center gap-2 flex-wrap">
+        <label class="text-sm text-gray-500">Filter:</label>
+        <select id="users-status-filter" onchange="usersTab.load()"
+                class="border border-gray-200 dark:border-gray-600 rounded-lg px-3 py-1.5 text-sm bg-white dark:bg-gray-700 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-indigo-300">
+            <option value="all">All Users</option>
+            <option value="approved">Approved</option>
+            <option value="blocked">Blocked</option>
+            <option value="pending">Pending</option>
+        </select>
+        <span id="users-count" class="text-xs text-gray-400 ml-2"></span>
+    </div>
+
+    <!-- Users Table -->
+    <div class="overflow-x-auto">
+        <table class="w-full text-sm text-left">
+            <thead class="text-xs text-gray-500 uppercase bg-gray-50 dark:bg-gray-700 dark:text-gray-300">
+                <tr>
+                    <th class="px-4 py-2">Name</th>
+                    <th class="px-4 py-2">User ID</th>
+                    <th class="px-4 py-2 text-center">Status</th>
+                    <th class="px-4 py-2">Blocked At</th>
+                    <th class="px-4 py-2">Blocked By</th>
+                    <th class="px-4 py-2">Block Reason</th>
+                    <th class="px-4 py-2">Last Active</th>
+                    <th class="px-4 py-2 text-right">Actions</th>
+                </tr>
+            </thead>
+            <tbody id="users-table-body">
+                <tr><td colspan="8" class="text-center py-8 text-gray-400">Loading...</td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Pagination -->
+    <div id="users-pagination" class="flex items-center justify-center gap-2 mt-4 hidden">
+        <button onclick="usersTab.goPage(usersTab.page - 1)"
+                id="users-prev"
+                class="px-3 py-1.5 rounded-md text-sm border border-gray-300 text-gray-600 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700">
+            ← Prev
+        </button>
+        <span id="users-page-info" class="text-sm text-gray-500 dark:text-gray-400"></span>
+        <button onclick="usersTab.goPage(usersTab.page + 1)"
+                id="users-next"
+                class="px-3 py-1.5 rounded-md text-sm border border-gray-300 text-gray-600 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700">
+            Next →
+        </button>
+    </div>
+</div>
+
+<!-- Audit Log Modal -->
+<div id="audit-modal" class="modal" style="display:none;">
+    <div class="bg-white dark:bg-gray-800 rounded-xl shadow-2xl w-full max-w-lg mx-4 flex flex-col max-h-[80vh]">
+        <div class="flex items-center justify-between px-6 pt-5 pb-4 border-b border-gray-100 dark:border-gray-700 flex-shrink-0">
+            <h3 class="text-lg font-semibold text-gray-800 dark:text-gray-100">Audit Trail</h3>
+            <button onclick="document.getElementById('audit-modal').style.display='none'" class="text-gray-400 hover:text-gray-600 text-xl">&times;</button>
+        </div>
+        <div id="audit-modal-body" class="px-6 py-4 overflow-y-auto">
+            <p class="text-gray-400 text-sm">Loading...</p>
+        </div>
+    </div>
+</div>
+
+<script>
+(function() {
+    window.usersTab = {
+        page: 0,
+        limit: 50,
+
+        init: function() {
+            usersTab.page = 0;
+            usersTab.load();
+        },
+
+        load: function() {
+            var filter = document.getElementById('users-status-filter').value;
+            var offset = usersTab.page * usersTab.limit;
+            var url = '/api/settings/users?filter=' + filter + '&limit=' + usersTab.limit + '&offset=' + offset;
+
+            document.getElementById('users-table-body').innerHTML =
+                '<tr><td colspan="8" class="text-center py-8 text-gray-400">Loading...</td></tr>';
+
+            fetch(url)
+                .then(function(r) { return r.json(); })
+                .then(function(data) {
+                    usersTab.render(data);
+                })
+                .catch(function(err) {
+                    document.getElementById('users-table-body').innerHTML =
+                        '<tr><td colspan="8" class="text-center py-8 text-red-500">Error loading users: ' + err.message + '</td></tr>';
+                });
+        },
+
+        render: function(data) {
+            var users = data.users || [];
+            var total = data.total || 0;
+            var tbody = document.getElementById('users-table-body');
+            var countEl = document.getElementById('users-count');
+            var pagination = document.getElementById('users-pagination');
+
+            countEl.textContent = '(' + total + ' user' + (total !== 1 ? 's' : '') + ')';
+
+            if (users.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="8" class="text-center py-8 text-gray-400">No users found</td></tr>';
+                pagination.classList.add('hidden');
+                return;
+            }
+
+            var html = '';
+            for (var i = 0; i < users.length; i++) {
+                var u = users[i];
+                var statusBadge = usersTab.statusBadge(u);
+                var blockedAt = u.blocked_at ? usersTab.formatDate(u.blocked_at) : '—';
+                var blockedBy = u.blocked_by || '—';
+                var blockReason = u.blocked_reason || '—';
+                var lastActive = u.last_active_at ? usersTab.formatDate(u.last_active_at) : '—';
+                var auditCount = u.audit_count || 0;
+
+                html += '<tr class="border-b border-gray-100 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-750">';
+                html += '<td class="px-4 py-2 font-medium text-gray-800 dark:text-gray-100">' + usersTab.esc(u.name || '') + '</td>';
+                html += '<td class="px-4 py-2 text-gray-500 dark:text-gray-400 font-mono text-xs">' + usersTab.esc(u.id || '') + '</td>';
+                html += '<td class="px-4 py-2 text-center">' + statusBadge + '</td>';
+                html += '<td class="px-4 py-2 text-gray-500 dark:text-gray-400 text-xs">' + blockedAt + '</td>';
+                html += '<td class="px-4 py-2 text-gray-500 dark:text-gray-400 text-xs">' + usersTab.esc(blockedBy) + '</td>';
+                html += '<td class="px-4 py-2 text-gray-500 dark:text-gray-400 text-xs max-w-[150px] truncate" title="' + usersTab.esc(blockReason) + '">' + usersTab.esc(blockReason) + '</td>';
+                html += '<td class="px-4 py-2 text-gray-500 dark:text-gray-400 text-xs">' + lastActive + '</td>';
+                html += '<td class="px-4 py-2 text-right whitespace-nowrap">';
+                html += usersTab.actionButtons(u);
+                html += '</td>';
+                html += '</tr>';
+            }
+
+            tbody.innerHTML = html;
+
+            // Pagination
+            var totalPages = Math.ceil(total / usersTab.limit);
+            if (totalPages > 1) {
+                pagination.classList.remove('hidden');
+                document.getElementById('users-page-info').textContent =
+                    'Page ' + (usersTab.page + 1) + ' of ' + totalPages;
+                document.getElementById('users-prev').disabled = usersTab.page === 0;
+                document.getElementById('users-next').disabled = usersTab.page >= totalPages - 1;
+            } else {
+                pagination.classList.add('hidden');
+            }
+        },
+
+        goPage: function(p) {
+            usersTab.page = Math.max(0, p);
+            usersTab.load();
+        },
+
+        statusBadge: function(u) {
+            if (u.is_approved === 2 || u.blocked_at) {
+                return '<span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200">🚫 Blocked</span>';
+            } else if (u.is_approved === 1) {
+                return '<span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">✓ Approved</span>';
+            } else {
+                return '<span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200">⏳ Pending</span>';
+            }
+        },
+
+        actionButtons: function(u) {
+            var btns = '';
+            var isBlocked = u.is_approved === 2 || u.blocked_at;
+
+            btns += '<button onclick="usersTab.showAudit(\'' + usersTab.escAttr(u.id) + '\')" ' +
+                    'class="text-xs text-indigo-500 hover:text-indigo-700 dark:text-indigo-400 dark:hover:text-indigo-300 mr-2" ' +
+                    'title="View audit trail">📋</button>';
+
+            if (isBlocked) {
+                btns += '<button onclick="usersTab.unblockUser(\'' + usersTab.escAttr(u.id) + '\')" ' +
+                        'class="text-xs bg-green-500 hover:bg-green-600 text-white px-2 py-0.5 rounded" ' +
+                        'title="Unblock this user">Unblock</button>';
+            } else {
+                btns += '<button onclick="usersTab.showBlockModal(\'' + usersTab.escAttr(u.id) + '\', \'' + usersTab.escAttr(u.name || '') + '\')" ' +
+                        'class="text-xs bg-red-500 hover:bg-red-600 text-white px-2 py-0.5 rounded" ' +
+                        'title="Block this user">Block</button>';
+            }
+            return btns;
+        },
+
+        showBlockModal: function(userId, userName) {
+            var reason = prompt('Block user "' + userName + '"?\n\nEnter reason (optional):');
+            if (reason === null) return; // user cancelled
+            usersTab.blockUser(userId, reason);
+        },
+
+        blockUser: function(userId, reason) {
+            fetch('/api/settings/users/' + userId + '/block', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ reason: reason || '' })
+            })
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (data.success) {
+                    usersTab.load();
+                } else {
+                    alert('Error: ' + (data.error || 'Unknown error'));
+                }
+            })
+            .catch(function(err) {
+                alert('Error: ' + err.message);
+            });
+        },
+
+        unblockUser: function(userId) {
+            if (!confirm('Unblock this user? They will regain full access.')) return;
+            fetch('/api/settings/users/' + userId + '/unblock', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' }
+            })
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (data.success) {
+                    usersTab.load();
+                } else {
+                    alert('Error: ' + (data.error || 'Unknown error'));
+                }
+            })
+            .catch(function(err) {
+                alert('Error: ' + err.message);
+            });
+        },
+
+        showAudit: function(userId) {
+            var modal = document.getElementById('audit-modal');
+            var body = document.getElementById('audit-modal-body');
+            modal.style.display = 'flex';
+            body.innerHTML = '<p class="text-gray-400 text-sm">Loading...</p>';
+
+            fetch('/api/settings/users/' + userId + '/audit')
+                .then(function(r) { return r.json(); })
+                .then(function(data) {
+                    var logs = data.audit_logs || [];
+                    if (logs.length === 0) {
+                        body.innerHTML = '<p class="text-gray-400 text-sm text-center py-4">No audit records found.</p>';
+                        return;
+                    }
+                    var html = '<div class="space-y-3">';
+                    html += '<p class="text-xs text-gray-500 mb-2">User: <code class="text-indigo-600">' + usersTab.esc(userId) + '</code> — ' + logs.length + ' record(s)</p>';
+                    for (var i = 0; i < logs.length; i++) {
+                        var log = logs[i];
+                        var actionLabel = log.action;
+                        var actionColor = 'text-gray-600 dark:text-gray-300';
+                        if (log.action === 'blocked') actionColor = 'text-red-600 dark:text-red-400';
+                        else if (log.action === 'unblocked') actionColor = 'text-green-600 dark:text-green-400';
+
+                        html += '<div class="border border-gray-200 dark:border-gray-700 rounded-lg p-3">';
+                        html += '<div class="flex items-center justify-between mb-1">';
+                        html += '<span class="font-medium text-sm ' + actionColor + '">' + actionLabel + '</span>';
+                        html += '<span class="text-xs text-gray-400">' + usersTab.formatDate(log.created_at) + '</span>';
+                        html += '</div>';
+                        html += '<div class="text-xs text-gray-500 dark:text-gray-400">';
+                        html += 'Actor: <span class="text-gray-700 dark:text-gray-300">' + usersTab.esc(log.actor_type || '—') + '</span>';
+                        if (log.actor_id) {
+                            html += ' (' + usersTab.esc(log.actor_id) + ')';
+                        }
+                        if (log.details) {
+                            try {
+                                var details = JSON.parse(log.details);
+                                if (details.reason) {
+                                    html += '<br>Reason: ' + usersTab.esc(details.reason);
+                                }
+                                if (details.changes) {
+                                    html += '<br>Changes: <code class="text-xs">' + usersTab.esc(JSON.stringify(details.changes)) + '</code>';
+                                }
+                            } catch(e) {}
+                        }
+                        html += '</div>';
+                        html += '</div>';
+                    }
+                    html += '</div>';
+                    body.innerHTML = html;
+                })
+                .catch(function(err) {
+                    body.innerHTML = '<p class="text-red-500 text-sm">Error: ' + err.message + '</p>';
+                });
+        },
+
+        formatDate: function(dt) {
+            if (!dt) return '—';
+            var d = new Date(dt.replace(' ', 'T') + (dt.indexOf('+') === -1 && dt.indexOf('Z') === -1 ? 'Z' : ''));
+            if (isNaN(d.getTime())) return dt;
+            return d.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) +
+                ' ' + d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+        },
+
+        esc: function(s) {
+            if (!s) return '';
+            return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+        },
+
+        escAttr: function(s) {
+            if (!s) return '';
+            return String(s).replace(/&/g, '&amp;').replace(/'/g, '\\\'').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        }
+    };
+})();
+</script>
