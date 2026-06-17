@@ -70,7 +70,15 @@ def setup_module(module):
     sys.modules.pop('backend.tools.agent_messaging', None)
 
     sys.modules['models.db'] = mock.MagicMock(db=_mock_db)
-    sys.modules['models'] = mock.MagicMock()
+    # Stub the top-level `models` package but keep a real __path__ so genuine
+    # submodule imports (e.g. `from models.chatlog import ...` triggered when
+    # the autouse conftest fixture imports the full app) still resolve to the
+    # real files.  Without __path__ the bare MagicMock is "not a package" and
+    # any models.* submodule import raises ModuleNotFoundError.
+    _models_stub = mock.MagicMock()
+    _models_stub.__path__ = [os.path.join(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'models')]
+    sys.modules['models'] = _models_stub
     sys.modules['backend.agent_runtime.notifier'] = _mock_notifier
     sys.modules['backend.agent_runtime'] = mock.MagicMock()
     sys.modules['backend.agent_runtime.approval'] = _mock_approval
