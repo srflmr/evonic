@@ -4195,6 +4195,9 @@ def doctor_command(quick=False, fix=False, with_llm_provider=False):
     else:
         print(f"\n{_G}{_BOLD}  All checks passed. System is healthy!{_RESET}")
 
+    if not fix and (failed > 0 or warnings > 0):
+        print(f"\n  {_DIM}Tip: run{_RESET} {_BOLD}evonic doctor --fix{_RESET} {_DIM}to auto-fix fixable issues.{_RESET}")
+
     print()
     return 0 if failed == 0 else 1
 

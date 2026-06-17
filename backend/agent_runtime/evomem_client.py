@@ -17,21 +17,29 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+# Repo root, so `shared/bin/...` resolves regardless of the process working
+# directory (otherwise the engine silently downgrades to FTS5 when the server
+# is started from anywhere other than the repo root).
+_BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+
 def _resolve_binary() -> str:
     """Locate the evomem binary.
 
     Honours EVOMEM_BINARY (or the legacy EVOBRAIN_BINARY) env override. Otherwise
     prefers the new `shared/bin/evomem` name but falls back to the legacy
     `shared/bin/evobrain` so the rename doesn't silently disable the engine while
-    the binary is still shipped under its old name.
+    the binary is still shipped under its old name. Paths are resolved against the
+    repo root, not the process working directory.
     """
     env = os.environ.get("EVOMEM_BINARY") or os.environ.get("EVOBRAIN_BINARY")
     if env:
         return env
-    for path in ("shared/bin/evomem", "shared/bin/evobrain"):
+    for name in ("evomem", "evobrain"):
+        path = os.path.join(_BASE_DIR, "shared", "bin", name)
         if os.path.isfile(path):
             return path
-    return "shared/bin/evomem"
+    return os.path.join(_BASE_DIR, "shared", "bin", "evomem")
 
 
 _EVOMEM_BINARY = _resolve_binary()

@@ -9,7 +9,10 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from werkzeug.security import generate_password_hash
 
 TEST_PASSWORD = "test123"
-TEST_PASSWORD_HASH = generate_password_hash(TEST_PASSWORD)
+# Use pbkdf2 (not werkzeug's scrypt default) to match the app's own hashing in
+# backend/setup.py and avoid hashlib.scrypt, which is unavailable on Python
+# builds without OpenSSL scrypt support (e.g. CI's setup-python 3.9).
+TEST_PASSWORD_HASH = generate_password_hash(TEST_PASSWORD, method="pbkdf2:sha256")
 
 
 class TestOpenRedirectPrevention(unittest.TestCase):
