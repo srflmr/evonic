@@ -68,6 +68,7 @@ def _is_safe_redirect_url(target):
 def login_page():
     if session.get('authenticated'):
         next_url = request.args.get('next', '/')
+        next_url = next_url.replace('\r', '').replace('\n', '')
         if not _is_safe_redirect_url(next_url):
             next_url = '/'
         return redirect(next_url)
@@ -95,6 +96,7 @@ def login_submit():
     password = request.form.get('password', '')
     turnstile_token = request.form.get('cf-turnstile-response', '')
     next_url = request.form.get('next', '/')
+    next_url = next_url.replace('\r', '').replace('\n', '')
 
     # Verify Turnstile if configured
     if config.TURNSTILE_SECRET_KEY:
