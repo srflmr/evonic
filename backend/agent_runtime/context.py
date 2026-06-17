@@ -785,6 +785,13 @@ def build_system_prompt(agent: Dict[str, Any]) -> str:
 
     prompt = static_prompt
 
+    # Expand injected system vars (session-scoped, after cache)
+    injected_system_vars = agent.get('injected_system_vars')
+    if injected_system_vars:
+        for key, value in injected_system_vars.items():
+            placeholder = '{{' + key + '}}'
+            prompt = prompt.replace(placeholder, str(value))
+
     # Onboarding injection for super agent (one-time, until owner name is known).
     # Once set_owner_name is called, defaults/super_agent_system_prompt.md is copied
     # to SYSTEM.md and owner_name is stored — the injection below is then replaced
