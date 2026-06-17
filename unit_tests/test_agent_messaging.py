@@ -392,6 +392,155 @@ class TestExecSendAgentMessage(unittest.TestCase):
             )
         self.assertTrue(result.get('success'))
 
+    # -------------------------------------------------------
+    # injected_system_vars validation
+    # -------------------------------------------------------
+
+    def test_injected_system_vars_valid_keys_accepted(self):
+        """Valid injected_system_vars keys are accepted and passed through metadata."""
+        target = _make_target_agent()
+        with mock.patch('backend.tools.agent_messaging.db.get_agent', return_value=target), \
+            mock.patch('backend.agent_runtime.notifier.notify_agent') as mock_notify:
+            result = self._call({
+                'target_agent_id': 'agent_b',
+                'message': 'Hello',
+                'injected_system_vars': {
+                    'query': 'hello',
+                    'my_var': 'test',
+                    '_private': 'ok',
+                },
+            })
+        self.assertTrue(result.get('success'))
+        meta = mock_notify.call_args.kwargs.get('metadata', {})
+        injected = meta.get('injected_system_vars', {})
+        self.assertEqual(injected.get('query'), 'hello')
+        self.assertEqual(injected.get('my_var'), 'test')
+        self.assertEqual(injected.get('_private'), 'ok')
+
+    def test_injected_system_vars_reserved_key_time_rejected(self):
+        """Reserved key time is rejected."""
+        result = self._call({
+            'target_agent_id': 'agent_b',
+            'message': 'Hello',
+            'injected_system_vars': {'time': 'xxx'},
+        })
+        self.assertIn('error', result)
+        self.assertIn('reserved', result['error'])
+        self.assertIn('time', result['error'])
+
+    def test_injected_system_vars_reserved_key_date_rejected(self):
+        """Reserved key date is rejected."""
+        result = self._call({
+            'target_agent_id': 'agent_b',
+            'message': 'Hello',
+            'injected_system_vars': {'date': 'xxx'},
+        })
+        self.assertIn('error', result)
+        self.assertIn('reserved', result['error'])
+
+    def test_injected_system_vars_reserved_key_day_rejected(self):
+        """Reserved key day is rejected."""
+        result = self._call({
+            'target_agent_id': 'agent_b',
+            'message': 'Hello',
+            'injected_system_vars': {'day': 'xxx'},
+        })
+        self.assertIn('error', result)
+        self.assertIn('reserved', result['error'])
+
+    def test_injected_system_vars_invalid_key_starts_with_digit(self):
+        """Key starting with digit 123bad is rejected."""
+        result = self._call({
+            'target_agent_id': 'agent_b',
+            'message': 'Hello',
+            'injected_system_vars': {'123bad': 'x'},
+        })
+        self.assertIn('error', result)
+        self.assertIn('invalid key', result['error'])
+
+    def test_injected_system_vars_invalid_key_has_space(self):
+        """Key with space is rejected."""
+        result = self._call({
+            'target_agent_id': 'agent_b',
+            'message': 'Hello',
+            'injected_system_vars': {'has space': 'x'},
+        })
+        self.assertIn('error', result)
+        self.assertIn('invalid key', result['error'])
+
+    def test_injected_system_vars_invalid_key_has_dash(self):
+        """Key with dash is rejected."""
+        result = self._call({
+            'target_agent_id': 'agent_b',
+            'message': 'Hello',
+            'injected_system_vars': {'has-dash': 'x'},
+        })
+        self.assertIn('error', result)
+        self.assertIn('invalid key', result['error'])
+
+    def test_injected_system_vars_too_many_keys_rejected(self):
+        """More than 10 keys is rejected."""
+        many_keys = {f'key{i}': f'val{i}' for i in range(11)}
+        result = self._call({
+            'target_agent_id': 'agent_b',
+            'message': 'Hello',
+            'injected_system_vars': many_keys,
+        })
+        self.assertIn('error', result)
+        self.assertIn('maximum 10 keys', result['error'])
+
+    def test_injected_system_vars_value_too_long_rejected(self):
+        """Value exceeding 1024 characters is rejected."""
+        long_value = 'x' * 1025
+        result = self._call({
+            'target_agent_id': 'agent_b',
+            'message': 'Hello',
+            'injected_system_vars': {'key': long_value},
+        })
+        self.assertIn('error', result)
+        self.assertIn('exceeds 1024', result['error'])
+
+    def test_injected_system_vars_empty_dict_accepted(self):
+        """Empty injected_system_vars dict no-ops gracefully."""
+        target = _make_target_agent()
+        with mock.patch('backend.tools.agent_messaging.db.get_agent', return_value=target), \
+            mock.patch('backend.agent_runtime.notifier.notify_agent') as mock_notify:
+            result = self._call({
+                'target_agent_id': 'agent_b',
+                'message': 'Hello',
+                'injected_system_vars': {},
+            })
+        self.assertTrue(result.get('success'))
+        meta = mock_notify.call_args.kwargs.get('metadata', {})
+        self.assertIsNone(meta.get('injected_system_vars'))
+
+    def test_injected_system_vars_none_passed_accepted(self):
+        """None passed as injected_system_vars no-ops gracefully."""
+        target = _make_target_agent()
+        with mock.patch('backend.tools.agent_messaging.db.get_agent', return_value=target), \
+            mock.patch('backend.agent_runtime.notifier.notify_agent') as mock_notify:
+            result = self._call({
+                'target_agent_id': 'agent_b',
+                'message': 'Hello',
+                'injected_system_vars': None,
+            })
+        self.assertTrue(result.get('success'))
+        meta = mock_notify.call_args.kwargs.get('metadata', {})
+        self.assertIsNone(meta.get('injected_system_vars'))
+
+    def test_injected_system_vars_not_passed_accepted(self):
+        """Not passing injected_system_vars at all no-ops gracefully."""
+        target = _make_target_agent()
+        with mock.patch('backend.tools.agent_messaging.db.get_agent', return_value=target), \
+            mock.patch('backend.agent_runtime.notifier.notify_agent') as mock_notify:
+            result = self._call({
+                'target_agent_id': 'agent_b',
+                'message': 'Hello',
+            })
+        self.assertTrue(result.get('success'))
+        meta = mock_notify.call_args.kwargs.get('metadata', {})
+        self.assertIsNone(meta.get('injected_system_vars'))
+
 
 # -------------------------------------------------------
 # Metadata injection
@@ -843,6 +992,60 @@ class TestCheckFanoutLimit(unittest.TestCase):
         self.assertFalse(self._check_fanout_limit('agent_a', 'agent_a_target_new'))
         # agent_b still has clean slate
         self.assertTrue(self._check_fanout_limit('agent_b', 'agent_b_target_1'))
+
+
+
+
+# -------------------------------------------------------
+# injected_system_vars expansion
+# -------------------------------------------------------
+
+class TestInjectedVarsExpansion(unittest.TestCase):
+    """Test that injected system vars expand correctly in prompts."""
+
+    def _expand(self, prompt, vars_dict):
+        """Simulate the expansion logic from build_system_prompt."""
+        if vars_dict:
+            for key, value in vars_dict.items():
+                prompt = prompt.replace('{{' + key + '}}', str(value))
+        return prompt
+
+    def test_expansion_replaces_placeholders(self):
+        """Injected vars replace placeholder syntax in the system prompt."""
+        prompt = 'Hello {{name}}! Your query is: {{query}}. Unchanged.'
+        result = self._expand(prompt, {'name': 'World', 'query': 'find docs'})
+        self.assertIn('Hello World!', result)
+        self.assertIn('Your query is: find docs.', result)
+        self.assertIn('Unchanged.', result)
+        self.assertNotIn('{{name}}', result)
+        self.assertNotIn('{{query}}', result)
+
+    def test_expansion_no_vars_leaves_placeholders(self):
+        """Without injected vars, placeholder syntax remains as-is."""
+        prompt = 'Unresolved: {{missing_var}}.'
+        result = self._expand(prompt, None)
+        self.assertIn('{{missing_var}}', result)
+        self.assertIn('Unresolved:', result)
+
+    def test_expansion_multiple_occurrences(self):
+        """Same placeholder appearing multiple times is replaced everywhere."""
+        prompt = '{{x}} and {{x}} again.'
+        result = self._expand(prompt, {'x': 'val'})
+        self.assertEqual(result, 'val and val again.')
+
+    def test_expansion_value_coerced_to_string(self):
+        """Non-string values are converted to string."""
+        prompt = 'Count: {{n}}.'
+        result = self._expand(prompt, {'n': 42})
+        self.assertEqual(result, 'Count: 42.')
+
+    def test_expansion_unknown_placeholders_unchanged(self):
+        """Placeholders without a matching var are left as-is."""
+        prompt = 'Known: {{a}}. Unknown: {{b}}.'
+        result = self._expand(prompt, {'a': 'X'})
+        self.assertIn('Known: X.', result)
+        self.assertIn('{{b}}', result)
+
 
 
 if __name__ == '__main__':
