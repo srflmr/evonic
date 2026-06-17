@@ -195,6 +195,35 @@ def _exec_send_agent_message(args: dict, agent_context: dict) -> dict:
     target_id = args.get('target_agent_id', '').strip().lower()
     message = args.get('message', '').strip()
 
+    # ---- injected_system_vars validation ----
+    _INJECTED_VARS_RESERVED = frozenset({'time', 'date', 'day'})
+    _INJECTED_VARS_KEY_RE = _re.compile(r'^[a-zA-Z_][a-zA-Z0-9_]*$')
+    injected_system_vars = args.get('injected_system_vars')
+    sanitized_vars = None
+    if injected_system_vars is not None:
+        if not isinstance(injected_system_vars, dict):
+            return {'error': 'injected_system_vars must be a flat key->value object.'}
+        if len(injected_system_vars) > 10:
+            return {'error': 'injected_system_vars: maximum 10 keys allowed.'}
+        sanitized = {}
+        seen = set()
+        for raw_key, raw_value in injected_system_vars.items():
+            key = str(raw_key).strip()
+            value = str(raw_value).strip()
+            if not _INJECTED_VARS_KEY_RE.match(key):
+                return {'error': f'injected_system_vars: invalid key "{key}". Keys must match [a-zA-Z_][a-zA-Z0-9_]*.'}
+            if key.lower() in _INJECTED_VARS_RESERVED:
+                return {'error': f'injected_system_vars: key "{key}" is reserved and cannot be overridden.'}
+            key_lower = key.lower()
+            if key_lower in seen:
+                return {'error': f'injected_system_vars: duplicate key "{key}" (case-insensitive).'}
+            seen.add(key_lower)
+            if len(value) > 1024:
+                return {'error': f'injected_system_vars: value for key "{key}" exceeds 1024 characters.'}
+            sanitized[key] = value
+        if sanitized:
+            sanitized_vars = sanitized
+
     if not target_id:
         return {'error': 'target_agent_id is required.'}
     if not message:
@@ -350,6 +379,7 @@ def _exec_send_agent_message(args: dict, agent_context: dict) -> dict:
     metadata = {
         'agent_message': True,
         'from_agent_id': sender_id,
+        'injected_system_vars': sanitized_vars,
         'from_agent_name': sender_name,
         'agent_message_depth': current_depth + 1,
         'reply_to_id': reply_to_id,
