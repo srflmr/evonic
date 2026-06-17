@@ -126,6 +126,10 @@ _TOOL_DEFS = [
                     "session": {
                         "type": "string",
                         "description": "The target session ID to send the message to. If omitted, defaults to the agent's inter-agent session (__agent__<sender-id>)."
+                    },
+                    "injected_system_vars": {
+                        "type": "object",
+                        "description": "Optional flat key\u2192value pairs. Keys matching {{key}} placeholders in the target agent's SYSTEM.md will be replaced with the corresponding value for this session turn only. Keys must match [a-zA-Z_][a-zA-Z0-9_]*. Max 10 keys per call, max 1024 chars per value. Reserved keys (time, date, day) are rejected."
                     }
                 },
                 "required": ["target_agent_id", "message"]
