@@ -109,7 +109,7 @@ def strip_thinking_tags(content: str) -> Tuple[str, Optional[str]]:
         thinking_text = parts[0].strip()
         cleaned_text = parts[1].strip() if len(parts) > 1 else ""
         if thinking_text:
-            return _fix_bold(cleaned_text) or "No content generated", thinking_text
+            return _fix_bold(cleaned_text) or "", thinking_text
         return _fix_bold(cleaned_text) or content.replace("</think>", "").strip(), None
 
     return cleaned, thinking_content
