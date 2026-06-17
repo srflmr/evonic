@@ -10,6 +10,7 @@ from typing import Dict, List
 import requests
 from flask import Blueprint, make_response, render_template, request, session, redirect, url_for, jsonify
 import config
+from backend.audit_logger import audit
 
 auth_bp = Blueprint('auth', __name__)
 
@@ -79,7 +80,14 @@ def login_page():
 def login_submit():
     ip = request.remote_addr or '0.0.0.0'
 
+    email = 'admin'  # admin-only login, no user-specific email
+
+    # Helper to log failures concisely
+    def _audit_fail(reason):
+        audit.log_login(ip=ip, email=email, result='failure', reason=reason)
+
     if _is_rate_limited(ip):
+        _audit_fail('rate_limited')
         return render_template('login.html',
                                turnstile_site_key=config.TURNSTILE_SITE_KEY,
                                error='Too many login attempts. Please wait 15 minutes.'), 429
@@ -102,21 +110,25 @@ def login_submit():
             )
             ts_data = ts_res.json()
             if not ts_data.get('success'):
+                _audit_fail('captcha_failed')
                 return render_template('login.html',
                                        turnstile_site_key=config.TURNSTILE_SITE_KEY,
                                        error='Captcha verification failed. Please try again.')
         except Exception:
+            _audit_fail('captcha_error')
             return render_template('login.html',
                                    turnstile_site_key=config.TURNSTILE_SITE_KEY,
                                    error='Captcha verification error. Please try again.')
 
     if not config.ADMIN_PASSWORD_HASH:
+        _audit_fail('no_admin_configured')
         return render_template('login.html',
                                turnstile_site_key=config.TURNSTILE_SITE_KEY,
                                error='Admin password not configured.')
 
     from werkzeug.security import check_password_hash
     if not check_password_hash(config.ADMIN_PASSWORD_HASH, password):
+        _audit_fail('invalid_password')
         _record_failed_attempt(ip)
         return render_template('login.html',
                                turnstile_site_key=config.TURNSTILE_SITE_KEY,
@@ -124,6 +136,7 @@ def login_submit():
 
     _clear_attempts(ip)
 
+    audit.log_login(ip=ip, email=email, result='success')
     # Regenerate session to prevent session fixation
     old_session = dict(session)
     session.clear()

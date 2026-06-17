@@ -260,6 +260,10 @@ if not _reloader_active or _is_reloader_child:
     from backend.scheduler import scheduler as global_scheduler
     global_scheduler.start()
 
+    # Start periodic cleanup of expired rate-limit entries
+    from models.rate_limit import start_periodic_cleanup
+    start_periodic_cleanup()
+
     # If this boot was triggered by /restart, send "Evonic ready!" (no LLM)
     _restart_ready_flag = db.get_setting('restart_ready_needed')
     if _restart_ready_flag:
