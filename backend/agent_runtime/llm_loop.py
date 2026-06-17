@@ -1877,6 +1877,15 @@ def run_tool_loop(agent: Dict[str, Any],
                     chatlog.append({'type': 'error', 'session_id': session_id, 'content': error_msg,
                                     'metadata': {'error': True, 'thinking_duration': _pfs_dur}})
                     chatlog.append({'type': 'turn_end', 'session_id': session_id, 'thinking_duration': _pfs_dur})
+                    # Emit final_answer so auto-forward (e.g. sub-agent → parent) still fires
+                    # on this hard-stop exit path, mirroring the LLM-error and duplicate-text
+                    # exits above. Without this, the delegator never learns the sub-agent died.
+                    event_stream.emit('final_answer', {
+                        'agent_id': agent_id, 'session_id': session_id,
+                        'external_user_id': external_user_id, 'channel_id': channel_id,
+                        'answer': error_msg, 'tool_trace': tool_trace, 'timeline': timeline,
+                        'error': True,
+                    })
                     return {"text": error_msg, "error": True}, tool_trace, timeline
 
             if _tool_call_window.count(_tool_call_key) >= 5 and not _tool_args_force_stop_injected:
