@@ -3,7 +3,7 @@ import time
 import os
 import shutil
 
-from flask import Blueprint, jsonify
+from flask import Blueprint, jsonify, session
 
 health_bp = Blueprint('health', __name__)
 
@@ -57,6 +57,20 @@ def _check_docker() -> str:
 
 @health_bp.route('/api/health')
 def health():
+    """Public health endpoint — minimal info, no auth required."""
+    db_ok = _check_db()
+    return jsonify({
+        'status': 'ok' if db_ok else 'degraded',
+        'uptime': round(time.time() - _start_time, 1),
+    })
+
+
+@health_bp.route('/api/admin/health')
+def admin_health():
+    """Admin-only health endpoint — detailed system info (version, docker, disk)."""
+    if not session.get('authenticated'):
+        return jsonify({'error': 'Authentication required'}), 401
+
     db_ok = _check_db()
     return jsonify({
         'status': 'ok' if db_ok else 'degraded',
