@@ -116,7 +116,7 @@ class TestSessionMessages:
         # IDs should be strictly increasing
         assert id1 < id2 < id3
 
-        msgs = db.get_session_messages_full(sid, agent_id=agent_id)
+        msgs, _ = db.get_session_messages_full(sid, agent_id=agent_id)
         contents = [m['content'] for m in msgs]
         assert contents == ['msg1', 'msg2', 'msg3']
 
@@ -137,7 +137,7 @@ class TestSessionMessages:
         db.add_chat_message(sid, 'assistant', 'hello', agent_id=agent_id,
                             metadata={'timeline': [{'type': 'thinking', 'content': 'hmm'}]})
 
-        msgs = db.get_session_messages_full(sid, agent_id=agent_id)
+        msgs, _ = db.get_session_messages_full(sid, agent_id=agent_id)
         assert len(msgs) == 2
         asst = [m for m in msgs if m['role'] == 'assistant'][0]
         assert asst['metadata']['timeline'][0]['content'] == 'hmm'
@@ -208,7 +208,7 @@ class TestSessionDelete:
         assert len(msgs) == 0
 
         # get_session_messages_full also empty
-        msgs_full = db.get_session_messages_full(sid2, agent_id=agent_id)
+        msgs_full, _ = db.get_session_messages_full(sid2, agent_id=agent_id)
         assert len(msgs_full) == 0
 
     def test_delete_without_agent_id(self, agent_id, chat_db):

@@ -3,7 +3,7 @@ import os
 import sqlite3
 import threading
 from contextlib import contextmanager
-from typing import Any, Dict, List, Optional, Generator
+from typing import Any, Dict, List, Optional, Generator, Tuple
 
 AGENTS_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'agents')
 SUB_AGENTS_TMP_DIR = "/tmp/evonic-sub-agents"
@@ -712,23 +712,55 @@ class AgentChatDB:
             row = cursor.fetchone()
             return dict(row) if row else None
 
-    def get_session_messages_full(self, session_id: str) -> List[Dict[str, Any]]:
+    def get_session_messages_full(self, session_id: str, limit: int = 200, before_id: int = None) -> Tuple[List[Dict[str, Any]], bool]:
+        """Get messages for a session with pagination support.
+
+        When only 'limit' is provided, returns the N most recent messages.
+        When 'before_id' is also provided, returns up to 'limit' messages older than that id.
+
+        Returns:
+            Tuple of (messages, has_more) where has_more is True if there are older messages
+            that were not fetched.
+        """
         with self._connect() as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
-            cursor.execute("""
-                SELECT id, role, content, metadata, created_at FROM chat_messages
-                WHERE session_id = ? AND role IN ('user', 'assistant') AND content IS NOT NULL AND content != '' AND tool_calls IS NULL
-                ORDER BY id ASC
-            """, (session_id,))
+
+            base_where = """role IN ('user', 'assistant') AND content IS NOT NULL
+                          AND content != '' AND tool_calls IS NULL"""
+            fetch_limit = limit + 1  # fetch one extra to detect has_more
+
+            if before_id is not None:
+                # Cursor-based: fetch older messages before the given id
+                cursor.execute(f"""
+                    SELECT id, role, content, metadata, created_at FROM chat_messages
+                    WHERE session_id = ? AND id < ? AND {base_where}
+                    ORDER BY id DESC
+                    LIMIT ?
+                """, (session_id, before_id, fetch_limit))
+            else:
+                # Default: fetch the N most recent messages
+                cursor.execute(f"""
+                    SELECT id, role, content, metadata, created_at FROM chat_messages
+                    WHERE session_id = ? AND {base_where}
+                    ORDER BY id DESC
+                    LIMIT ?
+                """, (session_id, fetch_limit))
+
             rows = [dict(r) for r in cursor.fetchall()]
+            has_more = len(rows) > limit
+            if has_more:
+                rows = rows[:limit]
+            # Re-sort in ascending order for consistent display
+            rows.reverse()
+
             for r in rows:
                 if r.get('metadata'):
                     try:
                         r['metadata'] = json.loads(r['metadata'])
                     except (json.JSONDecodeError, TypeError):
                         r['metadata'] = None
-            return rows
+            return rows, has_more
 
     def get_new_messages(self, session_id: str, after_id: int) -> List[Dict[str, Any]]:
         """Get messages with id > after_id for real-time polling."""
