@@ -68,6 +68,17 @@ def evaluate_two_pass_docs():
     return render_template('evaluate_doc.html', title='Two-Pass Evaluation', body=body)
 
 
+@evaluation_bp.route('/evaluate/docs/public-history')
+def evaluate_public_history_docs():
+    """Serve public history documentation."""
+    doc_path = os.path.join(_ROOT, 'docs', 'public-history.md')
+    if not os.path.isfile(doc_path):
+        abort(404)
+    with open(doc_path, encoding='utf-8') as f:
+        body = f.read()
+    return render_template('evaluate_doc.html', title='Public History — Implications & Guidance', body=body)
+
+
 @evaluation_bp.route('/evaluate')
 def evaluate():
     """LLM Evaluation runner page"""

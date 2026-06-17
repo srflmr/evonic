@@ -158,8 +158,10 @@ block content %}
                         Public History
                     </div>
                     <div class="text-sm text-gray-500 mt-0.5">
+                        Data evaluasi akan bisa diakses oleh publik. Pastikan tidak ada informasi sensitif.
                         Allow unauthenticated users to view the history and
                         detail pages (read-only).
+                        <a href="/evaluate/docs/public-history" class="text-blue-600 dark:text-blue-400 hover:underline ml-1" target="_blank">Read implications →</a>
                     </div>
                 </div>
                 {{ toggle(id='public-history-toggle',
@@ -1762,6 +1764,19 @@ block content %}
     }
 
     async function togglePublicHistory(enabled) {
+        if (enabled) {
+            const confirmed = confirm(
+                "PERINGATAN: Data evaluasi Anda akan bisa diakses oleh publik. " +
+                "Pastikan tidak ada informasi sensitif (seperti query, prompt, atau data pribadi) " +
+                "dalam hasil evaluasi yang sudah ada maupun yang akan datang.\n\n" +
+                "Lanjutkan mengaktifkan Public History?"
+            );
+            if (!confirmed) {
+                // Revert the toggle
+                document.getElementById("public-history-toggle").checked = false;
+                return;
+            }
+        }
         await apiPut("/api/settings/public-history", { enabled });
     }
 
