@@ -1524,7 +1524,7 @@ class AgentRuntime:
             _used_prefetch = True
             _logger.debug("Turn prefetch HIT for session %s — skipping context build", ctx.session_id)
         else:
-            system_prompt = _ctx.build_system_prompt(agent)
+            system_prompt = _ctx.build_system_prompt(agent, injected_system_vars=agent.get('injected_system_vars'))
             tools = _ctx.build_tools(agent)
             _used_prefetch = False
             messages = [{"role": "system", "content": system_prompt}]

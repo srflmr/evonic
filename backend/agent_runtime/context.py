@@ -741,7 +741,7 @@ def _cache_key_valid(agent: Dict[str, Any], cache_entry: Dict[str, Any]) -> bool
     return True
 
 
-def build_system_prompt(agent: Dict[str, Any]) -> str:
+def build_system_prompt(agent: Dict[str, Any], injected_system_vars: Dict[str, str] = None) -> str:
     """Build the system prompt including tool injections and KB file listing.
 
     The static portion (SYSTEM.md, KB files, skills) is cached per-agent and
@@ -786,7 +786,8 @@ def build_system_prompt(agent: Dict[str, Any]) -> str:
     prompt = static_prompt
 
     # Expand injected system vars (session-scoped, after cache)
-    injected_system_vars = agent.get('injected_system_vars')
+    if injected_system_vars is None:
+        injected_system_vars = agent.get('injected_system_vars')
     if injected_system_vars:
         for key, value in injected_system_vars.items():
             placeholder = '{{' + key + '}}'
