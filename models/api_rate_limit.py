@@ -44,7 +44,8 @@ import config
 # Tier configuration: (requests_per_window, window_seconds)
 # ---------------------------------------------------------------------------
 TIERS = {
-    "chat":    (10,  60),   # 10 req/min
+    "chat":    (10,  60),   # 10 req/min — actual LLM message sends only
+    "poll":    (120, 60),   # 120 req/min — cheap chat reads / 1s SSE-fallback poll
     "upload":  (5,   60),   #  5 req/min
     "crud":    (30,  60),   # 30 req/min
     "general": (60,  60),   # 60 req/min
@@ -134,7 +135,8 @@ def classify_request(path: str, method: str = "GET") -> str:
 
     Classification rules (first match wins):
       1. /static/*                     → static
-      2. /api/agents/<id>/chat/*       → chat
+      2. POST /api/agents/<id>/chat and /chat/approve → chat (LLM sends)
+      2b. any other /api/agents/<id>/chat* (GET reads, polls, stream) → poll
       3. POST /api/agents/<id>/artifacts* → upload
       4. POST /api/agents/<id>/avatar    → upload
       5. POST /api/agents/<id>/kb        → upload
@@ -147,9 +149,15 @@ def classify_request(path: str, method: str = "GET") -> str:
     if path.startswith("/static/"):
         return "static"
 
-    # LLM Chat endpoints
+    # Chat endpoints. Only the expensive LLM-send POSTs consume the small "chat"
+    # budget; cheap GET reads/polls (history, poll, state, session, summary,
+    # events, stream, llm-preview) and POST /chat/clear ride the high-ceiling
+    # "poll" tier so normal chatting + the 1s SSE-fallback poll never exhaust it.
     if "/api/agents/" in path and "/chat" in path:
-        return "chat"
+        p = path.rstrip("/")
+        if method == "POST" and (p.endswith("/chat") or p.endswith("/chat/approve")):
+            return "chat"
+        return "poll"
 
     # File/Plugin Upload endpoints (POST only)
     if method == "POST":
