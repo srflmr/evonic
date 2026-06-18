@@ -467,7 +467,7 @@ if not _reloader_active or _is_reloader_child:
 
         from models.chatlog import ChatLog
         from models.chat import is_human_facing_external_user_id
-        _unreplied_types = frozenset({'user', 'final', 'intermediate', 'error'})
+        _unreplied_types = frozenset({'user', 'final', 'intermediate', 'error', 'system'})
 
         try:
             _all_agents = db.get_agents()
