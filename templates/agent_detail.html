@@ -2114,7 +2114,6 @@ function renderToolsList() {
                         <path fill-rule="evenodd" d="M10 1a4.5 4.5 0 00-4.5 4.5V9H5a2 2 0 00-2 2v6a2 2 0 002 2h10a2 2 0 002-2v-6a2 2 0 00-2-2h-.5V5.5A4.5 4.5 0 0010 1zm3 8V5.5a3 3 0 10-6 0V9h6z" clip-rule="evenodd"/>
                     </svg>
                     <span class="text-sm font-medium text-gray-800 dark:text-gray-200">${escapeHtml(t.name || t.id)}</span>
-                    <span class="text-xs bg-amber-50 text-amber-600 px-1.5 py-0.5 rounded">locked</span>
                     ${t._skill_id ? `<span class="text-xs bg-indigo-50 text-indigo-500 px-1.5 py-0.5 rounded">${escapeHtml(t._skill_id)}</span>` : ''}
                 </div>
                 <p class="text-xs text-gray-400 font-mono mt-0.5">${safeId}</p>
