@@ -1308,13 +1308,26 @@ def run_tool_loop(agent: Dict[str, Any],
                 meta = meta or {}
                 meta['reasoning_content'] = reasoning_text
             _final_dur = round(time.time() - _loop_start_time, 1)
-            if content:
-                db.add_chat_message(session_id, 'assistant', content, agent_id=db_agent_id, metadata=meta)
-                _cl_meta = {'thinking_duration': _final_dur}
-                if agent.get('send_intermediate_responses'):
-                    _cl_meta['send_intermediate_responses'] = True
-                chatlog.append({'type': 'final', 'session_id': session_id, 'content': content,
-                                'metadata': _cl_meta})
+            # When recovery exhausted with empty content (e.g. the model wrapped
+            # its whole reply in think tags — #642), still surface a visible final
+            # so the chat UI renders a bubble and the thinking indicator resolves
+            # instead of hanging silently.
+            _display_content = content or "(No response)"
+            _cl_meta = {'thinking_duration': _final_dur}
+            if agent.get('send_intermediate_responses'):
+                _cl_meta['send_intermediate_responses'] = True
+            if not content:
+                # The is_final response_chunk (loop top, gated on `if content`) was
+                # skipped for empty content — emit it here so SSE-mode shows the bubble.
+                event_stream.emit('llm_response_chunk', {
+                    'agent_id': agent_id, 'session_id': session_id,
+                    'external_user_id': external_user_id, 'channel_id': channel_id,
+                    'content': _display_content, 'is_final': True,
+                    'send_as_message': True,
+                })
+            db.add_chat_message(session_id, 'assistant', _display_content, agent_id=db_agent_id, metadata=meta)
+            chatlog.append({'type': 'final', 'session_id': session_id, 'content': _display_content,
+                            'metadata': _cl_meta})
             chatlog.append({'type': 'turn_end', 'session_id': session_id, 'thinking_duration': _final_dur})
             # Persist mental state for next turn
             ms = agent_context.get('agent_state')

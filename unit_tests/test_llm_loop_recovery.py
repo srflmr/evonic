@@ -325,6 +325,45 @@ class TestEmptyResponseRecovery(unittest.TestCase):
         # 1 initial + 2 recovery = 3 calls max (or fewer if loop exits)
         self.assertLessEqual(llm.chat_completion.call_count, 3)
 
+    def test_exhausted_empty_surfaces_visible_final(self):
+        """Regression #642: when recovery exhausts with empty content, the turn must
+        still surface a visible '(No response)' final — a saved assistant message and
+        an is_final response chunk — so chat-ui renders a bubble instead of hanging."""
+        llm = MagicMock()
+        llm.chat_completion.side_effect = [_ok(''), _ok(''), _ok('')]  # always empty
+        messages = [{"role": "system", "content": "sys"}, {"role": "user", "content": "hi"}]
+
+        run_tool_loop = _llm_loop_mod.run_tool_loop
+        mock_db = MagicMock()
+        mock_db.get_setting.side_effect = lambda key, default=None: default or '0'
+        mock_db.get_agent_default_model.return_value = None
+        mock_tr = MagicMock()
+        mock_tr.get_builtin_executor.return_value = lambda n, a: None
+        mock_tr.get_real_executor.return_value = lambda n, a: None
+        import backend.event_stream as _es_mod
+        with patch.object(_llm_loop_mod, 'db', mock_db), \
+             patch.object(_llm_loop_mod, 'tool_registry', mock_tr), \
+             patch.object(_es_mod, 'event_stream', MagicMock()) as mock_es, \
+             patch.object(_llm_loop_mod, 'LLMClient', return_value=llm), \
+             patch.object(_llm_loop_mod, 'llm_client', llm):
+            result, _, _ = run_tool_loop(
+                agent=self._make_agent(), agent_context=self._make_agent_context(),
+                messages=messages, tools=[], session_id='sess_empty',
+                llm_lock=threading.Lock(), stop_event=threading.Event(),
+                session_skill_mds={}, session_skill_tools={}, llm_log_path=None,
+            )
+
+        self.assertEqual(result, "(No response)")
+        # The placeholder is persisted as the assistant message (was skipped pre-fix).
+        saved = [c for c in mock_db.add_chat_message.call_args_list
+                 if len(c[0]) >= 3 and c[0][1] == 'assistant' and c[0][2] == "(No response)"]
+        self.assertTrue(saved, "expected a saved '(No response)' assistant message")
+        # An is_final response chunk must be emitted so SSE-mode renders the bubble.
+        final_chunks = [c for c in mock_es.emit.call_args_list
+                        if c[0][0] == 'llm_response_chunk' and c[0][1].get('is_final')
+                        and c[0][1].get('content') == "(No response)"]
+        self.assertTrue(final_chunks, "expected an is_final llm_response_chunk with placeholder")
+
 
 # ---------------------------------------------------------------------------
 # Tests: context-size error triggers compaction + retry
