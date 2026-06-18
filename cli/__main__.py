@@ -30,9 +30,8 @@ from cli.commands import (
     model_list, model_get, model_add, model_rm,
     channel_approve,
     clear_sandbox,
-    update_server, setup_wizard, pass_setup,
+    update_server, pass_setup,
     doctor_command,
-    reconfigure_wizard,
     backup_command, restore_command, verify_command, list_command,
 )
 
@@ -59,29 +58,11 @@ def main():
         "-d", "--daemon", action="store_true", default=False, help="Run server in background (daemon mode)"
     )
 
-    # --- setup ---
-    subparsers.add_parser(
-        "setup",
-        help="Interactive first-time setup wizard",
-        description="Configure your LLM provider, create the super agent, and set the communication style.",
-    )
-
     # --- pass ---
     subparsers.add_parser(
         "pass",
         help="Set or change the admin dashboard password",
         description="Set a new admin password or change an existing one for web dashboard authentication.",
-    )
-
-    # --- reconfigure ---
-    reconfigure_parser = subparsers.add_parser(
-        "reconfigure",
-        help="Reconfigure an existing Evonic setup",
-        description="Change LLM provider, model, communication style, language, sandbox, and password on an already configured Evonic instance.",
-    )
-    reconfigure_parser.add_argument(
-        "--supervisor", action="store_true", default=False,
-        help="Reconfigure the supervisor daemon settings (poll interval, ports, Telegram, etc.) and save to supervisor/config.json",
     )
 
     # --- update ---
@@ -817,12 +798,8 @@ def main():
         parser.print_help()
         sys.exit(0)
 
-    if args.command == "setup":
-        setup_wizard()
-    elif args.command == "pass":
+    if args.command == "pass":
         pass_setup()
-    elif args.command == "reconfigure":
-        reconfigure_wizard(supervisor=args.supervisor)
     elif args.command == "update":
         update_server(
             check_only=args.check,
