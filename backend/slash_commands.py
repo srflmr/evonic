@@ -566,18 +566,9 @@ def _register_builtins():
             except Exception:
                 pass
 
-            # Resolve the correct restart target:
-            # - Release mode (BASE_DIR inside releases/): follow current symlink
-            # - Dev mode: restart from project root (BASE_DIR)
+            # Flat-repo architecture: project root IS the live directory.
             import config as _config
-            _base = os.path.realpath(_config.BASE_DIR)
-            _rel_marker = os.sep + 'releases' + os.sep
-            if _rel_marker in _base:
-                _project_root = _base.split(_rel_marker)[0]
-                _current = os.path.join(_project_root, 'current')
-                _target = os.path.realpath(_current) if os.path.islink(_current) else _base
-            else:
-                _target = _base
+            _target = os.path.realpath(_config.BASE_DIR)
             _app_py = os.path.join(_target, 'app.py')
             _venv_python = os.path.join(_target, '.venv', 'bin', 'python')
             _python = _venv_python if os.path.exists(_venv_python) else sys.executable
