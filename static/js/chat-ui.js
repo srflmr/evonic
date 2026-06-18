@@ -1698,6 +1698,8 @@ class SSEAdapter {
         this._lastEventAt = 0;
         this._livenessInterval = null;
         this._usingUnified = false; // true when using unified /api/realtime/stream
+        this._reconnectAttempts = 0; // consecutive immediate failures (for backoff)
+        this._connectStartTime = 0;  // when the current EventSource was opened
     }
 
     start(handler) {
@@ -1737,6 +1739,7 @@ class SSEAdapter {
         const es = new EventSource(url);
         this._es = es;
         this._lastEventAt = Date.now();
+        this._connectStartTime = Date.now();
 
         // Clear any previous liveness interval before starting a new one
         if (this._livenessInterval) clearInterval(this._livenessInterval);
@@ -1767,6 +1770,7 @@ class SSEAdapter {
         for (const evtName of SSE_EVENTS) {
             es.addEventListener(evtName, (e) => {
                 this._lastEventAt = Date.now();
+                this._reconnectAttempts = 0; // a message arrived → connection is healthy
                 let data;
                 try { data = JSON.parse(e.data); } catch (err) { data = {}; }
                 this._log.debug('event', evtName, 'seq', data.seq, 'size', e.data.length);
@@ -1784,6 +1788,25 @@ class SSEAdapter {
             if (this._intentionallyStopped) {
                 this._log.info('intentionally stopped — no reconnect');
                 return;
+            }
+            // Back off when the connection fails almost immediately (e.g. the server
+            // rejects it with 429 too_many_sse_connections or 503 server-busy).
+            // EventSource doesn't expose the HTTP status, so use the open duration:
+            // a connection that survived a while was healthy → reconnect promptly;
+            // one that died right away → exponential backoff up to 30s (matching the
+            // server's retry_after) so a reconnect storm can't keep the SSE limit pegged.
+            const openMs = Date.now() - this._connectStartTime;
+            let delay;
+            if (openMs > 10_000) {
+                this._reconnectAttempts = 0;
+                delay = 2000;
+            } else {
+                this._reconnectAttempts++;
+                delay = Math.min(2000 * Math.pow(2, this._reconnectAttempts - 1), 30_000);
+                if (this._reconnectAttempts > 1) {
+                    this._log.warn('repeated immediate SSE failure — backing off', delay, 'ms', 'attempt', this._reconnectAttempts);
+                    console.warn('[sse] backing off', delay, 'ms after', this._reconnectAttempts, 'immediate failures');
+                }
             }
             setTimeout(() => {
                 if (this._intentionallyStopped) return;
@@ -1804,7 +1827,7 @@ class SSEAdapter {
                 this._log.info('reconnecting from seq', this._lastSeq, resumeUrl);
                 console.warn('[sse] reconnecting _lastSeq=', this._lastSeq, '_fillingGap=', this._fillingGap, '_pendingQueue=', this._pendingQueue.length, 'url=', resumeUrl);
                 this._connect(resumeUrl);
-            }, 2000);
+            }, delay);
         };
     }
 
