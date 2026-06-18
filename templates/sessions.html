@@ -358,7 +358,7 @@ html.dark #plan-modal .recap-prose pre { background: #1e293b; }
     </div>
 </div>
 
-<script src="{{ url_for('static', filename='js/chat-ui.js') }}?v=50"></script>
+<script src="{{ url_for('static', filename='js/chat-ui.js') }}?v=51"></script>
 <script src="{{ url_for('static', filename='js/agent-state.js') }}?v=4"></script>
 <script>
 let allSessions = [];
@@ -1385,7 +1385,7 @@ async function loadSessionSummary() {
                 const icon = active ? spinnerSvg : (icons[t.status] || '\u2610');
                 const color = iconColors[t.status] || 'text-gray-400';
                 const textClass = t.status === 'done' ? 'line-through text-gray-400 dark:text-gray-500' : 'text-gray-700 dark:text-gray-200';
-                const iconCls = `${color} text-xs mt-0.5`;
+                const iconCls = `${color} inline-flex items-center justify-center w-4 h-4 text-xs flex-shrink-0`;
                 const textCls = active ? 'task-active-text text-xs' : `${textClass} text-xs`;
                 planHtml += `<li class="flex items-start gap-1.5"><span class="${iconCls}">${icon}</span><span class="${textCls}">${esc(t.text)}</span></li>`;
             }
