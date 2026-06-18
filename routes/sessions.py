@@ -28,7 +28,7 @@ from backend.tools.read_attachment import (
 )
 
 _ALLOWED_EXTS = (
-    {'.jpg', '.jpeg', '.png', '.gif', '.webp', '.pdf'}
+    {'.jpg', '.jpeg', '.png', '.gif', '.webp', '.pdf', '.zip'}
     | _TEXTISH_EXTS
 )
 
