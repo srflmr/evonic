@@ -1,0 +1,79 @@
+/* hljs-chat.css — token colors for highlight.js inside chat code blocks.
+ * Token-only: we intentionally do NOT set a background on .hljs so the existing
+ * .chat-prose pre background (light in light mode, dark under html.dark) is kept.
+ * Palette: atom-one-light (default) / atom-one-dark (html.dark).
+ */
+
+/* ── Light mode (default) ─────────────────────────────────────────────── */
+.chat-prose .hljs                 { color: #383a42; background: transparent; }
+.chat-prose .hljs-comment,
+.chat-prose .hljs-quote           { color: #a0a1a7; font-style: italic; }
+.chat-prose .hljs-keyword,
+.chat-prose .hljs-selector-tag,
+.chat-prose .hljs-doctag,
+.chat-prose .hljs-formula         { color: #a626a4; }
+.chat-prose .hljs-built_in,
+.chat-prose .hljs-class .hljs-title,
+.chat-prose .hljs-type            { color: #c18401; }
+.chat-prose .hljs-string,
+.chat-prose .hljs-regexp,
+.chat-prose .hljs-addition,
+.chat-prose .hljs-meta .hljs-string { color: #50a14f; }
+.chat-prose .hljs-number,
+.chat-prose .hljs-literal,
+.chat-prose .hljs-symbol,
+.chat-prose .hljs-bullet,
+.chat-prose .hljs-link            { color: #986801; }
+.chat-prose .hljs-title,
+.chat-prose .hljs-title.function_,
+.chat-prose .hljs-section,
+.chat-prose .hljs-name,
+.chat-prose .hljs-selector-id,
+.chat-prose .hljs-selector-class  { color: #4078f2; }
+.chat-prose .hljs-attr,
+.chat-prose .hljs-attribute,
+.chat-prose .hljs-variable,
+.chat-prose .hljs-template-variable,
+.chat-prose .hljs-params,
+.chat-prose .hljs-deletion        { color: #e45649; }
+.chat-prose .hljs-meta,
+.chat-prose .hljs-meta .hljs-keyword,
+.chat-prose .hljs-tag             { color: #0184bc; }
+.chat-prose .hljs-emphasis        { font-style: italic; }
+.chat-prose .hljs-strong          { font-weight: bold; }
+
+/* ── Dark mode ────────────────────────────────────────────────────────── */
+html.dark .chat-prose .hljs                 { color: #abb2bf; }
+html.dark .chat-prose .hljs-comment,
+html.dark .chat-prose .hljs-quote           { color: #7f848e; }
+html.dark .chat-prose .hljs-keyword,
+html.dark .chat-prose .hljs-selector-tag,
+html.dark .chat-prose .hljs-doctag,
+html.dark .chat-prose .hljs-formula         { color: #c678dd; }
+html.dark .chat-prose .hljs-built_in,
+html.dark .chat-prose .hljs-class .hljs-title,
+html.dark .chat-prose .hljs-type            { color: #e5c07b; }
+html.dark .chat-prose .hljs-string,
+html.dark .chat-prose .hljs-regexp,
+html.dark .chat-prose .hljs-addition,
+html.dark .chat-prose .hljs-meta .hljs-string { color: #98c379; }
+html.dark .chat-prose .hljs-number,
+html.dark .chat-prose .hljs-literal,
+html.dark .chat-prose .hljs-symbol,
+html.dark .chat-prose .hljs-bullet,
+html.dark .chat-prose .hljs-link            { color: #d19a66; }
+html.dark .chat-prose .hljs-title,
+html.dark .chat-prose .hljs-title.function_,
+html.dark .chat-prose .hljs-section,
+html.dark .chat-prose .hljs-name,
+html.dark .chat-prose .hljs-selector-id,
+html.dark .chat-prose .hljs-selector-class  { color: #61afef; }
+html.dark .chat-prose .hljs-attr,
+html.dark .chat-prose .hljs-attribute,
+html.dark .chat-prose .hljs-variable,
+html.dark .chat-prose .hljs-template-variable,
+html.dark .chat-prose .hljs-params,
+html.dark .chat-prose .hljs-deletion        { color: #e06c75; }
+html.dark .chat-prose .hljs-meta,
+html.dark .chat-prose .hljs-meta .hljs-keyword,
+html.dark .chat-prose .hljs-tag             { color: #56b6c2; }
