@@ -3911,53 +3911,53 @@ def doctor_command(quick=False, fix=False, with_llm_provider=False):
     except Exception as e:
         results.append(_fail(f"Non-lazy skill tool check failed: {e}"))
 
-    # ── 11. Evobrain Memory Engine Check ──
-    _section("11. Evobrain Memory Engine Check")
+    # ── 11. Evomem Memory Engine Check ──
+    _section("11. Evomem Memory Engine Check")
 
     try:
-        engine = os.environ.get("EVONIC_MEMORY_ENGINE", "evobrain").strip().lower()
+        engine = os.environ.get("EVONIC_MEMORY_ENGINE", "evomem").strip().lower()
         engine_explicit = "EVONIC_MEMORY_ENGINE" in os.environ
-        binary_path = os.environ.get("EVOBRAIN_BINARY", "shared/bin/evobrain")
+        binary_path = os.environ.get("EVOMEM_BINARY", "shared/bin/evomem")
         binary_full = os.path.join(ROOT, binary_path) if not os.path.isabs(binary_path) else binary_path
         binary_ok = os.path.isfile(binary_full) and os.access(binary_full, os.X_OK)
 
-        # Check custom EVOBRAIN_BINARY path
-        if "EVOBRAIN_BINARY" in os.environ and not binary_ok:
+        # Check custom EVOMEM_BINARY path
+        if "EVOMEM_BINARY" in os.environ and not binary_ok:
             results.append(_warn(
-                f"EVOBRAIN_BINARY is set to '{binary_path}' but binary not found "
+                f"EVOMEM_BINARY is set to '{binary_path}' but binary not found "
                 f"or not executable at {binary_full}"
             ))
 
         if engine == "fts5":
-            _info("  Memory engine is FTS5 (evobrain not used)")
+            _info("  Memory engine is FTS5 (evomem not used)")
         elif binary_ok:
-            results.append(_ok("Evobrain memory engine available"))
+            results.append(_ok("Evomem memory engine available"))
         elif engine_explicit:
             results.append(_fail(
-                f"EVONIC_MEMORY_ENGINE=evobrain is set but binary not found at "
+                f"EVONIC_MEMORY_ENGINE=evomem is set but binary not found at "
                 f"{binary_full}. Set EVONIC_MEMORY_ENGINE=fts5 to use fallback, "
-                f"or install the evobrain binary."
+                f"or install the evomem binary."
             ))
         else:
             results.append(_warn(
-                f"Evobrain is the default memory engine but binary not found at "
-                f"{binary_full}. Evobrain features (think, graph_query) will "
+                f"Evomem is the default memory engine but binary not found at "
+                f"{binary_full}. Evomem features (think, graph_query) will "
                 f"silently fall back to FTS5."
             ))
 
         # Fix: provide actionable message + create directory if needed
         if not binary_ok and engine != "fts5" and fix:
             _info(
-                "  To install evobrain: place the static binary at "
-                "shared/bin/evobrain and make it executable (chmod +x)."
+                "  To install evomem: place the static binary at "
+                "shared/bin/evomem and make it executable (chmod +x)."
             )
             bin_dir = os.path.dirname(binary_full)
             if not os.path.isdir(bin_dir):
                 os.makedirs(bin_dir, exist_ok=True)
-                fixes_applied.append(f"Created directory {bin_dir} for evobrain binary")
+                fixes_applied.append(f"Created directory {bin_dir} for evomem binary")
 
     except Exception as e:
-        results.append(_fail(f"Evobrain check failed: {e}"))
+        results.append(_fail(f"Evomem check failed: {e}"))
 
     # ── 12. PromptPurify ML Safety Check ──
     _section("12. PromptPurify ML Safety Check")
