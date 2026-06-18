@@ -250,50 +250,40 @@ def check_rate_limit(identifier: str, tier: str) -> Tuple[bool, int, int, int]:
     key = _make_key(identifier)
     now = time.time()
 
+    reset_at = now + window
+
     with _connect() as conn:
+        # Atomic insert-or-update. Doing the read-modify-write as a single
+        # statement avoids a race where two concurrent requests with the same
+        # (key, tier) both see no row and both INSERT — which raised
+        # sqlite3.IntegrityError: UNIQUE constraint failed (key, tier).
+        # On conflict: reset the window if expired, otherwise increment.
+        conn.execute(
+            """
+            INSERT INTO api_rate_limit (key, tier, count, window_start, reset_at)
+            VALUES (?, ?, 1, ?, ?)
+            ON CONFLICT(key, tier) DO UPDATE SET
+                count        = CASE WHEN ? >= reset_at THEN 1 ELSE count + 1 END,
+                window_start = CASE WHEN ? >= reset_at THEN ? ELSE window_start END,
+                reset_at     = CASE WHEN ? >= reset_at THEN ? ELSE reset_at END
+            """,
+            (key, tier, now, reset_at,
+             now,            # count reset check
+             now, now,       # window_start reset check + new value
+             now, reset_at), # reset_at reset check + new value
+        )
         row = conn.execute(
-            """SELECT count, window_start, reset_at
-               FROM api_rate_limit WHERE key = ? AND tier = ?""",
+            "SELECT count, reset_at FROM api_rate_limit WHERE key = ? AND tier = ?",
             (key, tier),
         ).fetchone()
 
-        if row is None:
-            # First request in window
-            window_start = now
-            reset_at = now + window
-            conn.execute(
-                """INSERT INTO api_rate_limit (key, tier, count, window_start, reset_at)
-                   VALUES (?, ?, 1, ?, ?)""",
-                (key, tier, window_start, reset_at),
-            )
-            return True, limit - 1, limit, 0
+    count, reset_at = row
+    if count > limit:
+        # Over the limit for this window — block until it resets.
+        retry_after = int(reset_at - now) + 1
+        return False, 0, limit, retry_after
 
-        count, window_start, reset_at = row
-        if now >= reset_at:
-            # Window expired — reset
-            window_start = now
-            reset_at = now + window
-            conn.execute(
-                """UPDATE api_rate_limit
-                   SET count = 1, window_start = ?, reset_at = ?
-                   WHERE key = ? AND tier = ?""",
-                (window_start, reset_at, key, tier),
-            )
-            return True, limit - 1, limit, 0
-
-        if count >= limit:
-            # Rate limited
-            retry_after = int(reset_at - now) + 1
-            return False, 0, limit, retry_after
-
-        # Within limit — increment
-        new_count = count + 1
-        conn.execute(
-            "UPDATE api_rate_limit SET count = ? WHERE key = ? AND tier = ?",
-            (new_count, key, tier),
-        )
-        remaining = limit - new_count
-        return True, remaining, limit, 0
+    return True, limit - count, limit, 0
 
 
 # ---------------------------------------------------------------------------
