@@ -5,6 +5,9 @@ Provides daily-cached update checks, background update execution with log
 capture, and SSE listener management for real-time web UI notifications.
 
 Progress state is persisted to disk to survive crashes and restarts.
+
+The update flow uses direct git operations (fetch + reset) — the old
+supervisor-based versioned-release mechanism has been removed.
 """
 
 import json
@@ -18,6 +21,8 @@ import threading
 import time
 from datetime import datetime
 
+import config
+
 try:
     from packaging import version as pkg_version
     HAS_PACKAGING = True
@@ -26,8 +31,10 @@ except ImportError:
 
 log = logging.getLogger(__name__)
 
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
+# ---------------------------------------------------------------------------
+# Version parsing
+# ---------------------------------------------------------------------------
 
 class _VersionComparable:
     """
@@ -37,7 +44,7 @@ class _VersionComparable:
     def __init__(self, version_obj, tuple_fallback):
         self.version_obj = version_obj
         self.tuple_fallback = tuple_fallback
-    
+
     def __lt__(self, other):
         if isinstance(other, _VersionComparable):
             if self.version_obj is not None and other.version_obj is not None:
@@ -45,30 +52,30 @@ class _VersionComparable:
             return self.tuple_fallback < other.tuple_fallback
         # Support comparison with plain tuples for tests
         return self.tuple_fallback < other
-    
+
     def __le__(self, other):
         return self < other or self == other
-    
+
     def __gt__(self, other):
         if isinstance(other, _VersionComparable):
             if self.version_obj is not None and other.version_obj is not None:
                 return self.version_obj > other.version_obj
             return self.tuple_fallback > other.tuple_fallback
         return self.tuple_fallback > other
-    
+
     def __ge__(self, other):
         return self > other or self == other
-    
+
     def __eq__(self, other):
         if isinstance(other, _VersionComparable):
             if self.version_obj is not None and other.version_obj is not None:
                 return self.version_obj == other.version_obj
             return self.tuple_fallback == other.tuple_fallback
         return self.tuple_fallback == other
-    
+
     def __ne__(self, other):
         return not self == other
-    
+
     def __repr__(self):
         if self.version_obj is not None:
             return f"_VersionComparable({self.version_obj})"
@@ -78,10 +85,10 @@ class _VersionComparable:
 def _version_tuple(tag: str):
     """
     Parse version string into comparable version object.
-    
+
     Security: Uses packaging.version when available for proper semver handling,
     including pre-release versions. Falls back to regex for basic parsing.
-    
+
     Returns a comparable object that works with both packaging.version and
     tuple-based comparison for backward compatibility.
     """
@@ -91,7 +98,7 @@ def _version_tuple(tag: str):
         tuple_version = (0, 0, 0)
     else:
         tuple_version = tuple(int(x or '0') for x in m.groups())
-    
+
     # Try packaging.version if available
     version_obj = None
     if HAS_PACKAGING and tag:
@@ -102,16 +109,19 @@ def _version_tuple(tag: str):
         except (ValueError, TypeError):
             # Fall back to tuple only if parsing fails
             pass
-    
+
     return _VersionComparable(version_obj, tuple_version)
 
 
+# ---------------------------------------------------------------------------
+# State persistence (simplified — no shared/ paths)
+# ---------------------------------------------------------------------------
+
 def _get_state_file_path() -> str:
-    """Return path to persistent state file in shared directory."""
-    import config
-    shared_dir = os.path.join(config.APP_ROOT, 'shared', 'update')
-    os.makedirs(shared_dir, exist_ok=True)
-    return os.path.join(shared_dir, 'update_state.json')
+    """Return path to persistent state file."""
+    state_dir = os.path.join(config.APP_ROOT, 'state', 'update')
+    os.makedirs(state_dir, exist_ok=True)
+    return os.path.join(state_dir, 'update_state.json')
 
 
 def _load_persisted_state() -> dict:
@@ -119,7 +129,7 @@ def _load_persisted_state() -> dict:
     state_file = _get_state_file_path()
     if not os.path.exists(state_file):
         return {}
-    
+
     try:
         with open(state_file, 'r') as f:
             return json.load(f)
@@ -132,7 +142,7 @@ def _persist_state(state: dict) -> None:
     """Save update state to disk atomically."""
     state_file = _get_state_file_path()
     temp_file = state_file + '.tmp'
-    
+
     try:
         with open(temp_file, 'w') as f:
             json.dump(state, f, indent=2)
@@ -145,6 +155,7 @@ def _persist_state(state: dict) -> None:
             except OSError:
                 pass
 
+
 # ---------------------------------------------------------------------------
 # State
 # ---------------------------------------------------------------------------
@@ -152,8 +163,8 @@ def _persist_state(state: dict) -> None:
 _lock = threading.Lock()
 _listeners: list = []  # list of queue.Queue, one per SSE client
 
-# Total steps in update process (from supervisor.py STEPS)
-TOTAL_STEPS = 6
+# Total steps in the simplified update process: fetch + apply
+TOTAL_STEPS = 2
 
 # Load persisted state on module import (survives crashes/restarts)
 _persisted = _load_persisted_state()
@@ -188,6 +199,10 @@ if _state['crashed']:
         })
         _persist_state(_state)
 
+
+# ---------------------------------------------------------------------------
+# SSE listener helpers
+# ---------------------------------------------------------------------------
 
 def _append_log(level: str, message: str):
     entry = {
@@ -231,24 +246,6 @@ def unregister_listener(q: queue.Queue):
 
 
 # ---------------------------------------------------------------------------
-# Supervisor helpers
-# ---------------------------------------------------------------------------
-
-def _load_supervisor():
-    sup_path = os.path.join(ROOT, 'supervisor')
-    if sup_path not in sys.path:
-        sys.path.insert(0, sup_path)
-    import importlib
-    return importlib.import_module('supervisor')
-
-
-def _load_config():
-    sup = _load_supervisor()
-    cfg_path = os.path.join(ROOT, 'supervisor', 'config.json')
-    return sup.load_config(cfg_path)
-
-
-# ---------------------------------------------------------------------------
 # WebNotifier — duck-type compatible with TelegramNotifier
 # ---------------------------------------------------------------------------
 
@@ -265,36 +262,42 @@ class WebNotifier:
         with _lock:
             _state['step'] = step
             _state['step_label'] = description
-            _state['progress'] = int(step / total * 100)
-        # _append_log already persists, no need to persist again
+            _state['progress'] = int(step / total * 100) if total else 0
         _append_log('info', f'Step {step}/{total}: {description}')
 
     def send_failure(self, step, total, error):
         with _lock:
             _state['status'] = 'failed'
             _state['error'] = str(error)
-        # _append_log already persists, no need to persist again
         _append_log('error', f'FAILED at step {step}/{total}: {error}')
 
     def send_success(self, tag):
         with _lock:
             _state['status'] = 'success'
             _state['progress'] = 100
-        # _append_log already persists, no need to persist again
         _append_log('info', f'Update to {tag} successful')
 
 
 # ---------------------------------------------------------------------------
-# Custom log handler to capture supervisor logs
+# Git helpers
 # ---------------------------------------------------------------------------
 
-class _UpdateLogHandler(logging.Handler):
-    def emit(self, record):
-        try:
-            msg = self.format(record)
-            _append_log(record.levelname.lower(), msg)
-        except Exception:
-            pass
+def _git_run(*args, cwd=None):
+    """Run a git command and return (returncode, stdout, stderr)."""
+    cmd = ['git'] + list(args)
+    result = subprocess.run(
+        cmd,
+        cwd=cwd or config.APP_ROOT,
+        capture_output=True,
+        text=True,
+    )
+    return result.returncode, result.stdout.strip(), result.stderr.strip()
+
+
+def _get_current_version():
+    """Get the current version from git describe."""
+    rc, stdout, _ = _git_run('describe', '--tags', '--always')
+    return stdout if rc == 0 else None
 
 
 # ---------------------------------------------------------------------------
@@ -323,7 +326,7 @@ def get_status() -> dict:
 
 def check_for_update(force=False) -> dict:
     now = time.time()
-    
+
     with _lock:
         if not force and (now - _state['last_check']) < 86400:
             return {
@@ -334,44 +337,55 @@ def check_for_update(force=False) -> dict:
 
         _state['status'] = 'checking'
         _persist_state(_state)
-    
+
     try:
-        sup = _load_supervisor()
-        cfg = _load_config()
-        app_root = cfg['app_root']
+        # Fetch tags from origin
+        _git_run('fetch', 'origin', '--tags')
 
-        # Use the actual project root (where .git lives) for git operations.
-        # config.json app_root may point elsewhere in release-based layouts.
-        git_root = ROOT if os.path.isdir(os.path.join(ROOT, '.git')) else app_root
+        # Get current version
+        current = _get_current_version()
 
-        sup.git_fetch_tags(git_root)
-        current = sup.get_current_release(git_root)
-        latest = sup.get_latest_release(git_root)
+        # Get latest tag from origin — try origin/main first, then all tags
+        rc, latest_tag, _ = _git_run(
+            'describe', '--tags', '--abbrev=0', 'origin/main'
+        )
+        if rc != 0:
+            # Fallback: get the most recent tag sorted by version
+            rc, tags_output, _ = _git_run(
+                'tag', '--sort=-version:refname'
+            )
+            if rc == 0 and tags_output:
+                latest_tag = tags_output.split('\n')[0]
+            else:
+                latest_tag = None
 
         with _lock:
             # Do not overwrite state if an update started while we were
             # doing network I/O (TOCTOU window between lock release at
-            # line 337 and re-acquire here).  Return fresh check result
+            # line 337 and re-acquire here). Return fresh check result
             # without persisting so the update's state survives.
             if _state['status'] == 'updating':
                 return {
-                    'available': latest is not None and _version_tuple(latest) > _version_tuple(current),
+                    'available': (
+                        latest_tag is not None
+                        and _version_tuple(latest_tag) > _version_tuple(current or '')
+                    ),
                     'current': current,
-                    'latest': latest,
+                    'latest': latest_tag,
                 }
 
             _state['current_version'] = current
-            _state['latest_version'] = latest
+            _state['latest_version'] = latest_tag
             _state['last_check'] = time.time()
 
-            if latest and _version_tuple(latest) > _version_tuple(current):
+            if latest_tag and current and _version_tuple(latest_tag) > _version_tuple(current):
                 _state['status'] = 'available'
                 _persist_state(_state)
-                return {'available': True, 'current': current, 'latest': latest}
+                return {'available': True, 'current': current, 'latest': latest_tag}
             else:
                 _state['status'] = 'idle'
                 _persist_state(_state)
-                return {'available': False, 'current': current, 'latest': latest}
+                return {'available': False, 'current': current, 'latest': latest_tag}
     except Exception as e:
         log.error(f'Update check failed: {e}')
         with _lock:
@@ -392,7 +406,7 @@ def start_update(tag=None) -> dict:
         _state['error'] = None
         _state['last_update_attempt'] = time.time()
         _state['logs'] = []
-        
+
         target = tag or _state['latest_version']
         if not target:
             _state['status'] = 'failed'
@@ -405,7 +419,7 @@ def start_update(tag=None) -> dict:
             _state['status'] = 'idle'
             _persist_state(_state)
             return {'error': f'Already running {target}'}
-        
+
         _persist_state(_state)
 
     _append_log('info', f'Starting update to {target}...')
@@ -417,38 +431,39 @@ def start_update(tag=None) -> dict:
 
 
 def _run_update_thread(target):
-    sup = _load_supervisor()
-    cfg = _load_config()
+    """Run the update in a background thread.
 
-    # Attach log handler to supervisor logger
-    sup_logger = logging.getLogger('supervisor')
-    handler = _UpdateLogHandler()
-    handler.setFormatter(logging.Formatter('%(message)s'))
-    sup_logger.addHandler(handler)
-
+    Flow: git fetch → git reset --hard <target>.
+    Progress is broadcast to SSE listeners via WebNotifier.
+    """
     notifier = WebNotifier()
+    current = _get_current_version() or 'unknown'
+    notifier.begin(current, target)
+
     try:
-        ok = sup.run_update(target, cfg, notifier=notifier)
-        if ok:
-            with _lock:
-                if _state['status'] != 'success':
-                    _state['status'] = 'success'
-                    _state['progress'] = 100
-            _append_log('info', 'Update completed successfully')
-        else:
-            with _lock:
-                if _state['status'] != 'failed':
-                    _state['status'] = 'failed'
-                    if not _state['error']:
-                        _state['error'] = 'Update failed (see logs for details)'
-            _append_log('error', 'Update failed')
+        # Step 1: Fetch from origin
+        notifier.send_progress(1, TOTAL_STEPS, 'Fetching updates from origin...')
+        rc, stdout, stderr = _git_run('fetch', 'origin')
+        if rc != 0:
+            notifier.send_failure(1, TOTAL_STEPS, f'Git fetch failed: {stderr}')
+            return
+
+        # Step 2: Reset to target ref
+        notifier.send_progress(2, TOTAL_STEPS, f'Applying update to {target}...')
+        # If target is a tag, use it directly; otherwise use origin/main
+        ref = target if target else 'origin/main'
+        rc, stdout, stderr = _git_run('reset', '--hard', ref)
+        if rc != 0:
+            notifier.send_failure(2, TOTAL_STEPS, f'Git reset failed: {stderr}')
+            return
+
+        notifier.send_success(target)
     except Exception as e:
         with _lock:
             _state['status'] = 'failed'
             _state['error'] = str(e)
         _append_log('error', f'Unexpected error: {e}')
     finally:
-        sup_logger.removeHandler(handler)
         _notify_listeners()
 
 
@@ -460,25 +475,34 @@ def trigger_rollback() -> dict:
         _state['status'] = 'updating'
         _state['step_label'] = 'Rolling back...'
         _persist_state(_state)
-    
+
     _append_log('info', 'Starting rollback...')
     _notify_listeners()
 
     def _do_rollback():
-        sup = _load_supervisor()
-        cfg = _load_config()
         try:
-            ok = sup.rollback(cfg['app_root'], cfg, None)
-            if ok:
+            # Get the commit hash before the latest pull (HEAD@{1})
+            rc, prev_commit, _ = _git_run('rev-parse', 'HEAD@{1}')
+            if rc != 0:
+                with _lock:
+                    _state['status'] = 'failed'
+                    _state['error'] = 'No previous state to roll back to'
+                _append_log('error', 'Rollback failed: no previous state found')
+                _notify_listeners()
+                return
+
+            rc, stdout, stderr = _git_run('reset', '--hard', prev_commit)
+            if rc == 0:
                 with _lock:
                     _state['status'] = 'success'
                     _state['step_label'] = 'Rollback complete'
-                _append_log('info', 'Rollback successful')
+                    _state['current_version'] = _get_current_version()
+                _append_log('info', f'Rollback successful to {prev_commit[:8]}')
             else:
                 with _lock:
                     _state['status'] = 'failed'
-                    _state['error'] = 'Rollback failed'
-                _append_log('error', 'Rollback failed')
+                    _state['error'] = f'Rollback failed: {stderr}'
+                _append_log('error', f'Rollback failed: {stderr}')
         except Exception as e:
             with _lock:
                 _state['status'] = 'failed'
@@ -491,37 +515,25 @@ def trigger_rollback() -> dict:
 
 
 def trigger_restart() -> dict:
-    """Spawn a detached subprocess that restarts the server after a short delay."""
-    cfg = _load_config()
-    app_root = cfg['app_root']
+    """Spawn a detached subprocess that restarts the server after a short delay.
 
+    In the flat-repo model, the restart is handled by sending SIGTERM to the
+    parent process after a brief delay, allowing the process manager (systemd,
+    Docker, etc.) to restart it.
+    """
     _append_log('info', 'Restart scheduled...')
     _notify_listeners()
 
-    # Detached subprocess: sleeps, stops daemon, starts from current release
-    # Security: Use json.dumps to safely serialize paths, preventing code injection
-    supervisor_path = os.path.join(app_root, 'supervisor')
-    config_path = os.path.join(app_root, 'supervisor', 'config.json')
-    
+    # Detached subprocess: sleeps 2s, then terminates the parent process.
+    # Security: Uses only built-in modules — no external paths or user input.
     script = (
-        "import time, sys, json; "
-        "paths = json.loads(sys.argv[1]); "
-        "sys.path.insert(0, paths['supervisor']); "
-        "import supervisor as sup; "
-        "cfg = sup.load_config(paths['config']); "
+        "import time, signal, os; "
         "time.sleep(2); "
-        "sup.stop_daemon(paths['app_root']); "
-        "sup.start_daemon_from_current(paths['app_root'])"
+        "os.kill(os.getppid(), signal.SIGTERM)"
     )
-    
-    paths_json = json.dumps({
-        'supervisor': supervisor_path,
-        'config': config_path,
-        'app_root': app_root
-    })
-    
+
     subprocess.Popen(
-        [sys.executable, '-c', script, paths_json],
+        [sys.executable, '-c', script],
         start_new_session=True,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
