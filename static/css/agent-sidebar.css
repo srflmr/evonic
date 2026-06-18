@@ -106,33 +106,33 @@ html.dark {
     pointer-events: none;
 }
 
-/* ── Busy Pulse Dot ── */
+/* ── Busy / Done Status Ring ── */
 #agent-sidebar .agent-avatar::after {
     content: '';
     position: absolute;
-    top: 2px;
-    right: 2px;
-    width: 8px;
-    height: 8px;
+    inset: -3px;
     border-radius: 50%;
-    background: #f59e0b;
+    border: 2px solid transparent;
     opacity: 0;
     transition: opacity 0.2s ease;
+    pointer-events: none;
 }
 
-/* Static dot: task done but user hasn't opened the chat yet */
+/* Static full ring: task done but user hasn't opened the chat yet */
 #agent-sidebar .agent-avatar[data-unread="true"]::after {
     opacity: 1;
+    border-color: #f59e0b;
 }
 
-/* Pulsing overrides static when agent becomes busy again */
+/* Spinning ring: agent is busy (overrides the static ring) */
 #agent-sidebar .agent-avatar[data-busy="true"]::after {
-    animation: agent-busy-pulse 1.4s ease-in-out infinite;
+    opacity: 1;
+    border-color: #f59e0b #f59e0b transparent transparent;
+    animation: agent-busy-spin 0.8s linear infinite;
 }
 
-@keyframes agent-busy-pulse {
-    0%, 100% { opacity: 0.3; transform: scale(0.9); }
-    50%      { opacity: 1.0; transform: scale(1.15); }
+@keyframes agent-busy-spin {
+    to { transform: rotate(360deg); }
 }
 
 /* ── Tooltip ── */

@@ -625,6 +625,22 @@ function _copyText(text, onDone) {
     }
 }
 
+// Applies highlight.js syntax highlighting to every <pre><code> block in a
+// rendered markdown bubble. Runs on the live DOM (after sanitize), so the
+// injected token <span>s never pass through the sanitizer. No-op if hljs is
+// not loaded. Each block is guarded so one bad block can't break the bubble.
+function _highlightCode($bubble) {
+    if (typeof window === 'undefined' || !window.hljs) return;
+    $bubble.find('pre code').each(function () {
+        if (this.dataset.highlighted) return;
+        try {
+            window.hljs.highlightElement(this);
+        } catch (e) {
+            this.dataset.highlighted = 'error';
+        }
+    });
+}
+
 // Adds a hover-revealed copy button to the bottom-right of every <pre> code block
 // and <blockquote> inside a rendered markdown bubble.
 function _addCopyButtons($bubble) {
@@ -806,6 +822,7 @@ export function buildMessageBubble(role, content, opts = {}, cfg = {}) {
             _wrapImageWithDownload($img);
             retrofitImageForLazy($img);
         });
+        _highlightCode($bubble);
         _addCopyButtons($bubble);
     } else {
         // assistant: markdown with sanitizer
@@ -820,6 +837,7 @@ export function buildMessageBubble(role, content, opts = {}, cfg = {}) {
             _wrapImageWithDownload($img);
             retrofitImageForLazy($img);
         });
+        _highlightCode($bubble);
         _addCopyButtons($bubble);
     }
 
