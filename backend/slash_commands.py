@@ -291,13 +291,17 @@ def _register_builtins():
         session_log_path = f"agents/{agent_id}/sessions/{jsonl_id}.jsonl"
 
         # Build investigation message
+        # The platform owner is asking the target agent to investigate the
+        # current agent's session — phrase it from the owner's perspective.
         target_name = target.get("name", target_agent_id)
         message = (
-            f"[INVESTIGATION REQUEST from {current_name}]\n\n"
+            f"[INVESTIGATION REQUEST from the platform owner]\n\n"
+            f"The platform owner has asked you to investigate another agent's session.\n\n"
+            f"Agent under investigation: {current_name} ({agent_id})\n"
             f"Session: {session_id}\n"
             f"Session log: {session_log_path}\n"
-            f"Request: {context}\n\n"
-            f"Please investigate the session log above."
+            f"Owner's request: {context}\n\n"
+            f"Please investigate the session log above and report back to the owner."
         )
 
         # Deliver via notify_agent (same mechanism as send_agent_message)
@@ -306,7 +310,7 @@ def _register_builtins():
         _AGENT_MSG_PREFIX = "__agent__"
         result = notify_agent(
             agent_id=target_agent_id,
-            tag=f"AGENT/{current_name}",
+            tag="SYSTEM/Owner",
             message=message,
             external_user_id=f"{_AGENT_MSG_PREFIX}{agent_id}",
             channel_id=None,
