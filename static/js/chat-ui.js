@@ -1345,7 +1345,7 @@ function buildMessageBubble(role, content, opts = {}, cfg = {}) {
         $bubble.attr('role', 'article');
         $bubble.html(rendered);
         $bubble.find('pre').css({
-            'background-color': '#171e20',
+            'background-color': '#0d1517',
             'border': '1px solid #174217',
             'border-radius': '0.375rem'
         });
