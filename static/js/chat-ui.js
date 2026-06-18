@@ -2023,17 +2023,24 @@ const STALE_TIMEOUT_MS = 300_000; // 5 minutes — safety net for truly abandone
 
 const TERMINAL_PHASES = new Set(['final', 'done', 'aborted']);
 
-function reduceTurn(phase, eventKind) {
+function reduceTurn(phase, eventKind, isFinal = false) {
+    // A response only ENDS the turn when it is the FINAL response. Intermediate
+    // response_chunks (is_final=false, emitted before further tool calls) must NOT
+    // move the turn to the terminal 'final' phase — otherwise every subsequent
+    // tool_call/tool_executed/thinking/real-final is absorbed as a no-op and the
+    // live turn freezes at the first intermediate message.
+    const isTerminalResponse = eventKind === 'done' ||
+        (eventKind === 'response_chunk' && isFinal);
     if (phase === 'pending') {
         if (eventKind === 'turn_begin')        return 'thinking';
         if (eventKind === 'thinking')          return 'thinking';
         if (eventKind === 'tool_call_started') return 'tool_running';
-        if (eventKind === 'response_chunk' || eventKind === 'done') return 'final';
+        if (isTerminalResponse)                return 'final';
         if (eventKind === 'approval_required') return 'awaiting_approval';
     }
     if (phase === 'thinking') {
         if (eventKind === 'tool_call_started') return 'tool_running';
-        if (eventKind === 'response_chunk' || eventKind === 'done') return 'final';
+        if (isTerminalResponse)                return 'final';
         if (eventKind === 'approval_required') return 'awaiting_approval';
         if (eventKind === 'thinking')          return 'thinking'; // no-op transition
         if (eventKind === 'retry')             return 'thinking';
@@ -2041,13 +2048,13 @@ function reduceTurn(phase, eventKind) {
     }
     if (phase === 'tool_running') {
         if (eventKind === 'tool_executed')     return 'tool_done';
-        if (eventKind === 'response_chunk' || eventKind === 'done') return 'final';
+        if (isTerminalResponse)                return 'final';
         if (eventKind === 'approval_required') return 'awaiting_approval';
     }
     if (phase === 'tool_done') {
         if (eventKind === 'thinking')          return 'thinking';
         if (eventKind === 'tool_call_started') return 'tool_running';
-        if (eventKind === 'response_chunk' || eventKind === 'done') return 'final';
+        if (isTerminalResponse)                return 'final';
         if (eventKind === 'approval_required') return 'awaiting_approval';
     }
     if (phase === 'awaiting_approval') {
@@ -2210,7 +2217,7 @@ class Turn {
 
         this._log.debug('ingest', evtName, seq, '→ phase was', this.phase, this.id);
 
-        const nextPhase = reduceTurn(this.phase, evtName);
+        const nextPhase = reduceTurn(this.phase, evtName, data.is_final);
         if (nextPhase !== null && nextPhase !== this.phase) {
             const prev = this.phase;
             this.phase = nextPhase;
@@ -2284,9 +2291,12 @@ class Turn {
             return;
         }
 
-        if (evtName === 'response_chunk' && data.is_final && data.content) {
+        if (evtName === 'response_chunk' && data.content) {
+            // Render every response chunk in the trace (intermediate + final), matching
+            // the history-render view. Only the FINAL chunk is stashed for the final
+            // response bubble; intermediates stay inline in the thinking timeline.
             this._addTimelineEntry({ type: 'response', content: data.content });
-            this._finalContent = data.content;  // stash for final-response bubble
+            if (data.is_final) this._finalContent = data.content;
             return;
         }
 
