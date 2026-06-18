@@ -52,7 +52,14 @@ TIERS = {
     "static":  (300, 60),   # 300 req/min (effectively unlimited for normal use)
 }
 
-SSE_MAX_CONCURRENT = 5  # max concurrent SSE connections per user/IP
+# Max concurrent SSE connections per user/IP. A single page legitimately opens
+# multiple streams (unified status/approvals/update + a per-turn chat stream), and
+# the client reconnects faster than the server detects dropped connections (one
+# heartbeat interval), so orphaned connections briefly hold slots. Keep this well
+# above the app's own connection pattern; the global WORKER_CONNECTIONS guard
+# bounds true DoS. (SSE endpoints are auth-gated, so this only ever applies to the
+# logged-in admin.)
+SSE_MAX_CONCURRENT = 50
 
 # ---------------------------------------------------------------------------
 # Database path
@@ -227,6 +234,21 @@ def sse_unregister(identifier: str) -> None:
         conn.execute(
             "DELETE FROM sse_connections WHERE key = ? AND count <= 0", (key,)
         )
+
+
+def reset_sse_connections() -> None:
+    """Clear all SSE connection counts.
+
+    SSE connection counts are process-bound in-memory state that we happen to
+    persist in SQLite. On a non-graceful shutdown (or when long-lived SSE
+    generators are force-killed at restart) the generator `finally` that calls
+    sse_unregister never runs, so counts leak and survive the restart — eventually
+    pegging a user at SSE_MAX_CONCURRENT and rejecting every new connection with
+    429 even when nothing is connected. At startup there are zero live
+    connections, so the persisted counts are always stale; clear them.
+    """
+    with _connect() as conn:
+        conn.execute("DELETE FROM sse_connections")
 
 
 # ---------------------------------------------------------------------------

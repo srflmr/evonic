@@ -339,7 +339,14 @@ if not _reloader_active or _is_reloader_child:
     # Start periodic cleanup of expired rate-limit entries (login + API)
     from models.rate_limit import start_periodic_cleanup
     start_periodic_cleanup()
-    from models.api_rate_limit import start_periodic_cleanup as start_api_rate_cleanup
+    from models.api_rate_limit import (
+        start_periodic_cleanup as start_api_rate_cleanup,
+        reset_sse_connections as _reset_sse_connections,
+    )
+    # Clear stale SSE connection counts left over from a previous (non-graceful)
+    # shutdown — at boot there are zero live connections, so any persisted count
+    # is stale and would otherwise wrongly reject new streams with 429.
+    _reset_sse_connections()
     start_api_rate_cleanup()
 
     # If this boot was triggered by /restart, send "Evonic ready!" (no LLM)
