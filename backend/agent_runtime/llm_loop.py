@@ -1645,23 +1645,9 @@ def run_tool_loop(agent: Dict[str, Any],
                 timed_out = pending.decision is None
                 decision = pending.decision or 'reject'
 
-                if decision == 'approve':
-                    # Re-execute bypassing safety check
-                    agent_context['_skip_safety'] = True
-                    try:
-                        tool_result = builtin_exec(fn_name, args)
-                        if tool_result is None:
-                            tool_result = real_exec(fn_name, args)
-                    finally:
-                        agent_context.pop('_skip_safety', None)
-                else:
-                    reason = 'timed out' if timed_out else 'rejected by user'
-                    tool_result = {
-                        'error': f'Tool execution {reason}. The user declined to approve this action.',
-                        'level': 'rejected',
-                        'original_reasons': pending.safety_result.get('reasons', []),
-                    }
-
+                # Emit approval_resolved BEFORE re-executing the approved tool so the
+                # UI (inline chat card + global modal) collapses the moment the decision
+                # is recorded, not after a (possibly slow) approved tool finishes running.
                 # Always resolve on the original session (inter-agent or direct)
                 _resolved_sessions = {(session_id, channel_id)}
                 event_stream.emit('approval_resolved', {
@@ -1684,6 +1670,23 @@ def run_tool_loop(agent: Dict[str, Any],
                         'timed_out': timed_out,
                     })
                 approval_registry.remove(pending.approval_id)
+
+                if decision == 'approve':
+                    # Re-execute bypassing safety check
+                    agent_context['_skip_safety'] = True
+                    try:
+                        tool_result = builtin_exec(fn_name, args)
+                        if tool_result is None:
+                            tool_result = real_exec(fn_name, args)
+                    finally:
+                        agent_context.pop('_skip_safety', None)
+                else:
+                    reason = 'timed out' if timed_out else 'rejected by user'
+                    tool_result = {
+                        'error': f'Tool execution {reason}. The user declined to approve this action.',
+                        'level': 'rejected',
+                        'original_reasons': pending.safety_result.get('reasons', []),
+                    }
 
             # Lazy tool injection: use_skill returned tool defs to inject mid-turn
             if fn_name == 'use_skill' and isinstance(tool_result, dict) and 'inject_tools' in tool_result:
