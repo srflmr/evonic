@@ -771,14 +771,14 @@ export function buildMessageBubble(role, content, opts = {}, cfg = {}) {
             : escape(content);
         $bubble = $('<div class="chat-prose terminal-output rounded-2xl px-4 py-2.5 text-sm break-words">');
         $bubble.css({
-            'background-color': '#080e0f',
+            'background-color': '#152022',
             'color': '#359635',
             'border': '1px solid #174217'
         });
         $bubble.attr('role', 'article');
         $bubble.html(rendered);
         $bubble.find('pre').css({
-            'background-color': '#030607',
+            'background-color': '#171e20',
             'border': '1px solid #174217',
             'border-radius': '0.375rem'
         });
