@@ -494,7 +494,11 @@ def _producer_chat(ring: BoundedRing, breaker: CircuitBreaker,
             try:
                 payload = transform(data) if transform else data
                 if payload is not None:
-                    payload['seq'] = data.get('_seq')
+                    # Use the contiguous per-session chat seq (not the global _seq)
+                    # so the browser's gap detector sees a gap-free sequence and
+                    # doesn't fire a phantom gap-fill on every event. Matches the
+                    # legacy /chat/stream + /chat/events gap-fill endpoint.
+                    payload['seq'] = data.get('_chat_seq')
                     ring.put((sse_name, payload))
             except Exception:
                 pass
@@ -617,6 +621,23 @@ class ChatThrottle:
         self._batch = []
         self._first_sent = False
         self._last_flush = 0
+        # Highest chat seq among batched chunks — stamped on the merged event so
+        # the client's _lastSeq advances over the chunks folded into the batch,
+        # avoiding a spurious gap-fill (and duplicate CoT) per batch boundary.
+        self._batch_seq = None
+
+    def _merged_thinking(self):
+        """Build the merged 'thinking' event from the current batch and reset it."""
+        batched_content = ''.join(self._batch)
+        self._batch = []
+        seq = self._batch_seq
+        self._batch_seq = None
+        if not batched_content:
+            return None
+        ev = {'content': batched_content}
+        if seq is not None:
+            ev['seq'] = seq
+        return ('thinking', ev)
 
     def feed(self, sse_name: str, payload: dict):
         """Feed a chat event. Returns list of events to emit now (may be empty)."""
@@ -630,23 +651,20 @@ class ChatThrottle:
                 return [('thinking', payload)]
 
             self._batch.append(payload.get('content', ''))
+            if payload.get('seq') is not None:
+                self._batch_seq = payload.get('seq')
 
             if (now_ms - self._last_flush) >= self.throttle_ms:
-                batched_content = ''.join(self._batch)
-                self._batch = []
                 self._last_flush = now_ms
-                if batched_content:
-                    return [('thinking', {'content': batched_content})]
-                return []
+                merged = self._merged_thinking()
+                return [merged] if merged else []
             return []
 
         # Non-thinking event: flush any pending batch first
         result = []
-        if self._batch:
-            batched_content = ''.join(self._batch)
-            self._batch = []
-            if batched_content:
-                result.append(('thinking', {'content': batched_content}))
+        merged = self._merged_thinking()
+        if merged:
+            result.append(merged)
 
         result.append((sse_name, payload))
         self._first_sent = False
@@ -654,13 +672,8 @@ class ChatThrottle:
 
     def flush(self):
         """Flush any remaining batched content. Returns list of events."""
-        result = []
-        if self._batch:
-            batched_content = ''.join(self._batch)
-            self._batch = []
-            if batched_content:
-                result.append(('thinking', {'content': batched_content}))
-        return result
+        merged = self._merged_thinking()
+        return [merged] if merged else []
 
 
 # ---------------------------------------------------------------------------
