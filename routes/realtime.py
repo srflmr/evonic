@@ -423,7 +423,8 @@ def _producer_approval(ring: BoundedRing, breaker: CircuitBreaker,
 
 
 def _producer_chat(ring: BoundedRing, breaker: CircuitBreaker,
-                   stop_event: threading.Event, session_id: str):
+                   stop_event: threading.Event, session_id: str,
+                   after_seq: int = 0):
     """Producer: listen to per-session chat events."""
     from backend.event_stream import event_stream
 
@@ -511,6 +512,35 @@ def _producer_chat(ring: BoundedRing, breaker: CircuitBreaker,
         event_stream.on(evt_name, h)
 
     event_stream.register_web_listener(session_id)
+
+    # Replay the in-progress session buffer so a client connecting at/after the
+    # POST that starts a turn still sees the turn's opening events (turn_begin,
+    # early thinking, first tool call). The legacy /chat/stream did this; without
+    # it the unified path loses those events and the UI shows only a spinner
+    # until a manual refresh. Subscribe-then-replay ordering (after event_stream.on
+    # above) means live events arriving during replay are also queued; the client
+    # dedups the overlap by the contiguous _chat_seq.
+    try:
+        buffered = event_stream.get_session_events(session_id, after_seq)
+        # On a fresh connect, drop everything up to and including the last
+        # completed turn / session_clear so we never replay a finished turn.
+        if after_seq == 0:
+            last_boundary = -1
+            for i, e in enumerate(buffered):
+                if e['event'] in ('turn_complete', 'session_clear'):
+                    last_boundary = i
+            if last_boundary >= 0:
+                buffered = buffered[last_boundary + 1:]
+        for entry in buffered:
+            st = _TRANSFORMS.get(entry['event'])
+            if not st:
+                continue
+            sse_name, transform = st
+            payload = transform(entry['data'])
+            payload['seq'] = entry.get('chat_seq')
+            ring.put((sse_name, payload))
+    except Exception:
+        pass
 
     try:
         while not stop_event.is_set():
@@ -819,7 +849,7 @@ def api_realtime_stream():
             t = threading.Thread(
                 target=_start_producer,
                 args=(ch, _producer_chat, rings[ch], breakers[ch],
-                      stop_event, {'session_id': session_id}),
+                      stop_event, {'session_id': session_id, 'after_seq': after_seq}),
                 daemon=True,
                 name=f"realtime-producer-{ch}-{conn_id[:12]}"
             )
