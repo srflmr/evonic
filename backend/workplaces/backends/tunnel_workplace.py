@@ -36,16 +36,6 @@ _logger = logging.getLogger(__name__)
 # exactly once. Only applies to clients that advertise idempotent-replay support.
 DISCONNECT_GRACE = 90
 
-# Tool PATHs to inject into the remote environment. This is a safety net for
-# cases where the Evonet login-env capture hasn't completed yet or where the
-# remote host doesn't source shell profiles at all (e.g. macOS GUI-launched
-# processes). Directories are prepended so they take priority over system paths.
-_TOOL_PATH_DIRS = [
-    os.path.expanduser("~/.cargo/bin"),      # Rust toolchain (cargo, rustc, rustup)
-    "/opt/homebrew/bin",                      # Homebrew on Apple Silicon
-    "/usr/local/bin",                         # Homebrew on Intel + common tools
-]
-
 
 class TunnelWorkplaceBackend(ExecutionBackend):
     """Executes commands via JSON-RPC over the Evonet WebSocket connection."""
@@ -192,14 +182,12 @@ class TunnelWorkplaceBackend(ExecutionBackend):
     # -------------------------------------------------------------------------
 
     def run_bash(self, script: str, timeout: int, env: dict) -> dict:
-        env = _enrich_env(env)
         params = {'script': script, 'timeout': timeout, 'env': env or {}}
         if self._workspace:
             params['cwd'] = self._workspace
         return self._call('exec_bash', params, timeout=timeout + 10)
 
     def run_python(self, code: str, timeout: int, env: dict) -> dict:
-        env = _enrich_env(env)
         params = {'code': code, 'timeout': timeout, 'env': env or {}}
         if self._workspace:
             params['cwd'] = self._workspace
@@ -303,33 +291,3 @@ class TunnelWorkplaceBackend(ExecutionBackend):
             'workspace': self._workspace,
             'evonet_connected': connected,
         }
-
-
-def _enrich_env(env: dict) -> dict:
-    """Inject common tool PATH entries into *env* so the remote shell/Python
-    process can find tools installed in user-local or Homebrew directories.
-
-    The Evonet login-env capture (adding ``bash -l`` environment) handles
-    this comprehensively, but this function is a safety net for edge cases:
-    - First few commands before the login env capture completes
-    - Non-bash user setups where ``bash -l`` doesn't source the right profiles
-    - Any other unforeseen gaps
-
-    Since this code runs on the Evonic server (not the remote host), it
-    cannot check the remote filesystem — so it adds all configured paths
-    unconditionally. Missing directories on the remote are harmless; the
-    shell silently ignores them during $PATH resolution.
-    """
-    env = dict(env) if env else {}           # don't mutate the caller's dict
-
-    # Collect existing PATH, if any
-    existing = env.get("PATH", os.environ.get("PATH", ""))
-
-    # Build a new PATH: tool dirs first, then whatever was already there.
-    parts = list(_TOOL_PATH_DIRS)
-    if existing:
-        parts.append(existing)
-    if parts:
-        env["PATH"] = os.pathsep.join(parts)
-
-    return env
