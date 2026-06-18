@@ -23,12 +23,9 @@ for lib_dir in ("lib",):
 
 # PID file location.
 #
-# After migration to the release-based layout the canonical run/ directory
-# lives at ``<app_root>/shared/run/`` (supervisor writes the daemon PID
-# there). Pre-migration installs still use ``<install_root>/run/``. Resolve
-# whichever is present so ``evonic status``/``evonic stop`` find a daemon
-# regardless of whether it was launched by the legacy in-process path or by
-# supervisor.
+# Resolve the run/ directory for PID file storage. Supports both legacy
+# shared/run/ path (from old release-based layout) and the current run/
+# directory at the project root.
 def _resolve_pid_dir():
     shared_run = os.path.join(ROOT, "shared", "run")
     if os.path.isdir(shared_run):
@@ -200,32 +197,6 @@ def start_server(port=None, host=None, debug=None, daemon=False):
 
     # Daemon (background) mode: spawn detached subprocess
     if daemon:
-        # Check if in release mode (self-update capable)
-        current_link = os.path.join(ROOT, "current")
-        sup_cfg_path = os.path.join(ROOT, "supervisor", "config.json")
-        release_mode = os.path.islink(current_link) and os.path.exists(sup_cfg_path)
-
-        if release_mode:
-            # Start supervisor daemon (handles release + self-update)
-            sup_script = os.path.join(ROOT, "supervisor", "supervisor.py")
-            proc = subprocess.Popen(
-                [sys.executable, sup_script],
-                start_new_session=True,
-            )
-            time.sleep(2)
-            if _is_running(proc.pid):
-                # Release the lock — supervisor/daemon will acquire their own
-                os.close(pid_lock_fd)
-                print(f"Supervisor started (PID: {proc.pid})")
-                print(
-                    f"Server will run from the current release with automatic self-update"
-                )
-            else:
-                print("Failed to start supervisor. Check the log for details.")
-                sys.exit(1)
-            return
-
-        # Flat mode (no releases): run app.py directly (legacy behavior)
         env = os.environ.copy()
         if port is not None:
             env["PORT"] = str(port)
@@ -277,29 +248,6 @@ def start_server(port=None, host=None, debug=None, daemon=False):
 
     if debug:
         print("Debug mode: ON")
-
-    # Foreground release-mode parity: if the app was migrated to release-based
-    # layout, exec the release's python on its app.py (mirrors daemon path).
-    # Falls through to legacy in-process import when no release is staged.
-    current_link = os.path.join(ROOT, "current")
-    sup_cfg_path = os.path.join(ROOT, "supervisor", "config.json")
-    release_mode = os.path.islink(current_link) and os.path.exists(sup_cfg_path)
-    if release_mode:
-        release_path = os.path.realpath(current_link)
-        if sys.platform == "win32":
-            release_py = os.path.join(release_path, ".venv", "Scripts", "python.exe")
-        else:
-            release_py = os.path.join(release_path, ".venv", "bin", "python")
-        release_app = os.path.join(release_path, "app.py")
-        if os.path.exists(release_py) and os.path.exists(release_app):
-            print(EVONIC_BANNER)
-            print(f"Starting server (Ctrl+C to stop)")
-            print(f"Host: {host}")
-            print(f"Port: {port}")
-            print(f"URL: http://{host if host != '0.0.0.0' else 'localhost'}:{port}")
-            os.chdir(release_path)
-            os.execv(release_py, [release_py, release_app])
-            # execv replaces the process; lines below unreachable.
 
     # We already hold the single-instance flock (acquired above via
     # _acquire_pid_lock). app.py runs in THIS same process, so tell its
@@ -363,7 +311,7 @@ def stop_server():
             return
 
     # Force kill if still running. SIGKILL is POSIX-only, so on Windows we
-    # use `taskkill /F` (the same approach as supervisor/supervisor.py).
+    # use `taskkill /F`.
     print("Server didn't stop gracefully. Force-killing...")
     try:
         if sys.platform == "win32":
@@ -377,14 +325,7 @@ def stop_server():
 
     _remove_pid()
 
-    # Also stop supervisor if running
-    spid = _get_supervisor_pid()
-    if spid and _is_running(spid):
-        try:
-            os.kill(spid, signal.SIGTERM)
-            print(f"Sending SIGTERM to supervisor (PID: {spid})...")
-        except OSError as e:
-            print(f"Failed to send SIGTERM to supervisor: {e}")
+
 
 
 def status_server():
