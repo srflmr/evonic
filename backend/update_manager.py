@@ -244,6 +244,27 @@ def unregister_listener(q: queue.Queue):
     except ValueError:
         pass
 
+_cleanup_started = False
+
+
+def _start_listener_cleanup(interval: int = 600):
+    """Periodically prune dead listener queues to prevent unbounded list growth.
+
+    SSE clients that disconnect without calling unregister_listener() leave
+    stale queue objects behind. This daemon thread calls _notify_listeners()
+    every ``interval`` seconds — the existing dead-queue detection in
+    _notify_listeners() handles removal.
+    """
+    global _cleanup_started
+    if _cleanup_started:
+        return
+    _cleanup_started = True
+    def _cleanup_loop():
+        while True:
+            time.sleep(interval)
+            _notify_listeners()
+    threading.Thread(target=_cleanup_loop, daemon=True, name='listener-cleanup').start()
+
 
 # ---------------------------------------------------------------------------
 # WebNotifier — duck-type compatible with TelegramNotifier
@@ -539,3 +560,7 @@ def trigger_restart() -> dict:
         stderr=subprocess.DEVNULL,
     )
     return {'success': True, 'restarting': True}
+
+
+# Start periodic listener cleanup on module import
+_start_listener_cleanup()

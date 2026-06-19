@@ -20,6 +20,8 @@ Guard rails:
 import json
 import time
 import uuid
+import atexit
+import threading
 from collections import defaultdict
 from typing import Any, Callable, Dict, List
 
@@ -715,3 +717,43 @@ def get_agent_messaging_executor(agent_context: dict) -> Callable:
                 return {'error': f"Agent messaging tool error: {str(e)}"}
         return None  # not an agent messaging tool — fall through
     return executor
+
+
+# ==================== Periodic bucket cleanup ====================
+
+def _cleanup_buckets() -> None:
+    """Remove defaultdict keys whose timestamp lists have been fully pruned.
+
+    The rate-limit check functions prune expired timestamps inline on every
+    call, but defaultdict keys accumulate over time if a sender/target pair
+    becomes inactive. This periodic sweep removes empty-list entries to
+    prevent unbounded dict growth.
+
+    Non-blocking: iterates the dict under no lock (stale reads are harmless —
+    the check functions will re-create keys as needed on next message).
+    """
+    for key in list(_rate_limit_buckets.keys()):
+        if not _rate_limit_buckets[key]:
+            _rate_limit_buckets.pop(key, None)
+    for key in list(_global_rate_limit_buckets.keys()):
+        if not _global_rate_limit_buckets[key]:
+            _global_rate_limit_buckets.pop(key, None)
+    for key in list(_fanout_buckets.keys()):
+        if not _fanout_buckets[key]:
+            _fanout_buckets.pop(key, None)
+
+
+def _start_bucket_cleanup(interval: int = 300):
+    """Launch a daemon thread that periodically cleans stale bucket keys."""
+    def _loop():
+        while True:
+            time.sleep(interval)
+            try:
+                _cleanup_buckets()
+            except Exception:
+                pass
+    threading.Thread(target=_loop, daemon=True, name='rate-limit-cleanup').start()
+
+
+atexit.register(_cleanup_buckets)
+_start_bucket_cleanup()
