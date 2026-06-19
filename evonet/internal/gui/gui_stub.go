@@ -10,7 +10,4 @@ import "github.com/evonic/evonet/internal/config"
 func GUIAvailable() bool { return false }
 
 // RunGUI is a no-op on Linux — caller falls back to headless mode.
-func RunGUI(cfg *config.Config) {}
-
-// ShowPairingDialog is a no-op on Linux.
-func ShowPairingDialog(prefilledServerURL string) {}
+func RunGUI(store *config.Store) {}
