@@ -1,5 +1,106 @@
 # Changelog
 
+## v0.8.0
+
+192 commits
+
+### New Features (7)
+
+- **Evomem Knowledge Graph Memory** — a comprehensive long-term memory engine with primary and fallback storage backends, knowledge-graph integration, and semantic recall. Agents now remember facts across conversations and can traverse relationships between entities, making them genuinely stateful over time.
+- **KB System v2** — three new tools deepen the knowledge base experience: a graph traversal tool lets agents follow wiki-link connections between KB documents, enhanced listing surfaces staleness and graph-awareness metadata, and a canonical `_kb_index.md` index keeps the knowledge graph navigable. Agents also receive coaching prompts to maintain KB graph links automatically.
+- **Sub-Agent System** — the `/sub` slash command lets you spawn sub-agents directly from chat for parallel work. Sub-agents execute without planning delays, deliver responses through inter-agent forwarding, and are protected by naming-pattern enforcement. New `inter_agent_clear_context` and `builtin_tools_enabled` settings give fine-grained control over agent behavior.
+- **/detach Slash Command** — move long-running background processes (builds, downloads, compilations) out of the agent loop so you can keep chatting while work continues. Progress is tracked persistently and the agent notifies you when the job completes.
+- **/investigate Slash Command** — inspect any agent's context from chat with `/investigate <agent-id> <context>`, surfacing session state, tool configuration, and runtime diagnostics without leaving the conversation.
+- **Syntax Highlighting & Rich Terminal in Chat** — code blocks now render with syntax highlighting via highlight.js. Bash execution output appears in a dark terminal-styled block. Copy buttons appear on code blocks and blockquotes. A live artifacts strip appears between thinking and final response.
+- **Kanban Task Workflow** — tasks now carry a `created_by` owner column with owner-based delete permission. `task_id` is returned at the top level of creation responses. Agents auto-post their final answer as a kanban comment when a task completes.
+
+### Plugin's Features (3)
+
+- **Token Monitor** — per-agent and per-model-source token usage tracking with a cost dashboard, giving visibility into LLM spending across all agents (token-monitor plugin).
+- **Evonet Multi-Server Manager** — a dropdown UI and server manager GUI for the Evonet connector, letting you switch between multiple remote devices without reconfiguration (evonet plugin).
+- **Evonet Exactly-Once Execution** — tool execution across WebSocket reconnects is now idempotent, preventing duplicate command runs when the tunnel re-establishes (evonet plugin).
+
+### Enhancements (32)
+
+- **Flat Repository Architecture** — the legacy supervisor daemon, release-mode detection, and multi-directory app-root resolution have been removed. The codebase now follows a flat single-repo structure, simplifying deployment paths and eliminating an entire class of path-resolution bugs.
+- **Security Hardening Suite** — API rate limiting protects all endpoints with tiered limits and atomic enforcement. Security audit logging records authentication and authorization events for forensic traceability. User blocking prevents abusive accounts from accessing the platform. Login rate-limiter state persists across restarts via SQLite.
+- **PromptPurify ML Always-On** — the L5e injection guard classifier now runs unconditionally, catching prompt injection patterns that regex-based guards miss, with a false-positive fix for benign security terminology.
+- **PEM Private Key Detection** — the platform detects when private keys appear in tool output or file operations and routes through a user approval flow, preventing accidental key exposure to LLM providers.
+- **Workspace Boundary Enforcement** — the Read, Grep, and Glob tools now enforce workspace directory boundaries, preventing agents from reading files outside their sandbox.
+- **Session Archive** — `/clear` data is now archived to a dedicated `session_archive.db` instead of being permanently deleted. Recover cleared conversations when needed.
+- **agent_info Tool** — agents can inspect any other agent's full configuration (tools, skills, channels, KB, artifacts, models) from within a conversation, enabling self-diagnostic workflows.
+- **fetch_artifact Tool** — the reverse of `save_artifact`: agents can fetch files from the host artifacts directory back into the sandbox for inspection or processing.
+- **Collapsible Inter-Agent Messages** — `[AGENT/...]` messages in chat now collapse into a compact header, reducing visual noise in multi-agent conversations.
+- **System Prompt Full-Screen Editor** — a modal editor with dirty-check confirmation, ESC-to-close, and Ctrl+S save support for editing agent system prompts without cramped textareas.
+- **Injected System Variables** — `{{key}}` placeholders in system prompts are expanded from message metadata, enabling dynamic prompt injection per conversation turn.
+- **CRUD Rate Limit Raised** — the CRUD endpoint rate limit increased from 30 to 120 requests per minute, reducing friction during bulk operations.
+- **Blocked User Admin UI** — an admin interface for viewing and managing blocked users, integrating with the user-blocking enforcement system.
+- **Public History Warning** — a warning dialog informs users before they enable public session history, preventing accidental exposure of private conversations.
+- **Performance: Chat Messages Index** — a composite database index on `(session_id, created_at DESC)` accelerates message pagination queries.
+- **Doctor Improvements** — five new diagnostic sections: evomem safety check, promptpurify model check, list_artifacts consistency, asset build check, and LLM provider check (now optional). Doctor also suggests `--fix` commands after running.
+- **Tailwind CSS v4 Build Pipeline** — a `build_tailwind.sh` script builds the UI stylesheets from the Tailwind v4 source, replacing ad-hoc CSS management.
+- **Process Tracker Hardening** — enhanced process group and container cleanup for both local and Docker backends, reducing orphaned process leaks.
+- **Avatar Compression** — avatars are now stored with compression variants, reducing bandwidth and improving load times on slow connections.
+- **Active Session Indicator** — a green gradient on the sidebar highlights which agent session is currently active, so you always know where the conversation is happening.
+- **Kanban Skeleton Loading** — the Kanban board shows animated skeleton placeholders while tasks load, giving immediate visual feedback instead of a blank screen.
+- **Lightbox Filename Overlay** — image filenames appear in the lightbox overlay for quick identification when browsing multiple images.
+- **Knowledge Tab Searchbar** — a search bar on the agent detail Knowledge tab lets you filter KB documents by name without scrolling through the full list.
+- **/cd and /cwd for Remote Workplaces** — the directory navigation slash commands now work with agents on remote or tunnel-connected workplaces.
+- **Attachment Info Injection** — file path metadata is injected into agent context when files are uploaded via the web chat UI.
+- **Resume Evaluation** — the evaluation system now accepts domain-level input for more accurate session resumption.
+- **Image Serving Concurrency** — images and avatars are served concurrently with caching, improving page load performance.
+- **Sub-Agent Direct Execution** — sub-agents skip the planning phase and execute directly, reducing turn latency for delegated tasks.
+- **Summarizer Filters** — `bash_exec` and `slash_command` messages are filtered from recap and summary context, keeping recaps focused on conversation content.
+- **Fallback Model Reset** — the active fallback model flag resets on inter-agent clear, preventing stale model assignments.
+- **Built-In Tools Toggle** — each agent can now independently enable or disable built-in tools via an advanced setting, rather than a global flag.
+- **Bash Command Param** — the bash tool now supports a `command` parameter for direct command execution alongside the existing `script` parameter.
+
+### Bug Fixes (43)
+
+- **More Robust Image Attachment Handler** — the image feed is decoupled from the LLM pipeline. A dedicated `describe_image` tool gives agents control over when and how images are processed, fixing inconsistent image handling across different models and providers.
+- **SSE Connection Storm** — stale connection counts now reset on startup, and the connection cap was raised, stopping the `too_many_sse_connections` error storm that flooded logs.
+- **SSE Exponential Reconnect** — the SSE client uses exponential backoff for reconnects, preventing connection-limit exhaustion during network interruptions.
+- **SSE Chat Sequence Gaps** — a contiguous `_chat_seq` counter in the unified chat producer eliminates phantom gap-fill requests that caused duplicate message rendering.
+- **Intermediate Response Chunks** — `response_chunk` events no longer prematurely end the live turn, fixing truncated agent responses mid-generation.
+- **Sidebar Layout** — the sidebar now uses absolute positioning anchored to the app shell, filling the full viewport height without empty space, and works correctly on mobile.
+- **System Balloon Chevron** — the system message balloon chevron stays right-aligned when the balloon is expanded.
+- **Download Button Position** — the chat image download button moved from top-right to top-left, no longer overlapping with image content.
+- **Phantom Turn Resumption** — the `system` message type is now included in unreplied-type checks, preventing phantom turn resumption after system events.
+- **Injection Guard False Positive** — a P0 false positive on benign security terminology (e.g., "bypass" in normal context) has been eliminated.
+- **Qwen Parser Validation** — extracted tool-call identifiers from Qwen models are now validated, preventing corrupted parameter injection.
+- **Gemma4 Parser Fallback** — the LLM loop checks for Gemma4 parser availability before falling back to Qwen, fixing parse failures on Gemma models.
+- **Orphaned Tool Calls** — the tool-call repair logic now properly restores orphaned calls, preventing HTTP 400 "insufficient tool messages" errors.
+- **Loop Detection Forwarding** — force-stop termination from loop detection now properly forwards to the delegating agent.
+- **Calculator Routing** — the calculator tool routes to the real math backend instead of a broken Python mock.
+- **CRUD Rate Limit Race** — `check_rate_limit` is now atomic, eliminating UNIQUE constraint violations under concurrent requests.
+- **Chat Reads Exclusion** — cheap chat read/poll requests are excluded from the 10/min chat rate-limit tier, preventing rate-limiting of normal browsing.
+- **CSRF Cookie SameSite** — the CSRF cookie `SameSite` attribute changed from `Strict` to `Lax`, fixing cross-origin navigation issues while maintaining protection.
+- **CRLF Sanitization** — carriage-return characters in URL parameters are sanitized, preventing HTTP header injection.
+- **Health Endpoint Redaction** — Docker version and disk usage details are redacted from `/api/health`, closing an information disclosure vector.
+- **Approval Flow** — `approval_resolved` events now emit before re-executing approved tools, preventing race conditions in the approval workflow.
+- **Kanban Avatars** — agent avatars now display correctly on the Kanban board, with initial-based fallbacks for agents without custom avatars.
+- **Kanban Sub-Agent Tasks** — parents can update sub-agent tasks, sub-agents can update parent-assigned tasks, and unassigned task status updates are properly guarded.
+- **Sub-Agent Session Index** — the session index now records the sub-agent's own ID instead of the parent's, fixing session lookup for sub-agent conversations.
+- **Sub-Agent Artifacts** — artifact tools and routes for sub-agents correctly use the parent agent's ID, ensuring artifacts are accessible.
+- **/sub Command Visibility** — super agents can now see and use the `/sub` command, and it's listed in `/help`.
+- **Evonet Ping/Pong** — ping and pong control frames are no longer dispatched as RPC requests, preventing spurious errors in evonet logs.
+- **Evonet Shell Environment** — `exec_bash` and `exec_python` on remote devices now honor the user's shell environment variables.
+- **Doctor evobrain→evomem Rename** — the doctor command check uses the correct `evomem` binary name after the codebase-wide rename.
+- **Doctor list_artifacts Check** — a new doctor section detects when the `list_artifacts` tool is missing from agents that have `save_artifact`.
+- **Scheduler Timezone** — deterministic timezone handling prevents UTC-conversion errors that caused schedules to fire at wrong times.
+- **Double Slash Command Response** — race conditions between SSE and POST delivery no longer produce duplicate slash command responses.
+- **System Prompt Modal** — the system prompt editor modal now closes after a successful save.
+- **Lightbox Single Image** — prev/next navigation buttons are properly hidden when the lightbox contains only one image.
+- **Lightbox Navigation** — prev/next now works correctly across image artifacts, not just chat-embedded images.
+- **Mobile Image Overflow** — `max-width:100%` on chat image skeletons prevents horizontal overflow on mobile screens.
+- **CTRL+G Quick Search** — agent search is now case-insensitive, searches by both ID and name, and the modal position is lowered for better reachability.
+- **Sidebar Height Fixes** — multiple iterations corrected the sidebar height from `100vh` through `calc(100vh - 100px)` to the final `calc(100vh - 56px)` with absolute positioning.
+- **File Upload Context** — file paths are now injected into agent context when files are uploaded via the web chat UI.
+- **Skills Tab Toasts** — persistent "Saved!" labels in the Skills tab are replaced with proper toast notifications.
+- **Tool ID Encoding** — the `toolId` parameter is now properly encoded in the `editTool` API call, and alerts are replaced with toast notifications.
+- **Evomem Recall Fields** — recall field normalization and capture title sanitization prevent YAML frontmatter parse errors in memory entries.
+- **Secret Key Detection Tests** — pre-existing test failures in the secret key leak detection suite have been fixed, and tests are converted to proper pytest format.
+
 ## v0.7.0
 
 158 commits
