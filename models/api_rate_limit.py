@@ -148,9 +148,11 @@ def classify_request(path: str, method: str = "GET") -> str:
       4. POST /api/agents/<id>/avatar    → upload
       5. POST /api/agents/<id>/kb        → upload
       6. /api/plugins*                   → upload
-      7. /api/agents*                    → crud
-      8. /api/*                          → general
-      9. everything else                 → None (no limit)
+      7. GET /api/agents/<id>/avatar     → static (image serving, not CRUD)
+      8. GET /api/agents/<id>/artifacts/* → static (file serving, not CRUD)
+      9. /api/agents*                    → crud
+      10. /api/*                         → general
+      11. everything else                → None (no limit)
     """
     # Static assets
     if path.startswith("/static/"):
@@ -179,6 +181,15 @@ def classify_request(path: str, method: str = "GET") -> str:
                 return "upload"
         if path.startswith("/api/plugins"):
             return "upload"
+
+    # Static asset serving (avatar images, artifact files) — GET only.
+    # These serve static binary content (images, etc.) and should not
+    # consume the CRUD budget alongside agent list/create/edit operations.
+    if method == "GET":
+        if "/api/agents/" in path and "/avatar" in path:
+            return "static"
+        if "/api/agents/" in path and "/artifacts/" in path:
+            return "static"
 
     # Agent CRUD
     if path.startswith("/api/agents"):

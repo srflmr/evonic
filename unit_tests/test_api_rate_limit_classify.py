@@ -47,6 +47,32 @@ class TestClassifyRequest(unittest.TestCase):
         self.assertEqual(classify_request("/static/js/app.js", "GET"), "static")
         self.assertIsNone(classify_request("/login", "POST"))
 
+    def test_get_avatar_is_static_not_crud(self):
+        # GET avatar serves an image file — should NOT consume the CRUD budget
+        self.assertEqual(classify_request(f"{self.AID}/avatar", "GET"), "static")
+        self.assertEqual(classify_request(f"{self.AID}/avatar?size=small", "GET"), "static")
+
+    def test_get_artifacts_file_is_static_not_crud(self):
+        # GET artifacts/<file> serves a static file — should NOT consume CRUD budget
+        self.assertEqual(
+            classify_request(f"{self.AID}/artifacts/screenshot.png", "GET"), "static"
+        )
+        self.assertEqual(
+            classify_request(f"{self.AID}/artifacts/report.pdf", "GET"), "static"
+        )
+
+    def test_post_avatar_still_upload(self):
+        # POST avatar is still an upload (unchanged behavior)
+        self.assertEqual(classify_request(f"{self.AID}/avatar", "POST"), "upload")
+
+    def test_post_artifacts_still_upload(self):
+        # POST artifacts is still an upload (unchanged behavior)
+        self.assertEqual(classify_request(f"{self.AID}/artifacts", "POST"), "upload")
+
+    def test_upload_kb_still_upload(self):
+        # POST kb is still an upload (unchanged behavior)
+        self.assertEqual(classify_request(f"{self.AID}/kb", "POST"), "upload")
+
 
 if __name__ == "__main__":
     unittest.main()
