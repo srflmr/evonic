@@ -19,6 +19,9 @@ from abc import ABC, abstractmethod
 # Shared utilities (used by all backends)
 # ---------------------------------------------------------------------------
 
+_ENV_KEY_PATTERN_RE = re.compile(r'^[A-Za-z_][A-Za-z0-9_]*$')
+
+
 def truncate(text: str, max_bytes: int) -> str:
     encoded = text.encode('utf-8')
     if len(encoded) <= max_bytes:
@@ -28,9 +31,8 @@ def truncate(text: str, max_bytes: int) -> str:
 
 def validate_env_keys(env: dict) -> tuple:
     """Return (clean_env, error) where error is None if all keys are valid."""
-    pattern = re.compile(r'^[A-Za-z_][A-Za-z0-9_]*$')
     for key in env:
-        if not pattern.match(key):
+        if not _ENV_KEY_PATTERN_RE.match(key):
             return {}, f'Invalid environment variable key: {key!r}. Only [A-Za-z_][A-Za-z0-9_]* is allowed.'
     return env, None
 

@@ -23,6 +23,9 @@ from typing import Dict, Any, List, Optional
 
 _logger = logging.getLogger(__name__)
 
+# Compiled regex constants (module-level to avoid re-compilation on every call)
+_TRIVIAL_RESPONSE_RE = re.compile(r'^[\s>|#\-\.\\/<>!]+$')
+
 # ── Import from split modules ───────────────────────────────────────────────
 
 from backend.agent_runtime.llm_call import (
@@ -1221,8 +1224,7 @@ def run_tool_loop(agent: Dict[str, Any],
         if not tool_calls:
             # Treat trivial single-character/punctuation-only responses (e.g. ">", "<")
             # as empty — these are artefacts from confused models, not real output.
-            _TRIVIAL_RE = re.compile(r'^[\s>|#\-\.\\/<>!]+$')
-            if content and _TRIVIAL_RE.match(content.strip()):
+            if content and _TRIVIAL_RESPONSE_RE.match(content.strip()):
                 _logger.debug("Trivial response %r — treating as empty", content.strip())
                 content = ''
 
