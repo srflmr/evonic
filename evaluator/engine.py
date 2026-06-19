@@ -224,22 +224,24 @@ class EvaluationEngine:
             from evaluator.llm_client import llm_client as run_llm_client
         
         try:
-            if self.use_configurable_tests:
-                self._run_configurable_evaluation(
-                    run_id, model_name, domains, run_llm_client,
-                    completed_test_ids=completed_test_ids
-                )
-            else:
-                self._run_legacy_evaluation(run_id, model_name, domains, run_llm_client)
-            
-            # Recalculate level scores from individual results after resume
-            if self.is_running:
-                self._recalculate_all_level_scores(run_id, domains)
-            
-            # Generate summary after all tests
-            if self.is_running:
-                self._generate_summary(run_id, model_name, run_llm_client)
-                
+            from backend.llm_usage_events import usage_context
+            with usage_context('evaluator', session_id=str(run_id)):
+                if self.use_configurable_tests:
+                    self._run_configurable_evaluation(
+                        run_id, model_name, domains, run_llm_client,
+                        completed_test_ids=completed_test_ids
+                    )
+                else:
+                    self._run_legacy_evaluation(run_id, model_name, domains, run_llm_client)
+
+                # Recalculate level scores from individual results after resume
+                if self.is_running:
+                    self._recalculate_all_level_scores(run_id, domains)
+
+                # Generate summary after all tests
+                if self.is_running:
+                    self._generate_summary(run_id, model_name, run_llm_client)
+
         except Exception as e:
             import traceback
             self._log(f'[ERROR] Evaluation error: {e}')
@@ -409,15 +411,17 @@ class EvaluationEngine:
 
         
         try:
-            if self.use_configurable_tests:
-                self._run_configurable_evaluation(run_id, model_name, domains, run_llm_client)
-            else:
-                self._run_legacy_evaluation(run_id, model_name, domains, run_llm_client)
-            
-            # Generate summary after all tests
-            if self.is_running:
-                self._generate_summary(run_id, model_name, run_llm_client)
-                
+            from backend.llm_usage_events import usage_context
+            with usage_context('evaluator', session_id=str(run_id)):
+                if self.use_configurable_tests:
+                    self._run_configurable_evaluation(run_id, model_name, domains, run_llm_client)
+                else:
+                    self._run_legacy_evaluation(run_id, model_name, domains, run_llm_client)
+
+                # Generate summary after all tests
+                if self.is_running:
+                    self._generate_summary(run_id, model_name, run_llm_client)
+
         except Exception as e:
             import traceback
             self._log(f'[ERROR] Evaluation error: {e}')
