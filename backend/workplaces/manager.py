@@ -152,6 +152,17 @@ class WorkplaceManager:
             'last_connected_at': workplace.get('last_connected_at'),
         }
 
+    def set_backend_workspace(self, workplace_id: str, workspace: str) -> None:
+        """Update workspace path on any cached backends that support it.
+
+        Called by ``/cd`` slash command for remote/tunnel agents so the
+        in-memory backend reflects the new path immediately.
+        """
+        with self._lock:
+            for (wid, _sandbox), backend in self._backends.items():
+                if wid == workplace_id and hasattr(backend, 'set_workspace'):
+                    backend.set_workspace(workspace)
+
     # -------------------------------------------------------------------------
     # Tunnel connector callbacks (called by ConnectorRelay)
     # -------------------------------------------------------------------------

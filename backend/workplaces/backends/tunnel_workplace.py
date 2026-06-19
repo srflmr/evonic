@@ -52,6 +52,10 @@ class TunnelWorkplaceBackend(ExecutionBackend):
         self._results: dict[str, dict] = {}
         self._rpc_lock = threading.Lock()
 
+    def set_workspace(self, path: str) -> None:
+        """Update the tunnel workspace path (for /cd command)."""
+        self._workspace = path
+
     def resolve_path(self, path: str) -> str:
         """Remap server-resolved paths to the remote Evonet workspace.
 

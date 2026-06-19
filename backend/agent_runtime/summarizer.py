@@ -441,6 +441,10 @@ def _format_messages_for_summary(messages: list) -> str:
                 meta = None
         if isinstance(meta, dict) and meta.get('agent_state'):
             continue
+        # Skip bash_exec and slash_command — these are direct executions handled
+        # outside the LLM and must not leak into the recap/summary context.
+        if isinstance(meta, dict) and (meta.get('bash_exec') or meta.get('slash_command')):
+            continue
         lines.append(f"{role}: {content}")
     return "\n".join(lines)
 
@@ -451,6 +455,11 @@ def _format_entries_for_summary(entries: list) -> str:
     for entry in entries:
         etype = entry.get('type', '')
         content = entry.get('content', '') or ''
+        # Skip bash_exec and slash_command — these are direct executions handled
+        # outside the LLM and must not leak into the recap/summary context.
+        meta = entry.get('metadata') or {}
+        if meta.get('bash_exec') or meta.get('slash_command'):
+            continue
         if etype == 'user':
             lines.append(f"USER: {content}")
         elif etype in ('final', 'intermediate'):

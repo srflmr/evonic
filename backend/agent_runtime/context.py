@@ -884,10 +884,22 @@ def build_system_prompt(agent: Dict[str, Any], injected_system_vars: Dict[str, s
     ]
     slash_commands.append(("/plan", "Switch to plan mode"))
     slash_commands.append(("/unfocus", "Force-clear focus mode — use when agent is stuck in focus after a failed task"))
-    if is_super:
-        slash_commands.append(("/restart", "Restart the service (super agent only)"))
+    # /cd and /cwd are available to super agents and agents with remote/tunnel workplaces
+    has_remote_workplace = False
+    if not is_super:
+        workplace_id = agent.get('workplace_id')
+        if workplace_id:
+            try:
+                workplace = db.get_workplace(workplace_id)
+                if workplace and workplace.get('type') in ('remote', 'tunnel'):
+                    has_remote_workplace = True
+            except Exception:
+                pass
+    if is_super or has_remote_workplace:
         slash_commands.append(("/cwd", "Show current workspace directory"))
         slash_commands.append(("/cd", "Change workspace directory"))
+    if is_super:
+        slash_commands.append(("/restart", "Restart the service (super agent only)"))
         slash_commands.append(("/shutdown", "Shut down the Evonic server completely (super agent only)"))
     # /autopilot is not yet implemented, omit from listing
 

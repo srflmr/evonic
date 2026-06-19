@@ -74,6 +74,10 @@ __PYEOF__"""
             return self._ssh.run_bash(bash_script, timeout, {})
         return self._ssh.run_python(code, timeout, env)
 
+    def set_workspace(self, path: str) -> None:
+        """Update the remote workspace path (for /cd command)."""
+        self._workspace = path
+
     def destroy(self) -> dict:
         if self._ssh:
             return self._ssh.destroy()

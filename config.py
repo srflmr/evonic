@@ -97,22 +97,7 @@ def get_evaluator_type(domain: str) -> str:
 # Database paths
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-
-def _resolve_app_root(base_dir: str) -> str:
-    """Return the app root directory.
-
-    In release mode the running code lives under ``<app_root>/releases/<tag>/``.
-    Mutable state (``shared/``, ``current`` symlink) lives at the app root, so
-    config must resolve to the grandparent in that case. In flat-repo mode the
-    app root *is* the directory containing this file.
-    """
-    parent = os.path.dirname(base_dir)
-    if os.path.basename(parent) == "releases":
-        return os.path.dirname(parent)
-    return base_dir
-
-
-APP_ROOT = _resolve_app_root(BASE_DIR)
+APP_ROOT = BASE_DIR
 _shared_db_dir = os.path.join(APP_ROOT, "shared", "db")
 if not os.path.isdir(_shared_db_dir):
     os.makedirs(_shared_db_dir, exist_ok=True)

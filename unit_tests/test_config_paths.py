@@ -35,50 +35,6 @@ try:
 except ImportError:
     _ensure_stub('envcrypt', load=lambda *a, **kw: None)
 
-from config import _resolve_app_root  # noqa: E402
-
-
-class TestResolveAppRoot(unittest.TestCase):
-    def test_flat_mode_returns_base_dir(self):
-        # Plain repo layout — base_dir IS the app root.
-        base = '/home/user/projects/evonic'
-        self.assertEqual(_resolve_app_root(base), base)
-
-    def test_release_mode_returns_grandparent(self):
-        # base_dir = <app_root>/releases/<tag>/
-        base = '/home/user/.evonic/releases/v0.2.0'
-        self.assertEqual(_resolve_app_root(base), '/home/user/.evonic')
-
-    def test_release_mode_with_trailing_slash_pattern(self):
-        # os.path.dirname strips trailing slashes; ensure parent.basename detection
-        # still works for tag dirs that already had trailing path separators removed.
-        base = '/srv/evonic/releases/v1.0.0'
-        self.assertEqual(_resolve_app_root(base), '/srv/evonic')
-
-    def test_lookalike_directory_named_releases_does_not_trigger(self):
-        # Edge case: a parent dir incidentally named with "releases" as a suffix
-        # should NOT be treated as the release marker.
-        base = '/opt/my_releases/v1'
-        # parent = /opt/my_releases — basename "my_releases" != "releases"
-        self.assertEqual(_resolve_app_root(base), base)
-
-    def test_releases_at_filesystem_root(self):
-        # Pathological but valid: parent.basename == "releases" but grandparent
-        # is filesystem root. _resolve_app_root should still return the parent
-        # of releases/.
-        base = '/releases/v1.0.0'
-        self.assertEqual(_resolve_app_root(base), '/')
-
-    def test_app_root_directly_named_releases_is_ambiguous(self):
-        # If someone genuinely names their app dir "releases" and runs flat-mode,
-        # the heuristic mis-resolves to the grandparent. Documented limitation;
-        # this test pins the current behavior so future refactors notice the
-        # tradeoff.
-        base = '/home/user/releases'
-        # parent = /home/user, basename != "releases" → flat-mode fallback
-        self.assertEqual(_resolve_app_root(base), base)
-
-
 class TestModuleLevelExports(unittest.TestCase):
     """Smoke test: APP_ROOT and DB_PATH on the loaded module are coherent."""
 

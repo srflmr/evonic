@@ -183,6 +183,19 @@ def _register_builtins():
             is_super = super_agent and super_agent.get('id') == agent_id
         except Exception:
             is_super = False
+        # /cd and /cwd are also available to agents with remote/tunnel workplaces
+        can_cd = is_super
+        if not can_cd:
+            try:
+                agent = db.get_agent(agent_id)
+                if agent:
+                    workplace_id = agent.get('workplace_id')
+                    if workplace_id:
+                        workplace = db.get_workplace(workplace_id)
+                        if workplace and workplace.get('type') in ('remote', 'tunnel'):
+                            can_cd = True
+            except Exception:
+                pass
         lines = ["**Available commands:**"]
         super_only = {"restart", "cd", "cwd", "shutdown"}
         web_only = {"investigate"}  # only shown/available on web, not channels
@@ -194,7 +207,9 @@ def _register_builtins():
         except Exception:
             pass
         for name, desc in commands:
-            if name in super_only and not is_super:
+            if name in {"cd", "cwd"} and not can_cd:
+                continue
+            if name in {"restart", "shutdown"} and not is_super:
                 continue
             if name in web_only and channel_id is not None:
                 continue
@@ -349,21 +364,44 @@ def _register_builtins():
         channel_id: Optional[str],
         args: str,
     ) -> str:
-        from models.db import db
+        import json as _json
 
-        super_agent = db.get_super_agent()
-        if not super_agent or super_agent.get('id') != agent_id:
-            return "Permission denied: /cwd is only available to the super agent."
+        from models.db import db
 
         agent = db.get_agent(agent_id)
         if not agent:
             return "Error: Agent not found."
 
-        workspace = agent.get('workspace')
-        if not workspace:
-            return "No workspace directory configured."
+        # Determine which workspace to show
+        is_super = False
+        try:
+            super_agent = db.get_super_agent()
+            is_super = super_agent and super_agent.get('id') == agent_id
+        except Exception:
+            pass
 
-        return f"Current workspace: {workspace}"
+        if is_super:
+            workspace = agent.get('workspace')
+            if not workspace:
+                return "No workspace directory configured."
+            return f"Current workspace: {workspace}"
+
+        # Check for remote/tunnel workplace
+        workplace_id = agent.get('workplace_id')
+        if workplace_id:
+            workplace = db.get_workplace(workplace_id)
+            if workplace and workplace.get('type') in ('remote', 'tunnel'):
+                cfg_raw = workplace.get('config', '{}')
+                if isinstance(cfg_raw, str):
+                    cfg = _json.loads(cfg_raw)
+                else:
+                    cfg = cfg_raw or {}
+                workspace = cfg.get('workspace_path')
+                if not workspace:
+                    return "No workspace directory configured."
+                return f"Current workspace: {workspace}"
+
+        return "Permission denied: /cwd is only available to the super agent or agents with remote/tunnel workplaces."
 
     command_registry.register(
         "cwd",
@@ -371,7 +409,7 @@ def _register_builtins():
         "Show current workspace directory",
     )
 
-    # /cd — Change workspace directory (super agent only)
+    # /cd — Change workspace directory (super agent or remote/tunnel workplace)
     def cd_handler(
         session_id: str,
         agent_id: str,
@@ -379,34 +417,83 @@ def _register_builtins():
         channel_id: Optional[str],
         args: str,
     ) -> str:
-        from models.db import db
+        import json as _json
 
-        super_agent = db.get_super_agent()
-        if not super_agent or super_agent.get('id') != agent_id:
-            return "Permission denied: /cd is only available to the super agent."
+        from models.db import db
+        from backend.workplaces.manager import workplace_manager
+
+        # Determine if this agent is allowed to use /cd:
+        #   - super agent (local/Docker-based)
+        #   - agent with a remote or tunnel workplace
+        is_super = False
+        try:
+            super_agent = db.get_super_agent()
+            is_super = super_agent and super_agent.get('id') == agent_id
+        except Exception:
+            pass
+
+        agent = db.get_agent(agent_id)
+        if not agent:
+            return "Error: Agent not found."
+
+        workplace_id = agent.get('workplace_id')
+        is_remote_or_tunnel = False
+        if workplace_id:
+            try:
+                workplace = db.get_workplace(workplace_id)
+                if workplace and workplace.get('type') in ('remote', 'tunnel'):
+                    is_remote_or_tunnel = True
+            except Exception:
+                pass
+
+        if not is_super and not is_remote_or_tunnel:
+            return (
+                "Permission denied: /cd is only available to the super agent "
+                "or agents with remote/tunnel workplaces."
+            )
 
         if not args or not args.strip():
             return "Usage: /cd [path] — change workspace directory"
 
-        new_path = os.path.expanduser(args.strip())
+        raw_path = args.strip()
 
-        # Reject paths containing '..' to prevent directory traversal
-        if '..' in new_path.split(os.sep):
-            return f"Error: path contains '..' which is not allowed: {new_path}"
+        # Path sanitization (.. rejection) applies to all
+        sanitized = raw_path.replace('\\', '/')
+        if '..' in sanitized.split('/'):
+            return f"Error: path contains '..' which is not allowed: {raw_path}"
 
-        # Resolve to absolute path and verify it exists
-        new_path = os.path.abspath(new_path)
-        if not os.path.isdir(new_path):
-            return f"Error: directory does not exist: {new_path}"
+        if is_super:
+            # Super agent: local filesystem — expand, verify, update agent.workspace,
+            # and recreate Docker container so the new workspace is mounted.
+            new_path = os.path.expanduser(raw_path)
+            if '..' in new_path.split(os.sep):
+                return f"Error: path contains '..' which is not allowed: {new_path}"
+            new_path = os.path.abspath(new_path)
+            if not os.path.isdir(new_path):
+                return f"Error: directory does not exist: {new_path}"
 
-        # Update agent workspace in DB
-        db.update_agent(agent_id, {'workspace': new_path})
+            db.update_agent(agent_id, {'workspace': new_path})
 
-        # Destroy the old Docker container so the new workspace gets mounted on next tool use
-        from backend.tools.runpy import _destroy_container
-        _destroy_container(session_id)
+            from backend.tools.runpy import _destroy_container
+            _destroy_container(session_id)
 
-        return f"Workspace changed to: {new_path}"
+            return f"Workspace changed to: {new_path}"
+
+        # Remote / tunnel agent: update the workplace config (skip
+        # os.path.expanduser / os.path.abspath / os.path.isdir — meaningless
+        # for remote filesystems). Also update the in-memory backend so the
+        # change takes effect immediately.
+        workplace = db.get_workplace(workplace_id)
+        cfg_raw = workplace.get('config', '{}') if workplace else '{}'
+        if isinstance(cfg_raw, str):
+            cfg = _json.loads(cfg_raw)
+        else:
+            cfg = cfg_raw or {}
+        cfg['workspace_path'] = raw_path
+        db.update_workplace(workplace_id, {'config': cfg})
+        workplace_manager.set_backend_workspace(workplace_id, raw_path)
+
+        return f"Workspace changed to: {raw_path}"
 
     command_registry.register(
         "cd",
@@ -479,18 +566,9 @@ def _register_builtins():
             except Exception:
                 pass
 
-            # Resolve the correct restart target:
-            # - Release mode (BASE_DIR inside releases/): follow current symlink
-            # - Dev mode: restart from project root (BASE_DIR)
+            # Flat-repo architecture: project root IS the live directory.
             import config as _config
-            _base = os.path.realpath(_config.BASE_DIR)
-            _rel_marker = os.sep + 'releases' + os.sep
-            if _rel_marker in _base:
-                _project_root = _base.split(_rel_marker)[0]
-                _current = os.path.join(_project_root, 'current')
-                _target = os.path.realpath(_current) if os.path.islink(_current) else _base
-            else:
-                _target = _base
+            _target = os.path.realpath(_config.BASE_DIR)
             _app_py = os.path.join(_target, 'app.py')
             _venv_python = os.path.join(_target, '.venv', 'bin', 'python')
             _python = _venv_python if os.path.exists(_venv_python) else sys.executable
