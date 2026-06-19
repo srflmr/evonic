@@ -141,6 +141,10 @@ def classify_request(path: str, method: str = "GET") -> str:
     """Return the rate-limit tier for a given request path and method.
 
     Classification rules (first match wins):
+      0. GET /api/log_poll, /api/test_matrix, /api/v1/history/*, /api/dashboard*,
+         /api/models*, /api/config*, /api/system* → None (exempt reads;
+         high-frequency evaluator polling / dashboard / config reads). Non-GET
+         (mutations) fall through to normal classification below.
       1. /static/*                     → static
       2. POST /api/agents/<id>/chat and /chat/approve → chat (LLM sends)
       2b. any other /api/agents/<id>/chat* (GET reads, polls, stream) → poll
@@ -157,6 +161,21 @@ def classify_request(path: str, method: str = "GET") -> str:
     # Static assets
     if path.startswith("/static/"):
         return "static"
+
+    # High-frequency evaluator polling / dashboard endpoints — exempt READS only
+    # from rate limiting. The evaluator hammers these progress/history/config
+    # reads far faster than the "general" tier (60 req/min) allows, so GET is
+    # cap-free. Mutations (POST/PUT/DELETE) fall through to normal limiting.
+    if method == "GET" and (
+        path.startswith("/api/log_poll")
+        or path.startswith("/api/test_matrix")
+        or path.startswith("/api/v1/history/")
+        or path.startswith("/api/dashboard")
+        or path.startswith("/api/models")
+        or path.startswith("/api/config")
+        or path.startswith("/api/system")
+    ):
+        return None
 
     # Chat endpoints. Only the expensive LLM-send POSTs consume the small "chat"
     # budget; cheap GET reads/polls (history, poll, state, session, summary,

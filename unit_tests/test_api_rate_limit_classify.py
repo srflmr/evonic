@@ -43,6 +43,28 @@ class TestClassifyRequest(unittest.TestCase):
         self.assertEqual(classify_request(f"{self.AID}", "GET"), "crud")
         self.assertEqual(classify_request("/api/settings", "GET"), "general")
 
+    def test_evaluator_polling_reads_are_exempt(self):
+        # High-frequency evaluator GET polls must not be rate-limited at all.
+        self.assertIsNone(classify_request("/api/log_poll", "GET"))
+        self.assertIsNone(classify_request("/api/test_matrix", "GET"))
+        self.assertIsNone(classify_request("/api/test_matrix?run_id=3", "GET"))
+        self.assertIsNone(classify_request("/api/v1/history/last/id", "GET"))
+        self.assertIsNone(classify_request("/api/v1/history/5/math/1", "GET"))
+        self.assertIsNone(classify_request("/api/dashboard/data", "GET"))
+        self.assertIsNone(classify_request("/api/models", "GET"))
+        self.assertIsNone(classify_request("/api/config", "GET"))
+        self.assertIsNone(classify_request("/api/system/update/status", "GET"))
+
+    def test_mutations_on_exempt_prefixes_still_limited(self):
+        # Only GET reads are exempt — mutations stay rate-limited.
+        self.assertEqual(classify_request("/api/models", "POST"), "general")
+        self.assertEqual(classify_request("/api/models/m1", "PUT"), "general")
+        self.assertEqual(classify_request("/api/models/m1", "DELETE"), "general")
+        self.assertEqual(classify_request("/api/config/model", "POST"), "general")
+        self.assertEqual(
+            classify_request("/api/system/update/start", "POST"), "general"
+        )
+
     def test_static_and_non_api_unchanged(self):
         self.assertEqual(classify_request("/static/js/app.js", "GET"), "static")
         self.assertIsNone(classify_request("/login", "POST"))
