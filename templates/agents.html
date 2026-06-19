@@ -240,6 +240,7 @@ function switchTab(tab) {
 let agents = [];
 let skillsets = [];
 let busyAgents = {};
+let agentStatusEventsSubscribed = false;
 
 async function loadSkillsets() {
     try {
@@ -281,7 +282,7 @@ async function loadAgents() {
     renderAgents();
     loadSkillsets();
     loadBusyAgents();
-    startAgentStatusStream();
+    subscribeAgentStatusEvents();
 }
 
 function renderAgents() {
@@ -430,6 +431,8 @@ function subscribeAgentStatusEvents() {
         for (const id of Object.keys(busyAgents)) updateAgentBusyBadge(id, true);
     });
 }
+
+window.addEventListener('pageshow', loadBusyAgents);
 
 function toggleDisabledAgents() {
     const grid = document.getElementById('disabled-agents-grid');
