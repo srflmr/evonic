@@ -66,7 +66,7 @@ def main():
     )
 
     # --- update ---
-    update_parser = subparsers.add_parser("update", help="Check for and apply self-updates")
+    update_parser = subparsers.add_parser("update", help="Update via git pull, then run doctor --fix")
     update_parser.add_argument(
         "channel", nargs="?", default=None,
         choices=["nightly"],

@@ -286,8 +286,6 @@ function hideTooltip() {
 
 /** Active bubble popup map: agentId -> { element, timer, hover } */
 var _activeBubbles = {};
-var _busySSE = null;
-var _busyReconnectTimer = null;
 
 /** Maximum characters to show in the bubble preview */
 var _BUBBLE_MAX_CHARS = 140;
@@ -549,16 +547,19 @@ function subscribeBusySSE() {
     if (typeof RealtimeClient === 'undefined') {
         if (_busySSE) return;
         try {
-            var es = new EventSource('/api/agents/status/stream');
-            _busySSE = es;
-            es.addEventListener('agent_busy_changed', function (e) {
+            _statusSSE = new EventSource('/api/agents/status/stream');
+            _statusSSE.addEventListener('agent_busy_changed', function (e) {
                 try {
                     var payload = JSON.parse(e.data);
-                    updateBusyAvatar(payload);
-                    dispatchBusyChanged(payload);
+                    var avatar = document.querySelector(
+                        '#agent-sidebar .agent-avatar[data-agent-id="' + CSS.escape(payload.agent_id) + '"]'
+                    );
+                    if (avatar) {
+                        avatar.setAttribute('data-busy', payload.busy ? 'true' : 'false');
+                    }
                 } catch (_) {}
             });
-            es.addEventListener('agent_turn_complete', function (e) {
+            _statusSSE.addEventListener('agent_turn_complete', function (e) {
                 try {
                     _onTurnComplete(JSON.parse(e.data));
                 } catch (_) {}
