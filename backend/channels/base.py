@@ -37,6 +37,9 @@ class BaseChannel(ABC):
         self._buf_timers: Dict[str, Timer] = {}
         self._buf_lock = threading.Lock()
         self._last_sent: Dict[str, float] = {}
+        self._send_errors: Dict[str, tuple] = {}
+        self._send_errors_lock = threading.Lock()
+        self._send_error_ttl = 3600  # 1 hour TTL for send errors
 
     @abstractmethod
     def start(self):
@@ -82,8 +85,11 @@ class BaseChannel(ABC):
         wait = self._outbound_buffer_seconds - (now - last)
         if wait > 0:
             time.sleep(wait)
-        self._do_send(external_user_id, text)
-        self._last_sent[external_user_id] = time.time()
+        try:
+            self._do_send(external_user_id, text)
+            self._last_sent[external_user_id] = time.time()
+        except Exception as e:
+            self._store_send_error(external_user_id, str(e))
 
     def send_message(self, external_user_id: str, text: str):
         """Immediate path: cancel any pending buffer for this chat, merge + send now.
@@ -98,8 +104,11 @@ class BaseChannel(ABC):
                 old.cancel()
         if pending:
             text = pending + "\n\n" + text
-        self._do_send(external_user_id, text)
-        self._last_sent[external_user_id] = time.time()
+        try:
+            self._do_send(external_user_id, text)
+            self._last_sent[external_user_id] = time.time()
+        except Exception as e:
+            self._store_send_error(external_user_id, str(e))
 
     @abstractmethod
     def _do_send(self, external_user_id: str, text: str):
@@ -110,13 +119,62 @@ class BaseChannel(ABC):
                   caption: Optional[str] = None,
                   mime_type: Optional[str] = None) -> bool:
         """Send a file to a user. Returns True on success, False on failure."""
-        return self._do_send_file(external_user_id, file_path, caption, mime_type)
+        try:
+            result = self._do_send_file(external_user_id, file_path, caption, mime_type)
+            if not result:
+                self._store_send_error(external_user_id, "send_file returned False")
+            return result
+        except Exception as e:
+            self._store_send_error(external_user_id, str(e))
+            return False
 
     def _do_send_file(self, external_user_id: str, file_path: str,
                       caption: Optional[str] = None,
                       mime_type: Optional[str] = None) -> bool:
         """Actual file delivery — override in subclass. Returns False by default."""
         return False
+
+    def _store_send_error(self, external_user_id: str, error: str):
+        """Store a send error with current timestamp, then purge expired entries."""
+        with self._send_errors_lock:
+            self._send_errors[external_user_id] = (error, time.time())
+            self._cleanup_send_errors()
+
+    def _cleanup_send_errors(self):
+        """Remove send error entries older than _send_error_ttl seconds.
+
+        Called with _send_errors_lock already held.
+        """
+        cutoff = time.time() - self._send_error_ttl
+        expired = [uid for uid, (_, ts) in self._send_errors.items() if ts < cutoff]
+        for uid in expired:
+            del self._send_errors[uid]
+
+    def get_send_error(self, external_user_id: str) -> Optional[str]:
+        """Return the last send error for a user, then clear it.
+
+        Returns None if the last send was successful, no send has occurred,
+        or the entry has expired.
+        """
+        with self._send_errors_lock:
+            entry = self._send_errors.pop(external_user_id, None)
+            if entry is None:
+                return None
+            error, ts = entry
+            if time.time() - ts > self._send_error_ttl:
+                return None
+            return error
+
+    def has_send_error(self, external_user_id: str) -> bool:
+        with self._send_errors_lock:
+            entry = self._send_errors.get(external_user_id)
+            if entry is None:
+                return False
+            _, ts = entry
+            if time.time() - ts > self._send_error_ttl:
+                del self._send_errors[external_user_id]
+                return False
+            return True
 
     def send_typing(self, external_user_id: str):
         """Send a typing indicator to a user. Optional — no-op by default."""
