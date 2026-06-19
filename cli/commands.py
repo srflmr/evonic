@@ -2075,16 +2075,19 @@ def update_server(
     check_only=False, force=False, tag=None, rollback_flag=False, nightly=False
 ):
     """
-    Update evonic by pulling the latest from origin/main.
+    Update evonic to the latest release tag, then repair the environment
+    with `evonic doctor --fix`.
 
     In the flat-repo architecture, the project root IS the live directory.
-    Updates are performed via git fetch + reset, which overwrites local
-    changes with the remote state.
 
     Modes:
-    - check_only: fetch and report current vs remote state, no update applied
-    - default: fetch origin/main and reset to it
+    - check_only: fetch and report current version vs latest tag
+    - default: check out the latest vX.Y.Z tag GREATER than the current
+      version, then run `evonic doctor --fix`
+    - tag=X: check out a specific tag, then run `evonic doctor --fix`
+    - nightly: track origin/main instead of release tags
     """
+    import re
 
     def _git(args):
         """Run a git command in the project root."""
@@ -2096,45 +2099,117 @@ def update_server(
         )
         return proc.returncode, proc.stdout.strip(), proc.stderr.strip()
 
-    if check_only:
-        print("Fetching origin...")
-        rc, _, err = _git(["fetch", "origin"])
+    def _parse_semver(s):
+        m = re.match(r"^v?(\d+)\.(\d+)\.(\d+)$", (s or "").strip())
+        return tuple(int(x) for x in m.groups()) if m else None
+
+    def _vstr(ver):
+        return "v%d.%d.%d" % ver if ver else "unknown"
+
+    def _current_version():
+        """Current version from the VERSION file, falling back to git describe."""
+        try:
+            with open(os.path.join(ROOT, "VERSION"), encoding="utf-8") as f:
+                ver = _parse_semver(f.read())
+                if ver:
+                    return ver
+        except Exception:
+            pass
+        rc, out, _ = _git(["describe", "--tags", "--abbrev=0"])
+        return _parse_semver(out) if rc == 0 else None
+
+    def _latest_tag():
+        """Highest vX.Y.Z tag known to git, as (name, version_tuple)."""
+        rc, out, _ = _git(["tag", "-l", "--sort=-v:refname"])
+        if rc != 0:
+            return None, None
+        for line in out.splitlines():
+            ver = _parse_semver(line)
+            if ver:
+                return line.strip(), ver
+        return None, None
+
+    def _run_doctor_fix():
+        # Run via the wrapper so the freshly checked-out code is used.
+        print("\nRepairing environment (evonic doctor --fix)...")
+        evonic_bin = os.path.join(ROOT, "evonic")
+        proc = subprocess.run([evonic_bin, "doctor", "--fix"], cwd=ROOT)
+        if proc.returncode != 0:
+            print("doctor --fix reported problems. See output above.")
+            sys.exit(proc.returncode)
+
+    # Nightly channel: track origin/main instead of release tags.
+    if nightly:
+        print("Fetching origin/main (nightly)...")
+        rc, _, err = _git(["fetch", "origin", "main"])
         if rc != 0:
             print(f"Git fetch failed: {err}")
             sys.exit(1)
-
-        rc, current_sha, _ = _git(["rev-parse", "--short", "HEAD"])
-        current = current_sha if rc == 0 else "unknown"
-
-        rc, remote_sha, _ = _git(["rev-parse", "--short", "origin/main"])
-        remote = remote_sha if rc == 0 else "unknown"
-
-        print(f"Current     : {current}")
-        print(f"origin/main : {remote}")
-
-        if current != remote and remote != "unknown":
-            print(f"Update available: {current} -> {remote}")
-        elif remote != "unknown":
-            print("Already up to date.")
+        if check_only:
+            rc, cur, _ = _git(["rev-parse", "--short", "HEAD"])
+            rc2, rem, _ = _git(["rev-parse", "--short", "origin/main"])
+            print(f"Current     : {cur if rc == 0 else 'unknown'}")
+            print(f"origin/main : {rem if rc2 == 0 else 'unknown'}")
+            return
+        print("Resetting to origin/main...")
+        rc, _, err = _git(["reset", "--hard", "origin/main"])
+        if rc != 0:
+            print(f"Git reset failed: {err}")
+            sys.exit(1)
+        _run_doctor_fix()
+        print("Update complete.")
         return
 
-    # Apply update: fetch origin/main and reset to it
-    print("Fetching origin/main...")
-    rc, _, err = _git(["fetch", "origin", "main"])
+    # Release channel: update to a release tag (vX.Y.Z).
+    # --force so a locally-diverged release tag ("would clobber existing tag")
+    # is re-synced to the remote rather than aborting the update.
+    print("Fetching tags from origin...")
+    rc, _, err = _git(["fetch", "--tags", "--force", "origin"])
     if rc != 0:
         print(f"Git fetch failed: {err}")
         sys.exit(1)
 
-    rc, remote_sha, _ = _git(["rev-parse", "--short", "origin/main"])
-    display_sha = remote_sha if rc == 0 else "unknown"
+    current = _current_version()
 
-    print(f"Resetting to origin/main ({display_sha})...")
-    rc, _, err = _git(["reset", "--hard", "origin/main"])
+    if tag:
+        target_name = tag if tag.startswith("v") else "v" + tag
+        target_ver = _parse_semver(target_name)
+        if not target_ver:
+            print(f"Invalid tag '{tag}'. Expected format vX.Y.Z (e.g. v0.8.0).")
+            sys.exit(1)
+    else:
+        target_name, target_ver = _latest_tag()
+        if not target_name:
+            print("No release tags (vX.Y.Z) found on origin.")
+            sys.exit(1)
+
+    print(f"Current    : {_vstr(current)}")
+    print(f"Latest tag : {target_name}")
+
+    is_newer = bool(target_ver and current and target_ver > current)
+
+    if check_only:
+        if is_newer:
+            print(f"Update available: {_vstr(current)} -> {target_name}")
+        else:
+            print("Already up to date.")
+        return
+
+    # The default (latest) path only proceeds when the tag is strictly newer
+    # than the current version. An explicit --tag bypasses this (allows pinning).
+    if not tag and not is_newer:
+        print(f"Already up to date (current {_vstr(current)}, latest {target_name}).")
+        return
+
+    print(f"Updating to {target_name}...")
+    rc, _, err = _git(["checkout", target_name])
     if rc != 0:
-        print(f"Git reset failed: {err}")
+        print(f"Git checkout failed: {err}")
+        print("Resolve local changes/conflicts, then re-run `evonic update`.")
         sys.exit(1)
 
-    print("Update complete.")
+    _run_doctor_fix()
+    print(f"Update complete — now at {target_name}.")
 
 
 # ═══════════════════════════════════════════════════════════════════
