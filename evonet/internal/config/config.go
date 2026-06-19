@@ -12,6 +12,9 @@ import (
 
 // Config holds all Evonet settings.
 type Config struct {
+	// Optional user-defined label for this server (overrides HomeName in the UI)
+	Name string `yaml:"name,omitempty" json:"name,omitempty"`
+
 	// Required: set after pairing
 	ConnectorToken string `yaml:"connector_token" json:"connector_token"`
 	HomeID         string `yaml:"home_id"         json:"home_id"`
@@ -25,6 +28,18 @@ type Config struct {
 
 	// Optional working directory; defaults to the directory of the Evonet binary
 	WorkDir string `yaml:"work_dir" json:"work_dir"`
+}
+
+// Label returns the display name for this server: user-defined Name if set,
+// otherwise the paired HomeName, otherwise the server URL.
+func (c *Config) Label() string {
+	if c.Name != "" {
+		return c.Name
+	}
+	if c.HomeName != "" {
+		return c.HomeName
+	}
+	return c.ServerURL
 }
 
 // Load reads layered config: embedded (in binary) → config.yaml → applied CLI overrides.

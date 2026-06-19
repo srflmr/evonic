@@ -41,7 +41,7 @@ VALID_EVENTS = {
     'tool_executed', 'final_answer', 'message_sent',
     'kanban_task_created', 'kanban_task_updated',
     'schedule_fired', 'schedule_created', 'schedule_cancelled',
-    'state_transition',
+    'state_transition', 'llm_usage',
 }
 
 

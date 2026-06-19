@@ -1,0 +1,37 @@
+{
+  "id": "token_monitor",
+  "name": "Token Monitor",
+  "version": "1.0.0",
+  "description": "Monitors LLM token usage per-agent, per-source, and overall, with a cost-aware analytics dashboard.",
+  "author": "Evonic",
+  "enabled": true,
+  "events": ["llm_usage"],
+  "nav_items": [
+    {"label": "Token Monitor", "path": "/token-monitor"}
+  ],
+  "dashboard_cards": [
+    {
+      "id": "token_monitor_usage",
+      "title": "Token Usage (24h)",
+      "handler": "dashboard_usage_card",
+      "link": "/token-monitor"
+    }
+  ],
+  "routes": [
+    {"path": "/token-monitor", "methods": ["GET"], "handler": "token_monitor_page"},
+    {"path": "/api/token-monitor/overview", "methods": ["GET"], "handler": "api_overview"},
+    {"path": "/api/token-monitor/by-agent", "methods": ["GET"], "handler": "api_by_agent"},
+    {"path": "/api/token-monitor/by-source", "methods": ["GET"], "handler": "api_by_source"},
+    {"path": "/api/token-monitor/by-model", "methods": ["GET"], "handler": "api_by_model"},
+    {"path": "/api/token-monitor/series", "methods": ["GET"], "handler": "api_series"}
+  ],
+  "variables": [
+    {
+      "name": "PRICING_JSON",
+      "label": "Model Pricing (JSON)",
+      "type": "textarea",
+      "default": "",
+      "description": "Optional override of per-model prices in USD per 1M tokens. Object keyed by a model-name substring, each value {\"in\": <input price>, \"out\": <output price>}. Example: {\"claude-opus\": {\"in\": 15, \"out\": 75}}. Leave empty to use built-in defaults."
+    }
+  ]
+}

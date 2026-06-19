@@ -1,0 +1,234 @@
+{% extends "base.html" %}
+{% block content %}
+
+<style>
+  .tm-wrap { padding: 1rem; max-width: 1200px; margin: 0 auto; }
+  .tm-cards { display: grid; grid-template-columns: repeat(5, 1fr); gap: 0.75rem; }
+  @media (max-width: 900px) { .tm-cards { grid-template-columns: repeat(2, 1fr); } }
+  .tm-card { background: #fff; border: 1px solid #e5e7eb; border-radius: 0.75rem; padding: 0.9rem 1rem; }
+  .tm-card .label { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.03em; color: #6b7280; }
+  .tm-card .value { font-size: 1.35rem; font-weight: 700; color: #111827; margin-top: 0.15rem; }
+  .tm-card .sub { font-size: 0.72rem; color: #9ca3af; margin-top: 0.1rem; }
+  .tm-panel { background: #fff; border: 1px solid #e5e7eb; border-radius: 0.75rem; padding: 1rem; margin-top: 1rem; }
+  .tm-panel h3 { font-size: 0.95rem; font-weight: 600; color: #111827; margin: 0 0 0.75rem; }
+  .tm-grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+  @media (max-width: 900px) { .tm-grid2 { grid-template-columns: 1fr; } }
+  .tm-canvas-sm { position: relative; height: 260px; }
+  .tm-canvas-lg { position: relative; height: 320px; }
+  .tm-table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
+  .tm-table th, .tm-table td { text-align: left; padding: 0.4rem 0.5rem; border-bottom: 1px solid #f0f0f0; }
+  .tm-table th { color: #6b7280; font-weight: 600; }
+  .tm-table td.num, .tm-table th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .tm-toolbar { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 0.75rem; }
+  .tm-seg { display: inline-flex; border: 1px solid #d1d5db; border-radius: 0.5rem; overflow: hidden; }
+  .tm-seg button { padding: 0.3rem 0.7rem; font-size: 0.78rem; background: #fff; color: #374151; border: none; cursor: pointer; }
+  .tm-seg button.active { background: #4f46e5; color: #fff; }
+  .tm-check { font-size: 0.8rem; color: #374151; display: inline-flex; align-items: center; gap: 0.35rem; }
+  .tm-est { font-size: 0.72rem; color: #b45309; }
+
+  html.dark .tm-card, html.dark .tm-panel { background: #1e293b; border-color: #334155; }
+  html.dark .tm-card .value, html.dark .tm-panel h3 { color: #f1f5f9; }
+  html.dark .tm-card .label { color: #94a3b8; }
+  html.dark .tm-table th { color: #94a3b8; }
+  html.dark .tm-table td { color: #cbd5e1; }
+  html.dark .tm-table th, html.dark .tm-table td { border-color: #334155; }
+  html.dark .tm-seg { border-color: #475569; }
+  html.dark .tm-seg button { background: #1e293b; color: #cbd5e1; }
+  html.dark .tm-seg button.active { background: #4f46e5; color: #fff; }
+  html.dark .tm-check { color: #cbd5e1; }
+</style>
+
+<div class="tm-wrap">
+  <div class="tm-toolbar">
+    <h2 style="font-size:1.25rem;font-weight:700;margin-right:auto;">Token Monitor</h2>
+    <span style="font-size:0.78rem;color:#6b7280;">Range</span>
+    <div class="tm-seg" id="tm-range">
+      <button data-range="24h" class="active">24h</button>
+      <button data-range="7d">7d</button>
+      <button data-range="30d">30d</button>
+      <button data-range="all">All</button>
+    </div>
+    <button id="tm-refresh" class="tm-seg" style="padding:0;"><span style="padding:0.3rem 0.7rem;">Refresh</span></button>
+  </div>
+
+  <div class="tm-cards">
+    <div class="tm-card"><div class="label">Total Tokens</div><div class="value" id="tm-total">—</div><div class="sub" id="tm-est-note"></div></div>
+    <div class="tm-card"><div class="label">Prompt</div><div class="value" id="tm-prompt">—</div></div>
+    <div class="tm-card"><div class="label">Completion</div><div class="value" id="tm-completion">—</div></div>
+    <div class="tm-card"><div class="label">LLM Calls</div><div class="value" id="tm-calls">—</div></div>
+    <div class="tm-card"><div class="label">Est. Cost</div><div class="value" id="tm-cost">—</div><div class="sub">USD</div></div>
+  </div>
+
+  <div class="tm-grid2">
+    <div class="tm-panel">
+      <h3>By Source</h3>
+      <div class="tm-canvas-sm"><canvas id="tm-source-chart"></canvas></div>
+    </div>
+    <div class="tm-panel">
+      <h3>By Model</h3>
+      <table class="tm-table">
+        <thead><tr><th>Model</th><th class="num">Tokens</th><th class="num">Calls</th><th class="num">Cost</th></tr></thead>
+        <tbody id="tm-model-body"><tr><td colspan="4">Loading…</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="tm-panel">
+    <div class="tm-toolbar">
+      <h3 style="margin:0;margin-right:auto;">By Agent</h3>
+      <label class="tm-check"><input type="checkbox" id="tm-rollup"> Roll up sub-agents</label>
+    </div>
+    <div class="tm-canvas-lg"><canvas id="tm-agent-chart"></canvas></div>
+    <table class="tm-table" style="margin-top:0.75rem;">
+      <thead><tr><th>Agent</th><th class="num">Prompt</th><th class="num">Completion</th><th class="num">Total</th><th class="num">Calls</th></tr></thead>
+      <tbody id="tm-agent-body"><tr><td colspan="5">Loading…</td></tr></tbody>
+    </table>
+  </div>
+
+  <div class="tm-panel">
+    <div class="tm-toolbar">
+      <h3 style="margin:0;margin-right:auto;">Usage Over Time</h3>
+      <div class="tm-seg" id="tm-bucket">
+        <button data-bucket="hour" class="active">Hourly</button>
+        <button data-bucket="day">Daily</button>
+      </div>
+    </div>
+    <div class="tm-canvas-lg"><canvas id="tm-series-chart"></canvas></div>
+  </div>
+</div>
+
+<script src="{{ url_for('token_monitor.static', filename='chart.umd.min.js') }}"></script>
+<script>
+(function () {
+  const API = '/api/token-monitor';
+  let range = '24h';
+  let bucket = 'hour';
+  let rollup = false;
+  const charts = {};
+
+  const PALETTE = ['#4f46e5', '#06b6d4', '#f59e0b', '#ef4444', '#10b981', '#8b5cf6', '#ec4899', '#64748b'];
+  const fmt = n => (n || 0).toLocaleString();
+  const isDark = () => document.documentElement.classList.contains('dark');
+  const gridColor = () => isDark() ? 'rgba(148,163,184,0.15)' : 'rgba(0,0,0,0.06)';
+  const tickColor = () => isDark() ? '#94a3b8' : '#6b7280';
+
+  function getJSON(path) { return fetch(path).then(r => r.json()); }
+
+  function loadOverview() {
+    getJSON(`${API}/overview?range=${range}`).then(d => {
+      document.getElementById('tm-total').textContent = fmt(d.total_tokens);
+      document.getElementById('tm-prompt').textContent = fmt(d.prompt_tokens);
+      document.getElementById('tm-completion').textContent = fmt(d.completion_tokens);
+      document.getElementById('tm-calls').textContent = fmt(d.calls);
+      document.getElementById('tm-cost').textContent =
+        (d.estimated_cost === null || d.estimated_cost === undefined)
+          ? 'n/a' : '$' + Number(d.estimated_cost).toFixed(2);
+      const est = d.estimated_calls || 0;
+      const note = document.getElementById('tm-est-note');
+      note.textContent = est ? `${est} call(s) estimated` : '';
+      note.className = est ? 'sub tm-est' : 'sub';
+    });
+  }
+
+  function renderDoughnut(id, labels, values) {
+    if (charts[id]) charts[id].destroy();
+    charts[id] = new Chart(document.getElementById(id), {
+      type: 'doughnut',
+      data: { labels, datasets: [{ data: values, backgroundColor: PALETTE }] },
+      options: { responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { position: 'right', labels: { color: tickColor() } } } }
+    });
+  }
+
+  function renderBar(id, labels, values) {
+    if (charts[id]) charts[id].destroy();
+    charts[id] = new Chart(document.getElementById(id), {
+      type: 'bar',
+      data: { labels, datasets: [{ label: 'Total tokens', data: values, backgroundColor: '#4f46e5' }] },
+      options: { responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: { x: { ticks: { color: tickColor() }, grid: { color: gridColor() } },
+                  y: { ticks: { color: tickColor() }, grid: { color: gridColor() } } } }
+    });
+  }
+
+  function loadBySource() {
+    getJSON(`${API}/by-source?range=${range}`).then(d => {
+      const rows = d.sources || [];
+      renderDoughnut('tm-source-chart', rows.map(r => r.key || 'other'), rows.map(r => r.total_tokens));
+    });
+  }
+
+  function loadByModel() {
+    getJSON(`${API}/by-model?range=${range}`).then(d => {
+      const rows = d.models || [];
+      const body = document.getElementById('tm-model-body');
+      if (!rows.length) { body.innerHTML = '<tr><td colspan="4">No data</td></tr>'; return; }
+      body.innerHTML = rows.map(r => `<tr>
+        <td>${(r.key || '(unknown)')}</td>
+        <td class="num">${fmt(r.total_tokens)}</td>
+        <td class="num">${fmt(r.calls)}</td>
+        <td class="num">${r.cost === null || r.cost === undefined ? '<span style="color:#9ca3af">unpriced</span>' : '$' + Number(r.cost).toFixed(4)}</td>
+      </tr>`).join('');
+    });
+  }
+
+  function loadByAgent() {
+    getJSON(`${API}/by-agent?range=${range}&rollup=${rollup ? 1 : 0}`).then(d => {
+      const rows = d.agents || [];
+      renderBar('tm-agent-chart', rows.map(r => r.agent_name || r.agent_id || '(none)'), rows.map(r => r.total_tokens));
+      const body = document.getElementById('tm-agent-body');
+      if (!rows.length) { body.innerHTML = '<tr><td colspan="5">No data</td></tr>'; return; }
+      body.innerHTML = rows.map(r => `<tr>
+        <td>${(r.agent_name || r.agent_id || '(none)')}</td>
+        <td class="num">${fmt(r.prompt_tokens)}</td>
+        <td class="num">${fmt(r.completion_tokens)}</td>
+        <td class="num">${fmt(r.total_tokens)}</td>
+        <td class="num">${fmt(r.calls)}</td>
+      </tr>`).join('');
+    });
+  }
+
+  function loadSeries() {
+    getJSON(`${API}/series?range=${range}&bucket=${bucket}`).then(d => {
+      const rows = d.series || [];
+      const labels = rows.map(r => r.bucket);
+      if (charts.series) charts.series.destroy();
+      charts.series = new Chart(document.getElementById('tm-series-chart'), {
+        type: 'line',
+        data: { labels, datasets: [
+          { label: 'Prompt', data: rows.map(r => r.prompt_tokens), borderColor: '#06b6d4', tension: 0.25 },
+          { label: 'Completion', data: rows.map(r => r.completion_tokens), borderColor: '#f59e0b', tension: 0.25 },
+          { label: 'Total', data: rows.map(r => r.total_tokens), borderColor: '#4f46e5', tension: 0.25 },
+        ] },
+        options: { responsive: true, maintainAspectRatio: false,
+          plugins: { legend: { labels: { color: tickColor() } } },
+          scales: { x: { ticks: { color: tickColor() }, grid: { color: gridColor() } },
+                    y: { ticks: { color: tickColor() }, grid: { color: gridColor() } } } }
+      });
+    });
+  }
+
+  function loadAll() { loadOverview(); loadBySource(); loadByModel(); loadByAgent(); loadSeries(); }
+
+  document.getElementById('tm-range').addEventListener('click', e => {
+    const b = e.target.closest('button'); if (!b) return;
+    range = b.dataset.range;
+    document.querySelectorAll('#tm-range button').forEach(x => x.classList.toggle('active', x === b));
+    loadAll();
+  });
+  document.getElementById('tm-bucket').addEventListener('click', e => {
+    const b = e.target.closest('button'); if (!b) return;
+    bucket = b.dataset.bucket;
+    document.querySelectorAll('#tm-bucket button').forEach(x => x.classList.toggle('active', x === b));
+    loadSeries();
+  });
+  document.getElementById('tm-rollup').addEventListener('change', e => { rollup = e.target.checked; loadByAgent(); });
+  document.getElementById('tm-refresh').addEventListener('click', loadAll);
+
+  if (window.Chart) { loadAll(); }
+  else { window.addEventListener('load', loadAll); }
+})();
+</script>
+
+{% endblock %}

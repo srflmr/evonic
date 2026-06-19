@@ -102,14 +102,10 @@ func autoRun() bool {
 		if noGUI || !gui.GUIAvailable() {
 			break // fall through to Linux / headless path below
 		}
-		// Desktop: load full config (embedded + config.yaml from pairing)
-		cfg, _ := config.Load("")
-		if cfg.ConnectorToken == "" || cfg.ServerURL == "" {
-			// No config — show pairing dialog so user can pair without a terminal
-			gui.ShowPairingDialog(cfg.ServerURL)
-			return true
-		}
-		gui.RunGUI(cfg)
+		// Desktop: load the multi-server store (migrates from config.yaml).
+		// RunGUI shows the connector if a server is active, else the pairing form.
+		store, _ := config.LoadStore()
+		gui.RunGUI(store)
 		return true
 	}
 
