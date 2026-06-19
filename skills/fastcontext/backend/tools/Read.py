@@ -5,7 +5,7 @@ Supports pagination via the `offset` parameter for large files.
 Mirrors the core read_file tool behavior but with FastContext naming convention.
 """
 import os
-from ._utils import _auto_correct_path
+from ._utils import _auto_correct_path, _validate_workspace_boundary
 
 _MAX_FILE_SIZE = 400 * 1024
 _CHUNK_CHARS = 8000
@@ -32,6 +32,11 @@ def execute(agent: dict, args: dict) -> dict:
             corrected = _auto_correct_path(file_path, workspace, path_is_dir=False)
             if os.path.exists(corrected):
                 file_path = corrected
+
+    # Enforce workspace boundary (blocks path traversal, absolute paths, symlinks)
+    workspace = (agent or {}).get('workspace', '')
+    if workspace:
+        file_path = _validate_workspace_boundary(file_path, workspace)
 
     if not os.path.exists(file_path):
         return {'error': f'file not found: {file_path}'}

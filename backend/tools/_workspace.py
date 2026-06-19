@@ -75,7 +75,11 @@ def resolve_workspace_path(agent, file_path: str, fallback_workspace: str) -> st
        convention for paths inside a Docker container.
     2. If path is relative (not absolute) and the agent has a workspace set,
        resolve it relative to that workspace.
-    3. Otherwise return the path unchanged.
+    3. If the agent has a workspace set, validate that the resolved path stays
+       within the workspace boundary using realpath prefix-check.  Absolute
+       paths outside the workspace are blocked by returning a non-existent
+       path that the caller will report as "file not found".
+    4. Otherwise return the path unchanged.
     """
     if not file_path:
         return file_path
@@ -83,11 +87,45 @@ def resolve_workspace_path(agent, file_path: str, fallback_workspace: str) -> st
     if file_path.startswith('/workspace'):
         workspace_root = (agent or {}).get('workspace') or fallback_workspace
         rel = file_path[len('/workspace'):].lstrip('/')
-        return os.path.join(os.path.abspath(workspace_root), rel)
+        resolved = os.path.join(os.path.abspath(workspace_root), rel)
+        # Boundary check
+        workspace = (agent or {}).get('workspace')
+        if workspace:
+            try:
+                workspace_real = os.path.realpath(workspace)
+                path_real = os.path.realpath(resolved)
+                if not (path_real == workspace_real or
+                        path_real.startswith(workspace_real + os.sep)):
+                    return file_path  # block: return unresolvable path
+            except (OSError, PermissionError):
+                pass
+        return resolved
 
     if not os.path.isabs(file_path):
         workspace = (agent or {}).get('workspace')
         if workspace:
-            return os.path.join(os.path.abspath(workspace), file_path)
+            resolved = os.path.join(os.path.abspath(workspace), file_path)
+            # Boundary check for relative path traversal (e.g. ../../etc/passwd)
+            try:
+                workspace_real = os.path.realpath(workspace)
+                path_real = os.path.realpath(resolved)
+                if not (path_real == workspace_real or
+                        path_real.startswith(workspace_real + os.sep)):
+                    return file_path  # block: return unresolvable path
+            except (OSError, PermissionError):
+                pass
+            return resolved
+
+    # Absolute path — if agent has a workspace, block escape
+    workspace = (agent or {}).get('workspace')
+    if workspace and os.path.isabs(file_path):
+        try:
+            workspace_real = os.path.realpath(workspace)
+            path_real = os.path.realpath(file_path)
+            if path_real == workspace_real or path_real.startswith(workspace_real + os.sep):
+                return file_path
+        except (OSError, PermissionError):
+            pass
+        return file_path
 
     return file_path

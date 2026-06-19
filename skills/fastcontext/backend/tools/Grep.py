@@ -6,7 +6,7 @@ Returns matching lines grouped by file with line numbers.
 import os
 import json
 import subprocess
-from ._utils import _auto_correct_path
+from ._utils import _auto_correct_path, _validate_workspace_boundary
 
 _MAX_MATCHES = 500
 
@@ -35,6 +35,11 @@ def execute(agent: dict, args: dict) -> dict:
             corrected = _auto_correct_path(search_path, workspace, path_is_dir=True)
             if os.path.exists(corrected):
                 search_path = corrected
+
+    # Enforce workspace boundary (blocks path traversal, absolute paths, symlinks)
+    workspace = (agent or {}).get('workspace', '')
+    if workspace:
+        search_path = _validate_workspace_boundary(search_path, workspace)
 
     if not os.path.exists(search_path):
         return {'error': f'path not found: {search_path}'}

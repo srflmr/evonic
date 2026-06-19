@@ -31,3 +31,26 @@ def _auto_correct_path(requested_path: str, workspace: str, path_is_dir: bool = 
         matches = [m for m in matches if os.path.isfile(m)]
 
     return sorted(matches)[0] if matches else requested_path
+
+
+def _validate_workspace_boundary(resolved_path: str, workspace: str) -> str:
+    """Validate that resolved_path stays within the workspace boundary.
+
+    Uses os.path.realpath to resolve all symlinks and canonicalize both paths,
+    then checks whether the resolved path is equal to or a subpath of the
+    workspace. This blocks three attack vectors:
+
+    1. Relative path traversal (``../../etc/passwd``)
+    2. Absolute path escape (``/etc/shadow``)
+    3. Symlink attacks (symlink inside workspace pointing to outside)
+
+    Returns the resolved canonical path on success. Raises PermissionError if
+    the path escapes the workspace.
+
+    This function is a no-op for agents without a workspace set.
+    """
+    workspace_real = os.path.realpath(workspace)
+    path_real = os.path.realpath(resolved_path)
+    if path_real == workspace_real or path_real.startswith(workspace_real + os.sep):
+        return path_real
+    raise PermissionError("Access denied: path escapes workspace")
