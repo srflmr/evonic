@@ -374,6 +374,7 @@ let _pendingIntermediateResponse = null;  // queued intermediate response, shown
 let _pollThinkingId = null;  // active thinking bubble from incremental poll (persists across calls)
 let _pollInFlight = false;  // guard against concurrent pollNewMessages calls
 let _chatPerspective = 'B';  // 'B' (left) or 'A' (right) — controls which side your messages appear on
+let _sessionsAbort = null;  // AbortController for the in-flight /api/sessions load; supersede on new call
 
 // ==================== Reasoning State (refresh recovery) ====================
 // Save { sessionId, lastSeq } to sessionStorage while a turn is in progress so
@@ -612,10 +613,19 @@ function renderInterleavedHistory(msg) {
 async function loadSessions(search) {
     const q = (search || '').trim();
     const url = q ? `/api/sessions?search=${encodeURIComponent(q)}` : '/api/sessions';
-    const res = await fetch(url);
-    const data = await res.json();
-    allSessions = data.sessions || [];
-    renderSessionList();
+    if (_sessionsAbort) _sessionsAbort.abort();   // supersede any in-flight load
+    const ctrl = new AbortController();
+    _sessionsAbort = ctrl;
+    try {
+        const res = await fetch(url, {signal: ctrl.signal});
+        const data = await res.json();
+        allSessions = data.sessions || [];
+        renderSessionList();
+    } catch (e) {
+        if (e.name !== 'AbortError') throw e;     // ignore superseded loads
+    } finally {
+        if (_sessionsAbort === ctrl) _sessionsAbort = null;
+    }
 }
 
 let searchDebounce;
@@ -717,6 +727,17 @@ async function selectSession(sessionId) {
 
     const res = await fetch(`/api/sessions/${sessionId}`);
     if (_selectGeneration !== gen) return;  // another selectSession started while we awaited
+    if (!res.ok) {
+        // Non-200 (e.g. 429 rate-limited): surface it instead of silently leaving an
+        // empty room. The chat was already cleared above, so without this the user
+        // just sees a blank panel with no explanation.
+        const msg = res.status === 429
+            ? 'Rate limited — too many requests. Please wait a moment, then reselect this session.'
+            : `Failed to load session (HTTP ${res.status}). Try again.`;
+        document.getElementById('chat-messages').innerHTML =
+            `<div class="flex items-center justify-center h-full text-gray-400 text-sm px-6 text-center">${esc(msg)}</div>`;
+        return;
+    }
     const data = await res.json();
     if (data.error) return;
 
@@ -1130,10 +1151,12 @@ function disconnectSessionStream() {
 
 // Sidebar refresh: keep session list up to date
 function startSidebarPolling() {
-    sidebarPollTimer = setInterval(() => {
+    const tick = async () => {
         const search = document.getElementById('sidebar-search')?.value || '';
-        loadSessions(search);
-    }, SIDEBAR_POLL_INTERVAL);
+        try { await loadSessions(search); } catch (_) {}
+        sidebarPollTimer = setTimeout(tick, SIDEBAR_POLL_INTERVAL);
+    };
+    sidebarPollTimer = setTimeout(tick, SIDEBAR_POLL_INTERVAL);
 }
 
 // ==================== Admin Reply ====================
@@ -1755,7 +1778,7 @@ startSidebarPolling();
 })();
 
 // Cleanup on page leave
-window.addEventListener('beforeunload', () => { stopPolling(); disconnectSessionStream(); clearInterval(sidebarPollTimer); });
+window.addEventListener('beforeunload', () => { stopPolling(); disconnectSessionStream(); clearTimeout(sidebarPollTimer); });
 
 // ==================== Plan File Modal ====================
 
