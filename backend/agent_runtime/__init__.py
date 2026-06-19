@@ -118,17 +118,21 @@ def _on_summary_updated(event):
 
     import threading
     from backend.agent_runtime.memory_manager import extract_and_store_memories
+    from backend.llm_usage_events import usage_context
     from models.db import db
 
     agent = db.get_agent(agent_id)
     if not agent:
         return
 
-    threading.Thread(
-        target=extract_and_store_memories,
-        args=(agent, session_id, summary, AgentRuntime._llm_serializer._llm_lock),
-        daemon=True,
-    ).start()
+    def _run_extract():
+        # Tag all LLM calls in this background thread as 'memory' usage.
+        with usage_context('memory', agent_id, agent.get('name'), session_id):
+            extract_and_store_memories(
+                agent, session_id, summary,
+                AgentRuntime._llm_serializer._llm_lock)
+
+    threading.Thread(target=_run_extract, daemon=True).start()
 
 
 # Register event listeners

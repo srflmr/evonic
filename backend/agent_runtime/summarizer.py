@@ -102,7 +102,9 @@ def maybe_summarize(agent: dict, session_id: str,
             return False
         summarize_active.add(session_id)
     try:
-        return _do_summarize(agent, session_id, llm_lock)
+        from backend.llm_usage_events import usage_context
+        with usage_context('summarizer', agent.get('id'), agent.get('name'), session_id):
+            return _do_summarize(agent, session_id, llm_lock)
     except Exception as e:
         print(f"[AgentRuntime] Summarization error (non-fatal): {e}")
         return False

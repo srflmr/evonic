@@ -1984,20 +1984,22 @@ class AgentRuntime:
             _sa_heartbeat.start()
 
         try:
-            response_raw, tool_trace, timeline = _loop.run_tool_loop(
-                agent=agent,
-                agent_context=agent_context,
-                messages=messages,
-                tools=tools,
-                session_id=ctx.session_id,
-                llm_lock=self._llm_serializer._llm_lock,
-                stop_event=self._get_stop_event(ctx.session_id),
-                session_skill_mds=self._session_skill_mds,
-                session_skill_tools=self._session_skill_tools,
-                llm_log_path=_llm_log_path(db_agent_id),
-                inject_queue=self._get_inject_queue(ctx.session_id),
-                session_db_agent_id=db_agent_id,
-            )
+            from backend.llm_usage_events import usage_context
+            with usage_context('agent_turn', agent_id, agent.get('name'), ctx.session_id):
+                response_raw, tool_trace, timeline = _loop.run_tool_loop(
+                    agent=agent,
+                    agent_context=agent_context,
+                    messages=messages,
+                    tools=tools,
+                    session_id=ctx.session_id,
+                    llm_lock=self._llm_serializer._llm_lock,
+                    stop_event=self._get_stop_event(ctx.session_id),
+                    session_skill_mds=self._session_skill_mds,
+                    session_skill_tools=self._session_skill_tools,
+                    llm_log_path=_llm_log_path(db_agent_id),
+                    inject_queue=self._get_inject_queue(ctx.session_id),
+                    session_db_agent_id=db_agent_id,
+                )
         finally:
             if _sa_heartbeat:
                 _sa_stop.set()

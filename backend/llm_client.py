@@ -838,6 +838,19 @@ class LLMClient:
                     thinking=thinking_text or None,
                 )
 
+                # Generic usage telemetry — emits an 'llm_usage' event any plugin
+                # can observe. Never disturbs the LLM path (record_llm_usage swallows).
+                from backend.llm_usage_events import record_llm_usage
+                record_llm_usage(
+                    model=self._cached_model_name or self.model,
+                    prompt_tokens=prompt_tokens,
+                    completion_tokens=completion_tokens,
+                    total_tokens=total_tokens,
+                    duration_ms=duration_ms,
+                    messages=messages,
+                    response_text=response_text,
+                )
+
                 return {
                     "response": result,
                     "duration_ms": duration_ms,
