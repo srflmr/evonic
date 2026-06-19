@@ -288,6 +288,15 @@ def execute(agent, args: dict) -> dict:
             'created': not already_exists,
         }
 
+    # Root-pollution guard: refuse NEW scratch/script files dropped directly in
+    # the project root.  Reaches the super agent and its sub-agents (whose
+    # workspace == project root); a no-op for agents with their own workspace.
+    # Runs as its own check, NOT via safety_pipeline (which is skipped for is_super).
+    from backend.tools._workspace import root_pollution_nudge
+    nudge = root_pollution_nudge(agent, resolve_workspace_path(agent, file_path, _WORKSPACE_ROOT))
+    if nudge:
+        return {'error': nudge, 'isError': True}
+
     # When sandbox is enabled or the agent has a workplace, route file I/O
     # through the execution backend (Docker container, SSH remote, etc.)
     # instead of the host filesystem.
