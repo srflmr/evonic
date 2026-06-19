@@ -121,6 +121,11 @@ app.jinja_loader = ChoiceLoader([
 sock = Sock(app)
 app.secret_key = config.SECRET_KEY
 
+# Auto-reload templates on every request so plugin template changes are
+# visible immediately without a server restart (especially useful during
+# plugin development where templates are in non-standard directories).
+app.config['TEMPLATES_AUTO_RELOAD'] = True
+
 # Make session permanent so it survives mobile browser backgrounding / restarts
 from datetime import timedelta
 app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=7)

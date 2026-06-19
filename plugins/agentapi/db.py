@@ -276,15 +276,18 @@ class TokenDB:
         expires_at = token.get('expires_at')
         if not expires_at:
             return False
-        return datetime.now(timezone.utc) > datetime.fromisoformat(expires_at)
+        expires_dt = datetime.fromisoformat(expires_at)
+        if expires_dt.tzinfo is None:
+            expires_dt = expires_dt.replace(tzinfo=timezone.utc)
+        return datetime.now(timezone.utc) > expires_dt
 
     # ── Model scope ───────────────────────────────────────────────────
 
     @staticmethod
     def token_can_access_model(token: Dict[str, Any], model: str) -> bool:
         """Check if a token is allowed to use a specific model."""
-        allowed_raw = token.get('allowed_models', DEFAULT_ALLOWED_MODELS)
-        if allowed_raw == '*':
+        allowed_raw = token.get('allowed_models')
+        if not allowed_raw or allowed_raw == '*':
             return True
         try:
             allowed = json.loads(allowed_raw) if isinstance(allowed_raw, str) else allowed_raw
@@ -296,9 +299,9 @@ class TokenDB:
     def token_visible_models(token: Dict[str, Any],
                              model_agent_map: Dict[str, str]) -> List[str]:
         """Return the list of model names this token can see from the map."""
-        allowed_raw = token.get('allowed_models', DEFAULT_ALLOWED_MODELS)
+        allowed_raw = token.get('allowed_models')
         all_models = list(model_agent_map.keys())
-        if allowed_raw == '*':
+        if not allowed_raw or allowed_raw == '*':
             return all_models
         try:
             allowed = json.loads(allowed_raw) if isinstance(allowed_raw, str) else allowed_raw

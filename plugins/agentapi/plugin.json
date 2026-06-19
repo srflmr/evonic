@@ -8,6 +8,13 @@
   "events": ["turn_complete"],
   "variables": [
     {
+      "name": "DISABLE_CORS",
+      "label": "Disable CORS Protection",
+      "type": "boolean",
+      "default": false,
+      "description": "When enabled, adds Access-Control-Allow-Origin: * to all API responses so endpoints can be called from any browser origin."
+    },
+    {
       "name": "MODEL_AGENT_MAP",
       "label": "Model → Agent Mapping",
       "type": "textarea",

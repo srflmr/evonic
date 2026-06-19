@@ -543,6 +543,10 @@ loadPlugin().then(function() {
     showTab('settings');
 });
 </script>
+<script>
+// Server-embedded model→agent map for token widgets — no async fetch needed
+window.__evonicModelAgentMap = {{ model_agent_map | tojson }};
+</script>
         <!-- Plugin Widgets (auto-loaded from *_widget.html) -->
         {% for widget in widgets %}
         {% include widget %}

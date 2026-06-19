@@ -131,6 +131,9 @@
 </div>
 
 <script>
+// Pre-loaded from server — no async fetch required
+window.__modelAgentMap = {{ model_agent_map | tojson }};
+
 // ---- State ----
 let tokens = [];
 let modelAgentMap = {};
@@ -138,13 +141,21 @@ let deleteTargetId = null;
 
 // ---- Init ----
 document.addEventListener('DOMContentLoaded', () => {
-  loadModelAgentMap().then(() => loadTokens());
+  loadModelAgentMap();
+  const models = Object.keys(modelAgentMap);
+  console.log('ModelAgentMap loaded:', models.length, 'models:', models);
+  if (models.length === 0) {
+    document.getElementById('stats-bar').insertAdjacentHTML('afterend',
+      '<div id="model-map-warning" class="mb-3 px-4 py-2 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded text-sm text-amber-800 dark:text-amber-200">'
+      + 'AgentAPI MODEL_AGENT_MAP is empty or failed to load. Check browser console (F12). '
+      + 'Add model\u2192agent mappings in <a href="/plugins/agentapi" class="underline font-medium">plugin settings</a>.'
+      + '</div>');
+  }
+  loadTokens();
 });
 
-async function loadModelAgentMap() {
-  const res = await fetch('/api/agentapi/admin/model-agent-map');
-  const data = await res.json();
-  modelAgentMap = data.map || {};
+function loadModelAgentMap() {
+  modelAgentMap = window.__modelAgentMap || {};
 }
 
 async function loadTokens() {
@@ -259,7 +270,7 @@ function renderModelCheckboxes(selectedModels) {
   const container = document.getElementById('model-checkboxes');
   const models = Object.keys(modelAgentMap).sort();
   if (models.length === 0) {
-    container.innerHTML = '<p class="text-xs text-gray-400 p-2">No models configured. Add mappings in MODEL_AGENT_MAP plugin variable.</p>';
+    container.innerHTML = '<p class="text-xs text-amber-600 dark:text-amber-400 p-2">Model list not loaded. Check browser console for errors, or add model→agent mappings in AgentAPI plugin settings (MODEL_AGENT_MAP).</p>';
     return;
   }
   const sel = selectedModels && selectedModels.length > 0 && selectedModels[0] !== '*' ? selectedModels : [];
@@ -292,7 +303,7 @@ async function saveToken() {
   body.expires_at = expiresVal || null;
 
   const checkedModels = getCheckedModels();
-  body.allowed_models = checkedModels.length > 0 ? checkedModels : null;
+  body.allowed_models = checkedModels.length > 0 ? checkedModels : '*';
 
   if (id) {
     body.status = document.getElementById('token-status').value;

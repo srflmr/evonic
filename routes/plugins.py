@@ -3,6 +3,7 @@ from pathlib import Path
 """Plugin management routes — list, upload, toggle, configure, delete plugins."""
 
 import io
+import json
 import os
 import re
 import tempfile
@@ -39,7 +40,22 @@ def plugin_detail_page(plugin_id):
         return redirect('/plugins')
     plugin_template_dir = Path(PLUGINS_DIR) / plugin_id / 'templates'
     widget_files = sorted([f.name for f in plugin_template_dir.glob('*_widget.html')]) if plugin_template_dir.exists() else []
-    return render_template('plugin_detail.html', plugin_id=plugin_id, widgets=widget_files)
+
+    # Compute model_agent_map for agentapi plugin token widget
+    # Embed server-side so the widget JS doesn't need an async fetch
+    model_agent_map = {}
+    if plugin_id == 'agentapi':
+        cfg = plugin_manager.get_plugin_config('agentapi')
+        raw = cfg.get('MODEL_AGENT_MAP', '{}')
+        try:
+            model_agent_map = json.loads(raw) if isinstance(raw, str) else raw
+        except json.JSONDecodeError:
+            model_agent_map = {}
+
+    return render_template('plugin_detail.html',
+                           plugin_id=plugin_id,
+                           widgets=widget_files,
+                           model_agent_map=model_agent_map)
 
 
 @plugins_bp.route('/api/plugins/<plugin_id>')

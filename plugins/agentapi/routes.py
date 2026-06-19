@@ -189,9 +189,42 @@ def _format_openai_response(content: str, model: str,
 # Blueprint
 # ---------------------------------------------------------------------------
 
+def _cors_enabled():
+    """Check if DISABLE_CORS is enabled in plugin config."""
+    from backend.plugin_manager import plugin_manager
+    cfg = plugin_manager.get_plugin_config('agentapi')
+    return bool(cfg.get('DISABLE_CORS', False))
+
+def _add_cors_headers(response):
+    """Inject CORS headers into response when DISABLE_CORS is enabled."""
+    if not _cors_enabled():
+        return response
+    response.headers['Access-Control-Allow-Origin'] = '*'
+    response.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, DELETE, OPTIONS'
+    response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization, X-Session-Id'
+    response.headers['Access-Control-Max-Age'] = '86400'
+    return response
+
+
 def create_blueprint():
     bp = Blueprint('agentapi', __name__,
                    template_folder=os.path.join(PLUGIN_DIR, 'templates'))
+
+    # CORS after_request hook — inject headers on every response
+    bp.after_request(_add_cors_headers)
+
+    # Handle CORS preflight (OPTIONS) for all consumer routes
+    @bp.route('/plugin/agentapi/v1/chat/completions', methods=['OPTIONS'])
+    @bp.route('/plugin/agentapi/v1/models', methods=['OPTIONS'])
+    @bp.route('/api/agentapi/admin', methods=['OPTIONS'])
+    @bp.route('/api/agentapi/admin/tokens', methods=['OPTIONS'])
+    @bp.route('/api/agentapi/admin/tokens/<int:token_id>', methods=['OPTIONS'])
+    @bp.route('/api/agentapi/admin/tokens/<int:token_id>/stats', methods=['OPTIONS'])
+    @bp.route('/api/agentapi/admin/tokens/<int:token_id>/reveal', methods=['OPTIONS'])
+    @bp.route('/api/agentapi/admin/tokens/<int:token_id>/reset', methods=['OPTIONS'])
+    @bp.route('/api/agentapi/admin/model-agent-map', methods=['OPTIONS'])
+    def cors_preflight(**kwargs):
+        return '', 204
 
     # =======================================================================
     # Consumer endpoints — /plugin/ prefix bypasses global enforce_auth
@@ -460,7 +493,8 @@ def create_blueprint():
     @bp.route('/api/agentapi/admin')
     def admin_dashboard():
         """Admin dashboard page for token management."""
-        return render_template('admin.html')
+        return render_template('admin.html',
+                               model_agent_map=_get_model_agent_map())
 
     @bp.route('/api/agentapi/admin/tokens', methods=['GET'])
     def admin_list_tokens():
@@ -504,7 +538,7 @@ def create_blueprint():
 
         # Validate allowed_models against MODEL_AGENT_MAP
         model_agent_map = _get_model_agent_map()
-        allowed_models = data.get('allowed_models', '*')
+        allowed_models = data.get('allowed_models') or '*'
         if isinstance(allowed_models, list):
             unknown = [m for m in allowed_models if m not in model_agent_map]
             if unknown:
@@ -549,11 +583,13 @@ def create_blueprint():
         if not data:
             return jsonify({'error': 'Invalid JSON body'}), 400
 
-        # Validate allowed_models if provided
+        # Validate / normalise allowed_models if provided
         if 'allowed_models' in data:
-            model_agent_map = _get_model_agent_map()
             am = data['allowed_models']
-            if isinstance(am, list):
+            if am is None or am == '':
+                data['allowed_models'] = '*'
+            elif isinstance(am, list):
+                model_agent_map = _get_model_agent_map()
                 unknown = [m for m in am if m not in model_agent_map]
                 if unknown:
                     return jsonify({

@@ -172,13 +172,8 @@ function tw_api(path) {
 }
 
 function tw_loadModelMap() {
-    return $.get(tw_api('/model-agent-map')).then(function(data) {
-        twModelMap = data.map || {};
-    }).fail(function() {
-        return $.get(tw_api('/model-model-map')).then(function(data) {
-            twModelMap = data.map || {};
-        }).fail(function() { twModelMap = {}; });
-    });
+    twModelMap = window.__evonicModelAgentMap || {};
+    return Promise.resolve();
 }
 
 function tw_loadTokens() {
