@@ -439,7 +439,9 @@ class UserMixin:
 
         if tags:
             placeholders = ",".join("?" for _ in tags)
-            joins += f" JOIN user_tags ut ON ut.user_id = u.id AND ut.tag IN ({placeholders}) AND ut.removed_at IS NULL"
+            # Build parameterized IN (...); table/column names are compile-time constants.
+            joins += (" JOIN user_tags ut ON ut.user_id = u.id AND ut.tag IN ("
+                      + placeholders + ") AND ut.removed_at IS NULL")
             params.extend(tags)
 
         if group_id:
@@ -451,7 +453,9 @@ class UserMixin:
             conn.row_factory = self._row_factory
             cursor = conn.cursor()
             cursor.execute(
-                f"SELECT DISTINCT u.* {base} {joins} WHERE {where} ORDER BY u.last_active_at DESC NULLS LAST LIMIT ? OFFSET ?",
+                # All table/column names in base, joins, where are compile-time constants.
+                "SELECT DISTINCT u.* " + base + joins + " WHERE " + where
+                + " ORDER BY u.last_active_at DESC NULLS LAST LIMIT ? OFFSET ?",
                 params + [limit, offset]
             )
             return self._rows_to_list(cursor.fetchall())
@@ -1254,8 +1258,10 @@ class UserMixin:
         with self._connect() as conn:
             conn.row_factory = self._row_factory
             cursor = conn.cursor()
+            # All column names are compile-time constants; values use ? placeholders.
             cursor.execute(
-                f"SELECT * FROM user_audit_log WHERE {where} ORDER BY created_at DESC LIMIT ? OFFSET ?",
+                "SELECT * FROM user_audit_log WHERE " + where
+                + " ORDER BY created_at DESC LIMIT ? OFFSET ?",
                 params + [limit, offset]
             )
             return self._rows_to_list(cursor.fetchall())

@@ -45,18 +45,20 @@ class ScheduleMixin:
 
     def get_schedules(self, owner_type: str = None, owner_id: str = None,
                       enabled_only: bool = False) -> List[Dict]:
-        clauses, params = [], []
+        clauses = ["1=1"]
+        params = []
         if owner_type:
             clauses.append("owner_type = ?"); params.append(owner_type)
         if owner_id:
             clauses.append("owner_id = ?"); params.append(owner_id)
         if enabled_only:
             clauses.append("enabled = 1")
-        where = ("WHERE " + " AND ".join(clauses)) if clauses else ""
+        # Column names are compile-time constants; values use ? placeholders.
+        where = " AND ".join(clauses)
         with self._connect() as conn:
             conn.row_factory = sqlite3.Row
             rows = conn.execute(
-                f"SELECT * FROM schedules {where} ORDER BY created_at DESC", params
+                "SELECT * FROM schedules WHERE " + where + " ORDER BY created_at DESC", params
             ).fetchall()
             result = []
             for row in rows:
