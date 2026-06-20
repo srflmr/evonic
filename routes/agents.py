@@ -13,6 +13,7 @@ from models.db import db
 from models.chatlog import chatlog_manager, _DISPLAY_TYPES
 from backend.audit_logger import audit
 from backend.tools import tool_registry
+from backend.agent_runtime.evomem_client import get_kb_graph_metadata
 
 agents_bp = Blueprint('agents', __name__)
 
@@ -573,6 +574,53 @@ def api_delete_kb_file(agent_id, filename):
         return jsonify({'error': 'File not found'}), 404
     os.remove(fpath)
     return jsonify({'success': True})
+
+
+
+
+
+# ==================== KB Graph API ====================
+
+
+@agents_bp.route('/api/agents/<agent_id>/kb-graph', methods=['GET'])
+def api_kb_graph(agent_id):
+    """Return the KB link graph for force-directed visualization."""
+    if not session.get('authenticated'):
+        return jsonify({'error': 'Authentication required'}), 401
+    agent = db.get_agent(agent_id)
+    if not agent:
+        return jsonify({'error': 'Agent not found'}), 404
+
+    graph = get_kb_graph_metadata(agent_id)
+
+    if graph is None or not graph.get('pages'):
+        return jsonify({
+            'pages': {},
+            'links': [],
+            'dangling_links': []
+        })
+
+    pages = graph['pages']
+    links = []
+    dangling_links = []
+
+    for slug, page in pages.items():
+        outgoing_slugs = page.get('outgoing_slugs', [])
+        page['outgoing_count'] = len(outgoing_slugs)
+        if not page.get('title'):
+            page['title'] = slug
+
+        for target in outgoing_slugs:
+            if target in pages:
+                links.append({'source': slug, 'target': target})
+            else:
+                dangling_links.append({'source': slug, 'target': target})
+
+    return jsonify({
+        'pages': pages,
+        'links': links,
+        'dangling_links': dangling_links
+    })
 
 
 def _artifacts_dir(agent_id: str) -> str:
