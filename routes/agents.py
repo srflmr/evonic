@@ -121,6 +121,21 @@ def _ensure_kb_dir(agent_id: str) -> str:
     return d
 
 
+def _sanitize_kb_path(filename: str) -> str:
+    """Sanitize a KB file path: reject '..' traversal, allow subdirectory paths."""
+    if not filename or '..' in filename or '\\' in filename:
+        raise ValueError('Invalid filename')
+    filename = filename.strip().lstrip('/')
+    if not filename:
+        raise ValueError('Invalid filename')
+    if os.path.isabs(filename):
+        raise ValueError('Invalid filename')
+    normalized = os.path.normpath(filename)
+    if normalized.startswith('..') or os.path.isabs(normalized):
+        raise ValueError('Invalid filename')
+    return normalized
+
+
 def _system_prompt_path(agent_id: str) -> str:
     return os.path.join(AGENTS_DIR, agent_id, 'SYSTEM.md')
 
@@ -492,27 +507,52 @@ def api_delete_agent_variable(agent_id, key):
 
 # ==================== Knowledge Base API ====================
 
+def _build_kb_tree(kb_dir: str, rel_path: str = '') -> list:
+    """Recursively build a tree of KB files and directories."""
+    items = []
+    current_dir = os.path.join(kb_dir, rel_path) if rel_path else kb_dir
+    try:
+        entries = sorted(os.listdir(current_dir))
+    except OSError:
+        return items
+
+    for entry in entries:
+        full_path = os.path.join(current_dir, entry)
+        rel = os.path.join(rel_path, entry).replace('\\', '/') if rel_path else entry
+        if os.path.isdir(full_path):
+            children = _build_kb_tree(kb_dir, rel)
+            items.append({
+                'name': entry,
+                'type': 'dir',
+                'path': rel,
+                'children': children
+            })
+        elif os.path.isfile(full_path):
+            stat = os.stat(full_path)
+            items.append({
+                'name': entry,
+                'type': 'file',
+                'path': rel,
+                'size': stat.st_size,
+                'modified': stat.st_mtime
+            })
+    return items
+
+
 @agents_bp.route('/api/agents/<agent_id>/kb', methods=['GET'])
 def api_list_kb(agent_id):
     kb = _kb_dir(agent_id)
     if not os.path.isdir(kb):
-        return jsonify({'files': []})
-    files = []
-    for fname in sorted(os.listdir(kb)):
-        fpath = os.path.join(kb, fname)
-        if os.path.isfile(fpath):
-            stat = os.stat(fpath)
-            files.append({
-                'filename': fname,
-                'size': stat.st_size,
-                'modified': stat.st_mtime
-            })
-    return jsonify({'files': files})
+        return jsonify({'tree': []})
+    tree = _build_kb_tree(kb)
+    return jsonify({'tree': tree})
 
 
 @agents_bp.route('/api/agents/<agent_id>/kb/<filename>', methods=['GET'])
 def api_get_kb_file(agent_id, filename):
-    if '/' in filename or '\\' in filename or '..' in filename:
+    try:
+        filename = _sanitize_kb_path(filename)
+    except ValueError:
         return jsonify({'error': 'Invalid filename'}), 400
     fpath = os.path.join(_kb_dir(agent_id), filename)
     if not os.path.isfile(fpath):
@@ -532,9 +572,12 @@ def api_upload_kb(agent_id):
             return jsonify({'error': 'No file provided'}), 400
         f = request.files['file']
         fname = f.filename or 'untitled.md'
-        if '/' in fname or '\\' in fname or '..' in fname:
+        try:
+            fname = _sanitize_kb_path(fname)
+        except ValueError:
             return jsonify({'error': 'Invalid filename'}), 400
         fpath = os.path.join(kb, fname)
+        os.makedirs(os.path.dirname(fpath), exist_ok=True)
         f.save(fpath)
         return jsonify({'success': True, 'filename': fname})
     else:
@@ -543,9 +586,12 @@ def api_upload_kb(agent_id):
         content = data.get('content', '')
         if not fname:
             return jsonify({'error': 'filename is required'}), 400
-        if '/' in fname or '\\' in fname or '..' in fname:
+        try:
+            fname = _sanitize_kb_path(fname)
+        except ValueError:
             return jsonify({'error': 'Invalid filename'}), 400
         fpath = os.path.join(kb, fname)
+        os.makedirs(os.path.dirname(fpath), exist_ok=True)
         with open(fpath, 'w', encoding='utf-8') as f:
             f.write(content)
         return jsonify({'success': True, 'filename': fname})
@@ -553,7 +599,9 @@ def api_upload_kb(agent_id):
 
 @agents_bp.route('/api/agents/<agent_id>/kb/<filename>', methods=['PUT'])
 def api_update_kb_file(agent_id, filename):
-    if '/' in filename or '\\' in filename or '..' in filename:
+    try:
+        filename = _sanitize_kb_path(filename)
+    except ValueError:
         return jsonify({'error': 'Invalid filename'}), 400
     fpath = os.path.join(_kb_dir(agent_id), filename)
     if not os.path.isfile(fpath):
@@ -567,7 +615,9 @@ def api_update_kb_file(agent_id, filename):
 
 @agents_bp.route('/api/agents/<agent_id>/kb/<filename>', methods=['DELETE'])
 def api_delete_kb_file(agent_id, filename):
-    if '/' in filename or '\\' in filename or '..' in filename:
+    try:
+        filename = _sanitize_kb_path(filename)
+    except ValueError:
         return jsonify({'error': 'Invalid filename'}), 400
     fpath = os.path.join(_kb_dir(agent_id), filename)
     if not os.path.isfile(fpath):

@@ -889,7 +889,7 @@ html.dark #system-prompt-modal .hover\:text-gray-600:hover { color: #d1d5db; }
         <div class="p-5">
             <div class="mb-4">
                 <label class="block mb-1 text-gray-600 dark:text-gray-300 text-sm font-medium">Filename</label>
-                <input type="text" id="new-file-name" placeholder="e.g., facilities.md" class="w-full p-2.5 border border-gray-300 rounded-md text-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/10 dark:bg-gray-700 dark:text-gray-100">
+                <input type="text" id="new-file-name" placeholder="e.g., subdir/notes.md" class="w-full p-2.5 border border-gray-300 rounded-md text-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/10 dark:bg-gray-700 dark:text-gray-100">
             </div>
             <div class="flex gap-3 justify-end">
                 <button onclick="closeNewFileModal()" class="px-4 py-2 border border-gray-300 rounded-md text-sm text-gray-600 hover:bg-gray-50">Cancel</button>
@@ -1866,12 +1866,13 @@ async function savePluginSetting(pluginId, name, value) {
 }
 
 // ==================== Knowledge Tab ====================
-let kbFiles = [];
+let kbTree = [];
+let kbTreeState = {};
 
 async function loadKBFiles() {
     const res = await fetch(`/api/agents/${AGENT_ID}/kb`);
     const data = await res.json();
-    kbFiles = data.files || [];
+    kbTree = data.tree || [];
     document.getElementById('kb-filter').value = '';
     renderKBFiles();
 }
@@ -1880,32 +1881,98 @@ function filterKBFiles() {
     renderKBFiles();
 }
 
+function escapeJsPath(path) {
+    return path.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+}
+
+function toggleKBDir(path) {
+    kbTreeState[path] = kbTreeState[path] === false ? true : false;
+    renderKBFiles();
+}
+
 function renderKBFiles() {
     const query = (document.getElementById('kb-filter').value || '').toLowerCase().trim();
-    const filtered = query ? kbFiles.filter(f => f.filename.toLowerCase().includes(query)) : kbFiles;
     const list = document.getElementById('kb-list');
     const empty = document.getElementById('kb-empty');
-    if (filtered.length === 0) {
+    const filtering = query.length > 0;
+
+    function nodeHasMatch(node) {
+        if (node.name.toLowerCase().includes(query)) return true;
+        if (node.type === 'dir' && node.children) {
+            return node.children.some(c => nodeHasMatch(c));
+        }
+        return false;
+    }
+
+    if (kbTree.length === 0) {
         list.innerHTML = '';
         empty.classList.remove('hidden');
-        empty.textContent = query ? 'No files match your search' : 'No knowledge files yet.';
+        empty.textContent = 'No knowledge files yet.';
         return;
     }
     empty.classList.add('hidden');
-    list.innerHTML = filtered.map(f => `
-        <div class="flex items-center justify-between p-3 bg-gray-50 rounded-md border border-gray-200 cursor-pointer hover:bg-gray-100 transition-colors dark:bg-gray-800 dark:hover:bg-gray-700 dark:text-gray-300" onclick="editFile('${f.filename}')">
-            <div class="flex flex-col min-w-0">
-                <span class="text-sm font-mono text-gray-800 truncate dark:text-gray-200" title="${f.filename}">${f.filename}</span>
-                <span class="text-xs text-gray-400">${(f.size / 1024).toFixed(1)} KB</span>
-            </div>
-            <div class="flex gap-1">
-                <button onclick="event.stopPropagation(); editFile('${f.filename}')" title="Edit" class="p-1.5 rounded text-indigo-500 hover:text-indigo-700 hover:bg-indigo-50 transition-colors">
-                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-4 h-4"><path d="m5.433 13.917 1.262-3.155A4 4 0 0 1 7.58 9.42l6.92-6.918a2.121 2.121 0 0 1 3 3l-6.92 6.918c-.383.383-.84.685-1.343.886l-3.154 1.262a.5.5 0 0 1-.65-.65Z"/><path d="M3.5 5.75c0-.69.56-1.25 1.25-1.25H10A.75.75 0 0 0 10 3H4.75A2.75 2.75 0 0 0 2 5.75v9.5A2.75 2.75 0 0 0 4.75 18h9.5A2.75 2.75 0 0 0 17 15.25V10a.75.75 0 0 0-1.5 0v5.25c0 .69-.56 1.25-1.25 1.25h-9.5c-.69 0-1.25-.56-1.25-1.25v-9.5Z"/></svg>
-                </button>
-                <button onclick="event.stopPropagation(); deleteFile('${f.filename}')" title="Delete" class="p-1.5 rounded text-red-400 hover:text-red-600 hover:bg-red-50 transition-colors"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-4 h-4"><path fill-rule="evenodd" d="M8.75 1A2.75 2.75 0 0 0 6 3.75v.443c-.795.077-1.584.176-2.365.298a.75.75 0 1 0 .23 1.482l.149-.022.841 10.518A2.75 2.75 0 0 0 7.596 19h4.807a2.75 2.75 0 0 0 2.742-2.53l.841-10.52.149.023a.75.75 0 0 0 .23-1.482A41.03 41.03 0 0 0 14 4.193V3.75A2.75 2.75 0 0 0 11.25 1h-2.5ZM10 4c.84 0 1.673.025 2.5.075V3.75c0-.69-.56-1.25-1.25-1.25h-2.5c-.69 0-1.25.56-1.25 1.25v.325C8.327 4.025 9.16 4 10 4ZM8.58 7.72a.75.75 0 0 0-1.5.06l.3 7.5a.75.75 0 1 0 1.5-.06l-.3-7.5Zm4.34.06a.75.75 0 1 0-1.5-.06l-.3 7.5a.75.75 0 1 0 1.5.06l.3-7.5Z" clip-rule="evenodd"/></svg></button>
-            </div>
-        </div>
-    `).join('');
+
+    function renderNode(node, depth) {
+        const indent = depth * 20;
+        const isDir = node.type === 'dir';
+        const isExpanded = filtering ? true : (kbTreeState[node.path] !== false);
+
+        if (isDir) {
+            const children = node.children || [];
+            const visibleChildren = filtering
+                ? children.filter(c => nodeHasMatch(c))
+                : children;
+            const hasVisible = visibleChildren.length > 0;
+
+            let html = `<div class="flex items-center justify-between p-2 rounded-md cursor-pointer hover:bg-gray-100 transition-colors dark:hover:bg-gray-700 dark:text-gray-300"
+                     style="padding-left: ${indent + 12}px"
+                     onclick="toggleKBDir('${escapeJsPath(node.path)}')">
+                    <div class="flex items-center gap-2 min-w-0">
+                        <span class="text-xs transition-transform inline-block" style="${isExpanded ? 'transform:rotate(90deg)' : ''}">▶</span>
+                        <span class="text-base">📁</span>
+                        <span class="text-sm font-mono text-gray-800 truncate dark:text-gray-200" title="${node.name}">${node.name}/</span>
+                    </div>
+                </div>`;
+
+            if (isExpanded && hasVisible) {
+                html += visibleChildren.map(c => renderNode(c, depth + 1)).join('');
+            }
+            return html;
+        } else {
+            const ep = escapeJsPath(node.path);
+            const sizeStr = (node.size != null) ? `<span class="text-xs text-gray-400">${(node.size / 1024).toFixed(1)} KB</span>` : '';
+            return `<div class="flex items-center justify-between p-2 rounded-md cursor-pointer hover:bg-gray-100 transition-colors dark:hover:bg-gray-700 dark:text-gray-300"
+                     style="padding-left: ${indent + 12}px"
+                     onclick="editFile('${ep}')">
+                    <div class="flex items-center gap-2 min-w-0 flex-1">
+                        <span class="text-base">📄</span>
+                        <div class="flex flex-col min-w-0">
+                            <span class="text-sm font-mono text-gray-800 truncate dark:text-gray-200" title="${node.path}">${node.name}</span>
+                            ${sizeStr}
+                        </div>
+                    </div>
+                    <div class="flex gap-1 flex-shrink-0">
+                        <button onclick="event.stopPropagation(); editFile('${ep}')" title="Edit" class="p-1.5 rounded text-indigo-500 hover:text-indigo-700 hover:bg-indigo-50 transition-colors">
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-4 h-4"><path d="m5.433 13.917 1.262-3.155A4 4 0 0 1 7.58 9.42l6.92-6.918a2.121 2.121 0 0 1 3 3l-6.92 6.918c-.383.383-.84.685-1.343.886l-3.154 1.262a.5.5 0 0 1-.65-.65Z"/><path d="M3.5 5.75c0-.69.56-1.25 1.25-1.25H10A.75.75 0 0 0 10 3H4.75A2.75 2.75 0 0 0 2 5.75v9.5A2.75 2.75 0 0 0 4.75 18h9.5A2.75 2.75 0 0 0 17 15.25V10a.75.75 0 0 0-1.5 0v5.25c0 .69-.56 1.25-1.25 1.25h-9.5c-.69 0-1.25-.56-1.25-1.25v-9.5Z"/></svg>
+                        </button>
+                        <button onclick="event.stopPropagation(); deleteFile('${ep}')" title="Delete" class="p-1.5 rounded text-red-400 hover:text-red-600 hover:bg-red-50 transition-colors"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-4 h-4"><path fill-rule="evenodd" d="M8.75 1A2.75 2.75 0 0 0 6 3.75v.443c-.795.077-1.584.176-2.365.298a.75.75 0 1 0 .23 1.482l.149-.022.841 10.518A2.75 2.75 0 0 0 7.596 19h4.807a2.75 2.75 0 0 0 2.742-2.53l.841-10.52.149.023a.75.75 0 0 0 .23-1.482A41.03 41.03 0 0 0 14 4.193V3.75A2.75 2.75 0 0 0 11.25 1h-2.5ZM10 4c.84 0 1.673.025 2.5.075V3.75c0-.69-.56-1.25-1.25-1.25h-2.5c-.69 0-1.25.56-1.25 1.25v.325C8.327 4.025 9.16 4 10 4ZM8.58 7.72a.75.75 0 0 0-1.5.06l.3 7.5a.75.75 0 1 0 1.5-.06l-.3-7.5Zm4.34.06a.75.75 0 1 0-1.5-.06l-.3 7.5a.75.75 0 1 0 1.5.06l.3-7.5Z" clip-rule="evenodd"/></svg></button>
+                    </div>
+                </div>`;
+        }
+    }
+
+    const visible = filtering
+        ? kbTree.filter(n => nodeHasMatch(n))
+        : kbTree;
+
+    if (visible.length === 0 && filtering) {
+        list.innerHTML = '';
+        empty.classList.remove('hidden');
+        empty.textContent = 'No files match your search';
+        return;
+    }
+
+    list.innerHTML = visible.map(n => renderNode(n, 0)).join('');
 }
 
 async function editFile(filename) {
