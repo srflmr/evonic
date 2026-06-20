@@ -6,16 +6,9 @@ Returns matching lines grouped by file with line numbers.
 import os
 import json
 import subprocess
-from ._utils import _auto_correct_path, _validate_workspace_boundary
+from ._utils import _auto_correct_path, _validate_workspace_boundary, _resolve_workspace
 
 _MAX_MATCHES = 500
-
-
-def _resolve_workspace(agent, path: str) -> str:
-    workspace = (agent or {}).get('workspace', '')
-    if workspace and not os.path.isabs(path):
-        return os.path.join(os.path.abspath(workspace), path)
-    return os.path.abspath(path)
 
 
 def execute(agent: dict, args: dict) -> dict:
