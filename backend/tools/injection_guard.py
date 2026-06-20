@@ -51,7 +51,6 @@ _SEVERITY_SCORE = {
 # ───────────────────────────────────────────────────────────────────────
 
 _GUARDED_TOOLS = frozenset({
-    "write_file",
     "str_replace",
     "patch",
     "read_file",
@@ -653,7 +652,6 @@ def _extract_text_from_args(tool_name: str, args: dict) -> list[str]:
     # For tools with well-known string fields, always re-scan those explicitly
     # even if they're short (to catch e.g. short but dangerous payloads)
     known_text_fields = {
-        "write_file": ("content", "file_path"),
         "str_replace": ("old_str", "new_str", "file_path"),
         "patch": ("patch", "file_path"),
         "read_file": ("file_path",),
