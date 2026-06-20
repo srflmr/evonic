@@ -26,19 +26,15 @@ _BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__fi
 def _resolve_binary() -> str:
     """Locate the evomem binary.
 
-    Honours EVOMEM_BINARY (or the legacy EVOBRAIN_BINARY) env override. Otherwise
-    prefers the new `shared/bin/evomem` name but falls back to the legacy
-    `shared/bin/evobrain` so the rename doesn't silently disable the engine while
-    the binary is still shipped under its old name. Paths are resolved against the
-    repo root, not the process working directory.
+    Honours EVOMEM_BINARY env override. Paths are resolved against the repo root,
+    not the process working directory.
     """
-    env = os.environ.get("EVOMEM_BINARY") or os.environ.get("EVOBRAIN_BINARY")
+    env = os.environ.get("EVOMEM_BINARY")
     if env:
         return env
-    for name in ("evomem", "evobrain"):
-        path = os.path.join(_BASE_DIR, "shared", "bin", name)
-        if os.path.isfile(path):
-            return path
+    path = os.path.join(_BASE_DIR, "shared", "bin", "evomem")
+    if os.path.isfile(path):
+        return path
     return os.path.join(_BASE_DIR, "shared", "bin", "evomem")
 
 
@@ -82,12 +78,9 @@ def get_engine() -> str:
     Evomem is the default. It transparently downgrades to FTS5 when the
     binary is missing/not executable, so binary-less deployments keep working.
     EVONIC_MEMORY_ENGINE overrides the default; an unknown value is treated as
-    'evomem'.  Backward compatibility: 'evobrain' is accepted as a synonym.
+    'evomem'.
     """
     engine = os.environ.get("EVONIC_MEMORY_ENGINE", "evomem").strip().lower()
-    # Backward compatibility: accept "evobrain" as a synonym for "evomem"
-    if engine == "evobrain":
-        engine = "evomem"
     if engine not in ("evomem", "fts5"):
         engine = "evomem"
     if engine == "evomem" and not is_available():
@@ -241,7 +234,7 @@ def _mirror_kb_files(agent_id: str) -> dict:
     return stats
 
 
-def init_brain(agent_id: str) -> bool:
+def init_evomem(agent_id: str) -> bool:
     """Initialize a new evomem directory for the agent. Returns True on success."""
     brain_dir = _get_brain_dir(agent_id)
     if not is_available():
@@ -263,7 +256,7 @@ def capture(agent_id: str, text: str, category: str = "general") -> dict:
     """
     brain_dir = _get_brain_dir(agent_id)
     if not os.path.isdir(brain_dir) or not os.path.exists(os.path.join(brain_dir, ".evomem.db")):
-        if not init_brain(agent_id):
+        if not init_evomem(agent_id):
             return None
     # Build a safe title: strip YAML-breaking characters (brackets, quotes, colons)
     safe_title = (f"{category}: {text[:80]}"

@@ -31,7 +31,7 @@ import unicodedata
 from datetime import datetime, timezone
 
 from backend.agent_runtime.evomem_client import (
-    _get_brain_dir, init_brain, sync as _evomem_sync, vlog,
+    _get_brain_dir, init_evomem, sync as _evomem_sync, vlog,
 )
 
 logger = logging.getLogger(__name__)
@@ -78,7 +78,7 @@ def _ensure_brain(agent_id: str) -> bool:
     brain_dir = _get_brain_dir(agent_id)
     if os.path.isdir(brain_dir) and os.path.exists(os.path.join(brain_dir, ".evomem.db")):
         return True
-    return init_brain(agent_id)
+    return init_evomem(agent_id)
 
 
 def _atomic_write(path: str, content: str) -> None:
