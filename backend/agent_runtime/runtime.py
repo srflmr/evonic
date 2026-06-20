@@ -1644,10 +1644,15 @@ class AgentRuntime:
         # Compute whether describe_image is assigned so the _apply_multimodal
         # closure can conditionally inject the hint.  Done early because
         # _apply_multimodal is called during message building below.
+        # Describes whether the agent has (or will receive — via auto-assign
+        # below) access to the describe_image tool.
         if _used_prefetch:
             _has_describe_image = 'describe_image' in _agent_ctx_prebuilt.get('assigned_tool_ids', [])
         else:
-            _has_describe_image = 'describe_image' in db.get_agent_tools(db_agent_id)
+            _has_describe_image = (
+                'describe_image' in db.get_agent_tools(db_agent_id)
+                or bool(agent.get('vision_enabled', 1))
+            )
 
         if _used_prefetch:
             # Prefetch already contains the full conversation history (system prompt +
@@ -1832,6 +1837,11 @@ class AgentRuntime:
                 if 'fetch_artifact' not in assigned_tool_ids:
                     assigned_tool_ids.append('fetch_artifact')
 
+            # Agents with vision_enabled automatically get describe_image.
+            # No DB assignment needed — every vision-capable agent can analyze images.
+            if agent.get('vision_enabled', 1) and 'describe_image' not in assigned_tool_ids:
+                assigned_tool_ids.append('describe_image')
+
             # Resolve workspace: workplace config takes priority over agent.workspace.
             # For tunnel workplaces, never fall back to the agent's /workspace path —
             # Evonet runs on the remote device and has its own working directory.
@@ -1852,6 +1862,7 @@ class AgentRuntime:
 
             agent_context = {
                 'id': agent_id,
+                '_db_agent_id': agent.get('_db_agent_id', agent_id),
                 'name': agent.get('name', ''),
                 'agent_name': agent.get('name', ''),
                 'agent_model': None,

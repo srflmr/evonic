@@ -59,7 +59,14 @@ def _resolve_vision_model(agent: dict) -> tuple[Optional[Dict[str, Any]], Option
             return model, None
         # model_id was set but invalid — fall through to auto-detect
 
-    # Priority 3: first enabled vision-capable model
+    # Priority 3: agent's current model (natural fallback before global auto-detect).
+    # Uses _db_agent_id for sub-agents so they resolve to the parent agent's model.
+    _agent_db_id = agent.get("_db_agent_id") or agent.get("id")
+    agent_model = db.get_agent_model(_agent_db_id)
+    if agent_model and agent_model.get("vision_supported"):
+        return agent_model, None
+
+    # Priority 4: first enabled vision-capable model
     all_models = db.get_enabled_llm_models()
     for model in all_models:
         if model.get("vision_supported"):

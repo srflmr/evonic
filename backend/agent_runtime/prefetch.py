@@ -95,10 +95,6 @@ class TurnPrefetcher:
             # Rebuild agent context
             assigned_tool_ids = db.get_agent_tools(db_agent_id)
 
-            # Check whether describe_image is assigned — passed through to
-            # build_message_entry so the hint is only injected when available.
-            has_describe_image = 'describe_image' in assigned_tool_ids
-
             # Agents with save_artifact automatically get list_artifacts + fetch_artifact.
             # No DB assignment needed — every artifacts-enabled agent can search and fetch their files.
             if 'save_artifact' in assigned_tool_ids:
@@ -107,8 +103,18 @@ class TurnPrefetcher:
                 if 'fetch_artifact' not in assigned_tool_ids:
                     assigned_tool_ids.append('fetch_artifact')
 
+            # Agents with vision_enabled automatically get describe_image.
+            # No DB assignment needed — every vision-capable agent can analyze images.
+            if agent.get('vision_enabled', 1) and 'describe_image' not in assigned_tool_ids:
+                assigned_tool_ids.append('describe_image')
+
+            # Check whether describe_image is assigned — passed through to
+            # build_message_entry so the hint is only injected when available.
+            has_describe_image = 'describe_image' in assigned_tool_ids
+
             fresh_agent_context = {
                 'id': agent_id,
+                '_db_agent_id': agent.get('_db_agent_id', agent_id),
                 'name': agent.get('name', ''),
                 'agent_name': agent.get('name', ''),
                 'agent_model': None,
