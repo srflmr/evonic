@@ -91,8 +91,13 @@ def execute(agent: dict, args: dict) -> Any:
     Returns:
         str: Plain-text description of the image, or an error message.
     """
-    path = (args.get("path") or "").strip()
-    query = (args.get("query") or "").strip()
+    # Guard against malformed tool calls where the LLM passes a dict/list
+    # instead of a string.  (non-string truthy values would bypass the
+    # `or ""` short-circuit and crash on .strip())
+    path = args.get("path")
+    path = path.strip() if isinstance(path, str) else ""
+    query = args.get("query")
+    query = query.strip() if isinstance(query, str) else ""
 
     # --- Gate: vision_enabled ---
     # The agent_context dict includes vision_enabled when the runtime builds it.
