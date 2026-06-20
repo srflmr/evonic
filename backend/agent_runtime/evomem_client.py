@@ -161,6 +161,10 @@ def _mirror_kb_files(agent_id: str) -> dict:
     Copies new/changed files, removes stale ones (deleted from kb/ source),
     and returns a stats dict: {copied, removed, unchanged}.
 
+    Walks the KB source directory recursively so files in subdirectories
+    are mirrored with their relative paths preserved. Only .md files are
+    copied.
+
     The evomem binary scans all .md files under the brain directory, so
     mirroring KB files into brain/kb/ makes them visible to the sync engine.
     Content hash comparison avoids unnecessary writes.
@@ -177,55 +181,77 @@ def _mirror_kb_files(agent_id: str) -> dict:
     # ---- No KB source directory: clean up any stale brain/kb/ copies ----
     if not os.path.isdir(kb_dir):
         if os.path.isdir(brain_kb_dir):
-            for filename in list(os.listdir(brain_kb_dir)):
-                if filename.endswith(".md"):
-                    os.remove(os.path.join(brain_kb_dir, filename))
-                    stats["removed"] += 1
-            try:
-                os.rmdir(brain_kb_dir)
-            except OSError:
-                pass
+            # Walk brain/kb/ bottom-up to remove all .md files and empty dirs
+            for dirpath, _dirnames, filenames in os.walk(brain_kb_dir, topdown=False):
+                for filename in filenames:
+                    if filename.endswith(".md"):
+                        os.remove(os.path.join(dirpath, filename))
+                        stats["removed"] += 1
+                # Remove directory if empty (bottom-up ensures children first)
+                try:
+                    os.rmdir(dirpath)
+                except OSError:
+                    pass
         return stats
 
     # ---- Ensure brain/kb/ directory exists ----
     os.makedirs(brain_kb_dir, exist_ok=True)
 
-    # Collect existing brain/kb/ files
+    # Collect existing brain/kb/ files as relative paths
     brain_kb_files: set = set()
     if os.path.isdir(brain_kb_dir):
-        brain_kb_files = {f for f in os.listdir(brain_kb_dir) if f.endswith(".md")}
+        for dirpath, _dirnames, filenames in os.walk(brain_kb_dir):
+            for filename in filenames:
+                if filename.endswith(".md"):
+                    rel_path = os.path.relpath(
+                        os.path.join(dirpath, filename), brain_kb_dir)
+                    brain_kb_files.add(rel_path)
 
-    # ---- Copy new or changed KB files ----
+    # ---- Copy new or changed KB files (recursively) ----
     kb_files: set = set()
-    for filename in sorted(os.listdir(kb_dir)):
-        if not filename.endswith(".md"):
-            continue
-        kb_files.add(filename)
-        src = os.path.join(kb_dir, filename)
-        dst = os.path.join(brain_kb_dir, filename)
+    for dirpath, _dirnames, filenames in os.walk(kb_dir):
+        for filename in sorted(filenames):
+            if not filename.endswith(".md"):
+                continue
+            src = os.path.join(dirpath, filename)
+            rel_path = os.path.relpath(src, kb_dir)
+            kb_files.add(rel_path)
+            dst = os.path.join(brain_kb_dir, rel_path)
 
-        if os.path.exists(dst):
-            # Compare content to avoid unnecessary writes
-            try:
-                with open(src, "rb") as f:
-                    src_content = f.read()
-                with open(dst, "rb") as f:
-                    dst_content = f.read()
-                if src_content == dst_content:
-                    stats["unchanged"] += 1
-                    continue
-            except OSError:
-                pass  # fall through to copy
+            if os.path.exists(dst):
+                # Compare content to avoid unnecessary writes
+                try:
+                    with open(src, "rb") as f:
+                        src_content = f.read()
+                    with open(dst, "rb") as f:
+                        dst_content = f.read()
+                    if src_content == dst_content:
+                        stats["unchanged"] += 1
+                        continue
+                except OSError:
+                    pass  # fall through to copy
 
-        shutil.copy2(src, dst)
-        stats["copied"] += 1
-        vlog("kb_mirror[%s]: copied %s", agent_id, filename)
+            # Ensure parent directory exists for nested files
+            os.makedirs(os.path.dirname(dst), exist_ok=True)
+            shutil.copy2(src, dst)
+            stats["copied"] += 1
+            vlog("kb_mirror[%s]: copied %s", agent_id, rel_path)
 
     # ---- Remove stale files (deleted from kb/ source) ----
-    for filename in sorted(brain_kb_files - kb_files):
-        os.remove(os.path.join(brain_kb_dir, filename))
+    for rel_path in sorted(brain_kb_files - kb_files):
+        os.remove(os.path.join(brain_kb_dir, rel_path))
         stats["removed"] += 1
-        vlog("kb_mirror[%s]: removed stale %s", agent_id, filename)
+        vlog("kb_mirror[%s]: removed stale %s", agent_id, rel_path)
+
+    # ---- Remove empty subdirectories from brain/kb/ ----
+    if os.path.isdir(brain_kb_dir):
+        for dirpath, _dirnames, _filenames in os.walk(brain_kb_dir, topdown=False):
+            if dirpath == brain_kb_dir:
+                continue  # keep the root kb/ directory
+            try:
+                os.rmdir(dirpath)
+            except OSError:
+                pass  # directory not empty, skip
 
     if stats["copied"] or stats["removed"]:
         vlog("kb_mirror[%s]: copied=%d removed=%d unchanged=%d",
