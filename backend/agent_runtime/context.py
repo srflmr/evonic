@@ -1158,7 +1158,7 @@ def command_hint_from_content(content: str) -> str:
     return "unknown"
 
 
-def build_message_entry(msg: dict, agent: dict) -> dict:
+def build_message_entry(msg: dict, agent: dict, has_describe_image: bool = True) -> dict:
     """Convert a DB message row into an LLM message dict."""
     entry = {"role": msg['role']}
     _msg_meta = msg.get('metadata') if isinstance(msg.get('metadata'), dict) else {}
@@ -1189,8 +1189,9 @@ def build_message_entry(msg: dict, agent: dict) -> dict:
             attachment_note = (
                 f"\n\n[Attachment: {filename} ({mime_type}, {size_str})]"
                 f"\nFile path: {file_path}"
-                "\nUse the `describe_image` tool to view and analyze this image."
             )
+            if has_describe_image:
+                attachment_note += "\nUse the `describe_image` tool to view and analyze this image."
         else:
             attachment_note = (
                 f"\n\n[Attachment: {filename} ({mime_type}, {size_str})]"

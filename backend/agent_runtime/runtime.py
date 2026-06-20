@@ -1575,6 +1575,10 @@ class AgentRuntime:
         # _should_wrap_user_message is defined at module level (also used by handle_message).
         # Keep this alias so the rest of _do_process_inner reads naturally.
 
+        # Will be set to True if describe_image is in the agent's assigned_tool_ids.
+        # Must exist before _apply_multimodal so the closure can capture it.
+        _has_describe_image = False
+
         def _apply_multimodal(msg: dict) -> dict:
             """Apply multimodal formatting for user messages with audio/video if agent supports it.
 
@@ -1603,7 +1607,7 @@ class AgentRuntime:
                     f"\n\n[Attachment: {fn} ({mt}, {sz})]"
                     f"\nFile path: {fp}"
                 )
-                if is_img:
+                if is_img and _has_describe_image:
                     note += "\nUse the `describe_image` tool to view and analyze this image."
                 content = msg.get('content', '') or ''
                 msg['content'] = content.rstrip() + note
@@ -1636,6 +1640,14 @@ class AgentRuntime:
 
         summary_record = db.get_summary(ctx.session_id, agent_id=db_agent_id)
         chatlog = chatlog_manager.get(db_agent_id, ctx.session_id)
+
+        # Compute whether describe_image is assigned so the _apply_multimodal
+        # closure can conditionally inject the hint.  Done early because
+        # _apply_multimodal is called during message building below.
+        if _used_prefetch:
+            _has_describe_image = 'describe_image' in _agent_ctx_prebuilt.get('assigned_tool_ids', [])
+        else:
+            _has_describe_image = 'describe_image' in db.get_agent_tools(db_agent_id)
 
         if _used_prefetch:
             # Prefetch already contains the full conversation history (system prompt +
@@ -1719,12 +1731,12 @@ class AgentRuntime:
                         tail_start += 1
                     for msg in raw_tail[tail_start:]:
                         if not _is_legacy_agent_state_msg(msg) and not _is_ui_only_msg(msg) and not _is_slash_command_msg(msg):
-                            messages.append(_ctx.build_message_entry(msg, agent))
+                            messages.append(_ctx.build_message_entry(msg, agent, _has_describe_image))
                 else:
                     history = db.get_session_messages(ctx.session_id, limit=50, agent_id=db_agent_id)
                     for msg in history:
                         if not _is_legacy_agent_state_msg(msg) and not _is_ui_only_msg(msg) and not _is_slash_command_msg(msg):
-                            messages.append(_ctx.build_message_entry(msg, agent))
+                            messages.append(_ctx.build_message_entry(msg, agent, _has_describe_image))
 
         # Ensure messages don't end with assistant role (causes prefill error with some APIs)
         while len(messages) > 1 and messages[-1].get('role') == 'assistant':
