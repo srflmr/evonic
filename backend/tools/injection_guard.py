@@ -54,7 +54,6 @@ _GUARDED_TOOLS = frozenset({
     "read_file",
     "bash",
     "runpy",
-    "send_agent_message",
 })
 
 # ───────────────────────────────────────────────────────────────────────

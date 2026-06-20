@@ -1763,7 +1763,7 @@ def run_tool_loop(agent: Dict[str, Any],
                 event_stream.emit('evonic:agent-state-changed', {'agent_id': agent_id, 'session_id': session_id})
 
             # ── Layer B: Tool Result Scanner (post-execution injection scan) ──
-            _SCAN_RESULT_TOOLS = frozenset({'read_file', 'bash', 'runpy', 'send_agent_message'})
+            _SCAN_RESULT_TOOLS = frozenset({'read_file', 'bash', 'runpy'})
             _already_blocked = isinstance(tool_result, dict) and 'blocked_by' in tool_result
             if fn_name in _SCAN_RESULT_TOOLS and not _already_blocked:
                 _inj_cfg_b = _agent_ig_config
