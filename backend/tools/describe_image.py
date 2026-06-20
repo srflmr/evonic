@@ -179,11 +179,25 @@ def execute(agent: dict, args: dict) -> Any:
     except Exception as e:
         return f"Error: Vision model call failed: {e}"
 
-    response_text = result.get("response", "")
-    if not response_text and result.get("error"):
-        return f"Error: Vision model returned an error: {result['error']}"
+    # Check for explicit errors in the result
+    if not result.get("success"):
+        error_type = result.get("error_type", "unknown")
+        error_detail = result.get("error_detail", "")
+        return f"Error: Vision model call failed ({error_type}): {error_detail}"
 
-    if not response_text:
+    # Extract text content from the nested API response.
+    # result["response"] is the raw API dict: {"choices": [{"message": {"content": "..."}}]}
+    response_data = result.get("response", {})
+    choices = response_data.get("choices", [])
+    if not choices:
+        return "Error: Vision model returned no choices in response."
+
+    message = choices[0].get("message", {})
+    content = message.get("content", "")
+    if not content:
         return "Error: Vision model returned an empty response."
 
-    return response_text.strip()
+    # Strip any thinking tags that may have been included
+    from backend.llm_client import strip_thinking_tags
+    cleaned, _ = strip_thinking_tags(content)
+    return cleaned.strip()
