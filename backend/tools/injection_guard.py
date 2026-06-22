@@ -54,6 +54,7 @@ _GUARDED_TOOLS = frozenset({
     "read_file",
     "bash",
     "runpy",
+    "send_agent_message",
 })
 
 # ───────────────────────────────────────────────────────────────────────
@@ -790,9 +791,13 @@ def _is_false_positive(rule_name: str, matched_text: str,
     return False
 
 
-def _detect_injection(text: str) -> tuple[bool, str, str, float, str]:
+def _detect_injection(text: str, pem_only: bool = False) -> tuple[bool, str, str, float, str]:
     """
     Scan a single text string against all rules.
+
+    Args:
+        text: The text to scan.
+        pem_only: If True, only scan PEM-related rules (rule_name starts "pem_").
 
     Returns:
         (is_injected, highest_severity, triggered_rule_name, risk_score, reason)
@@ -806,6 +811,8 @@ def _detect_injection(text: str) -> tuple[bool, str, str, float, str]:
     matched_count = 0
 
     for rule_name, pattern, severity, category, description in _RULES:
+        if pem_only and not rule_name.startswith("pem_"):
+            continue
         for m in pattern.finditer(text):
             if _is_false_positive(rule_name, m.group(0), full_text=text):
                 continue
@@ -981,6 +988,11 @@ def injection_tool_guard(agent_id: str, tool_name: str, args: dict) -> Optional[
     mode = config.get("injection_guard_mode", _DEFAULT_MODE)
     min_sev_order = _SEVERITY_ORDER.get(min_severity, 1)
 
+    # For send_agent_message, only scan PEM rules (to avoid false positives
+    # from injection patterns in legitimate inter-agent communication).
+    # The ML pass is also skipped for send_agent_message.
+    _pem_only = (tool_name == "send_agent_message")
+
     # Extract all text from tool arguments
     texts = _extract_text_from_args(tool_name, args)
     if not texts:
@@ -988,7 +1000,7 @@ def injection_tool_guard(agent_id: str, tool_name: str, args: dict) -> Optional[
 
     # Scan each text chunk (regex first pass)
     for text in texts:
-        is_injected, severity, rule_name, risk_score, reason = _detect_injection(text)
+        is_injected, severity, rule_name, risk_score, reason = _detect_injection(text, pem_only=_pem_only)
         if not is_injected:
             continue
 
@@ -1053,57 +1065,60 @@ def injection_tool_guard(agent_id: str, tool_name: str, args: dict) -> Optional[
 
     # ML second pass (PROMPTPurify L5e) — catches novel attacks regex misses.
     # ML is always active as part of injection guard (no separate opt-in flag).
-    ml_runner = _get_ml_runner()
-    if ml_runner is not None:
-        for text in texts:
-            is_injected, severity, rule_name, risk_score, reason = (
-                _ml_detect_injection(text)
-            )
-            if not is_injected:
-                continue
+    # Skipped for send_agent_message (pem_only) — ML doesn't understand
+    # PEM key patterns and could false-positive on inter-agent messages.
+    if not _pem_only:
+        ml_runner = _get_ml_runner()
+        if ml_runner is not None:
+            for text in texts:
+                is_injected, severity, rule_name, risk_score, reason = (
+                    _ml_detect_injection(text)
+                )
+                if not is_injected:
+                    continue
 
-            sev_order = _SEVERITY_ORDER.get(severity, 0)
-            if sev_order < min_sev_order:
-                continue
+                sev_order = _SEVERITY_ORDER.get(severity, 0)
+                if sev_order < min_sev_order:
+                    continue
 
-            score_pct = int(risk_score * 100)
-            error_msg = (
-                f"Prompt injection detected in tool arguments "
-                f"(severity: {severity}, score: {score_pct}%). "
-                f"{reason}"
-            )
+                score_pct = int(risk_score * 100)
+                error_msg = (
+                    f"Prompt injection detected in tool arguments "
+                    f"(severity: {severity}, score: {score_pct}%). "
+                    f"{reason}"
+                )
 
-            if mode == "log":
+                if mode == "log":
+                    _logger.warning(
+                        "INJECTION_ML_LOG agent=%s tool=%s severity=%s "
+                        "score=%d rule=%s",
+                        agent_id, tool_name, severity, score_pct, rule_name,
+                    )
+                    return None
+
+                if mode == "warn":
+                    _logger.warning(
+                        "INJECTION_ML_WARN agent=%s tool=%s severity=%s "
+                        "score=%d rule=%s",
+                        agent_id, tool_name, severity, score_pct, rule_name,
+                    )
+                    return {
+                        "block": True,
+                        "error": (
+                            f"[WARN] {error_msg}\n"
+                            f"This tool call has been blocked by the "
+                            f"PROMPTPurify ML injection guard (mode: warn). "
+                            f"Contact your administrator to adjust the "
+                            f"guard policy if this is a false positive."
+                        ),
+                    }
+
+                # Default: block mode
                 _logger.warning(
-                    "INJECTION_ML_LOG agent=%s tool=%s severity=%s "
+                    "INJECTION_ML_BLOCK agent=%s tool=%s severity=%s "
                     "score=%d rule=%s",
                     agent_id, tool_name, severity, score_pct, rule_name,
                 )
-                return None
-
-            if mode == "warn":
-                _logger.warning(
-                    "INJECTION_ML_WARN agent=%s tool=%s severity=%s "
-                    "score=%d rule=%s",
-                    agent_id, tool_name, severity, score_pct, rule_name,
-                )
-                return {
-                    "block": True,
-                    "error": (
-                        f"[WARN] {error_msg}\n"
-                        f"This tool call has been blocked by the "
-                        f"PROMPTPurify ML injection guard (mode: warn). "
-                        f"Contact your administrator to adjust the "
-                        f"guard policy if this is a false positive."
-                    ),
-                }
-
-            # Default: block mode
-            _logger.warning(
-                "INJECTION_ML_BLOCK agent=%s tool=%s severity=%s "
-                "score=%d rule=%s",
-                agent_id, tool_name, severity, score_pct, rule_name,
-            )
-            return {"block": True, "error": error_msg}
+                return {"block": True, "error": error_msg}
 
     return None
