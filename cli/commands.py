@@ -211,6 +211,12 @@ def start_server(port=None, host=None, debug=None, daemon=False):
         app_path = os.path.join(
             os.path.dirname(os.path.abspath(__file__)), "..", "app.py"
         )
+        # Release the lock BEFORE spawning — the child process (app.py) will
+        # acquire its own via its single-instance guard. Holding the lock here
+        # causes a race: the child's fcntl.flock(LOCK_NB) fails because this
+        # process still owns the lock, killing the child immediately.
+        os.close(pid_lock_fd)
+
         proc = subprocess.Popen(
             [sys.executable, app_path],
             env=env,
@@ -223,8 +229,6 @@ def start_server(port=None, host=None, debug=None, daemon=False):
 
         if _is_running(proc.pid):
             _write_pid(proc.pid)
-            # Release the lock — the child process (app.py) will acquire its own
-            os.close(pid_lock_fd)
             print(f"Server started in background (PID: {proc.pid})")
             print(f"Host: {host}")
             print(f"Port: {port}")
@@ -3177,6 +3181,37 @@ def doctor_command(quick=False, fix=False, with_llm_provider=False):
 
     except Exception as e:
         results.append(_fail(f"Asset build check failed: {e}"))
+
+
+    # ── 13. Database Schema / Query Health Check ──────────────
+    _section("13. Database Schema / Query Health Check")
+    try:
+        import sqlite3 as _sqlite3
+        from models.db import db as _schema_db
+
+        dashboard_queries = [
+            ("dashboard stats", _schema_db.get_dashboard_stats),
+            ("model usage", _schema_db.get_model_usage),
+            ("model leaderboard", _schema_db.get_model_leaderboard),
+            ("recent agents", _schema_db.get_recent_agents),
+            ("recent runs", _schema_db.get_recent_runs),
+        ]
+        schema_ok = True
+        for q_name, q_fn in dashboard_queries:
+            try:
+                q_fn()
+            except _sqlite3.OperationalError as qe:
+                schema_ok = False
+                results.append(_fail(f"{q_name} query failed — schema mismatch: {qe}"))
+            except Exception as qe:
+                results.append(_warn(f"{q_name} query raised {type(qe).__name__}: {qe}"))
+        if schema_ok:
+            results.append(_ok("Dashboard queries match the current database schema"))
+        else:
+            _info("  A column referenced by a query is missing from the schema "
+                  "(commonly a rename/drop that left a query un-updated).")
+    except Exception as e:
+        results.append(_fail(f"Database schema check failed: {e}"))
 
 
     _section("Summary")
