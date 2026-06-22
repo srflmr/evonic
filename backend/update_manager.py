@@ -545,8 +545,19 @@ def trigger_restart() -> dict:
     _append_log('info', 'Restart scheduled...')
     _notify_listeners()
 
+    # Reset state to idle BEFORE spawning restart so the persisted state
+    # does not carry over 'success' status after the server restarts.
+    # This must happen while _lock is held and before subprocess.Popen().
+    with _lock:
+        _state['status'] = 'idle'
+        _state['progress'] = 0
+        _state['step'] = 0
+        _state['step_label'] = ''
+        _state['error'] = None
+        _state['crashed'] = False
+        _persist_state(_state)
+
     # Detached subprocess: sleeps 2s, then terminates the parent process.
-    # Security: Uses only built-in modules — no external paths or user input.
     script = (
         "import time, signal, os; "
         "time.sleep(2); "
