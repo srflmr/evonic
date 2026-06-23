@@ -199,6 +199,17 @@ if _state['crashed']:
         })
         _persist_state(_state)
 
+# Stale success state from a previous run — the update already completed,
+# but the server restarted without going through trigger_restart().
+# Reset to idle so the banner doesn't reappear spuriously.
+if _state['status'] == 'success':
+    with _lock:
+        _state['status'] = 'idle'
+        _state['progress'] = 0
+        _state['step'] = 0
+        _state['step_label'] = ''
+        _persist_state(_state)
+
 
 # ---------------------------------------------------------------------------
 # SSE listener helpers
