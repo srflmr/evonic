@@ -1990,7 +1990,176 @@ def workplace_disconnect(workplace_id):
         sys.exit(1)
 
 
+def setup_command(non_interactive=False):
+    """First-time setup wizard: configure LLM provider and create super agent."""
+    import getpass
 
+    from models.db import db
+
+    # If already set up, run doctor --fix to keep things healthy
+    if db.has_super_agent():
+        print("Super agent already exists — running doctor --fix to ensure everything is healthy.\n")
+        doctor_command(fix=True)
+        return
+
+    print()
+    print("  ╔══════════════════════════════════════════════════╗")
+    print("  ║        Welcome to Evonic Setup Wizard            ║")
+    print("  ╚══════════════════════════════════════════════════╝")
+    print()
+    print("  This wizard will help you configure your first")
+    print("  super agent and default LLM provider.")
+    print()
+
+    # Rebind stdin to /dev/tty for interactive input when called via wrapper
+    try:
+        sys.stdin = open("/dev/tty", "r")
+    except OSError:
+        pass
+
+    # --- Provider selection ---
+    from backend.setup import PROVIDER_DEFAULTS
+
+    providers = list(PROVIDER_DEFAULTS.keys())
+    print("  Available LLM providers:")
+    for i, p in enumerate(providers, 1):
+        cfg = PROVIDER_DEFAULTS[p]
+        print(f"    {i}. {cfg['label']} — {cfg['description']}")
+
+    if non_interactive:
+        provider = "openrouter"
+        print(f"\n  [non-interactive] Using default provider: {provider}")
+    else:
+        try:
+            choice = input(f"\n  Choose provider [1-{len(providers)}] (default: 1): ").strip()
+        except (EOFError, KeyboardInterrupt):
+            print("\n  Setup aborted.")
+            return
+        try:
+            idx = int(choice) - 1 if choice else 0
+            if idx < 0 or idx >= len(providers):
+                print(f"  Invalid choice, using default (1. {PROVIDER_DEFAULTS[providers[0]]['label']})")
+                idx = 0
+        except ValueError:
+            idx = 0
+        provider = providers[idx]
+
+    provider_cfg = PROVIDER_DEFAULTS[provider]
+    print(f"  Selected: {provider_cfg['label']}")
+
+    # --- API key ---
+    api_key = ""
+    if provider_cfg["api_key_required"]:
+        if non_interactive:
+            print("  [non-interactive] Skipping API key — you can set it later in .env")
+        else:
+            try:
+                api_key = getpass.getpass(f"  {provider_cfg['label']} API key: ").strip()
+            except (EOFError, KeyboardInterrupt):
+                print("\n  Setup aborted.")
+                return
+
+    # --- Model name ---
+    default_model = provider_cfg["placeholder_model"]
+    if non_interactive:
+        model_name = default_model
+        print(f"  [non-interactive] Using default model: {model_name}")
+    else:
+        try:
+            inp = input(f"  Model name (default: {default_model}): ").strip()
+        except (EOFError, KeyboardInterrupt):
+            print("\n  Setup aborted.")
+            return
+        model_name = inp if inp else default_model
+
+    # --- Agent name ---
+    if non_interactive:
+        agent_name = "Siwa Miwa"
+        print(f"  [non-interactive] Using default agent name: {agent_name}")
+    else:
+        try:
+            agent_name = input("  Your super agent's name (default: Siwa Miwa): ").strip()
+        except (EOFError, KeyboardInterrupt):
+            print("\n  Setup aborted.")
+            return
+        agent_name = agent_name if agent_name else "Siwa Miwa"
+
+    # --- Language ---
+    if non_interactive:
+        language = "english"
+    else:
+        try:
+            lang = input("  Language [english/indonesian/adaptive] (default: english): ").strip().lower()
+        except (EOFError, KeyboardInterrupt):
+            print("\n  Setup aborted.")
+            return
+        language = lang if lang in ("english", "indonesian", "adaptive") else "english"
+
+    # --- Admin password ---
+    password = ""
+    if non_interactive:
+        print("  [non-interactive] Skipping admin password — you can set it later with 'evonic pass'")
+    else:
+        try:
+            set_pw = input("  Set admin dashboard password? [y/N]: ").strip().lower()
+        except (EOFError, KeyboardInterrupt):
+            print("\n  Setup aborted.")
+            return
+        if set_pw in ("y", "yes"):
+            pw1 = getpass.getpass("  New password: ")
+            if not pw1 or len(pw1) < 6:
+                print("  Password must be at least 6 characters — skipping password setup.")
+            else:
+                pw2 = getpass.getpass("  Confirm password: ")
+                if pw1 != pw2:
+                    print("  Passwords do not match — skipping password setup.")
+                else:
+                    password = pw1
+
+    # --- Confirm ---
+    print()
+    print(f"  Summary:")
+    print(f"    Provider    : {provider_cfg['label']}")
+    print(f"    Model       : {model_name}")
+    print(f"    Agent Name  : {agent_name}")
+    print(f"    Language    : {language}")
+    if password:
+        print(f"    Admin Pass  : (set)")
+    print()
+
+    if not non_interactive:
+        try:
+            confirm = input("  Proceed with setup? [Y/n]: ").strip().lower()
+        except (EOFError, KeyboardInterrupt):
+            print("\n  Setup aborted.")
+            return
+        if confirm in ("n", "no"):
+            print("  Setup cancelled.")
+            return
+
+    # --- Execute setup ---
+    from backend.setup import run_setup
+
+    result = run_setup(
+        provider=provider,
+        model_name=model_name,
+        base_url="",
+        api_key=api_key,
+        agent_name=agent_name,
+        agent_id="",
+        description="Evonic Super Agent",
+        language=language,
+        sandbox_enabled=False,
+        password=password,
+    )
+
+    if "error" in result:
+        print(f"\n  Error: {result['error']}")
+        sys.exit(1)
+
+    print(f"\n  Setup complete! Super agent '{result['agent_id']}' created.")
+    print(f"  Run 'evonic start -d' to start the platform.")
+    print()
 
 
 def pass_setup():
