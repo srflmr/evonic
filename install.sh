@@ -157,10 +157,13 @@ clone_repo() {
     fi
     fix_remote_fetch
 
-    # Ensure we're on the main branch so users can git pull manually
-    git -C "$EVONIC_HOME" checkout main 2>/dev/null || \
-        git -C "$EVONIC_HOME" checkout -b main origin/main 2>/dev/null || \
-        warn "Could not switch to main branch."
+    # Ensure we have local tracking branches for main and dev
+    # (shallow tag clones leave us in detached HEAD with no local branches)
+    for branch in main dev; do
+        git -C "$EVONIC_HOME" checkout "$branch" 2>/dev/null || \
+            git -C "$EVONIC_HOME" checkout -b "$branch" "origin/$branch" 2>/dev/null || \
+            warn "Could not create local $branch branch."
+    done
 }
 # ── Step 3: Create Python virtual environment ────────────────────────────────
 create_venv() {
