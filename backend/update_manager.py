@@ -139,14 +139,29 @@ def _load_persisted_state() -> dict:
 
 
 def _persist_state(state: dict) -> None:
-    """Save update state to disk atomically."""
+    """Save update state to disk atomically.
+
+    Uses fsync on both the file and its parent directory to ensure the
+    data is durable on disk before the atomic rename.  This is critical
+    for trigger_restart(), where the process is killed by SIGTERM shortly
+    after persisting the idle state — without fsync the write may still
+    be in the OS page cache and lost.
+    """
     state_file = _get_state_file_path()
     temp_file = state_file + '.tmp'
 
     try:
         with open(temp_file, 'w') as f:
             json.dump(state, f, indent=2)
+            f.flush()
+            os.fsync(f.fileno())
         os.replace(temp_file, state_file)
+        # fsync the parent directory so the rename is durable
+        dir_fd = os.open(os.path.dirname(state_file), os.O_RDONLY)
+        try:
+            os.fsync(dir_fd)
+        finally:
+            os.close(dir_fd)
     except (IOError, OSError) as e:
         log.error(f'Failed to persist state: {e}')
         if os.path.exists(temp_file):
@@ -197,6 +212,21 @@ if _state['crashed']:
             'level': 'error',
             'message': 'Update was interrupted by server crash or restart',
         })
+        _persist_state(_state)
+
+# Timestamp captured at module load — used by get_status() to detect
+# stale 'success' state from a previous server instance.
+_MODULE_LOAD_TIME = time.time()
+
+# Stale success state from a previous run — the update already completed,
+# but the server restarted without going through trigger_restart().
+# Reset to idle so the banner doesn't reappear spuriously.
+if _state['status'] == 'success':
+    with _lock:
+        _state['status'] = 'idle'
+        _state['progress'] = 0
+        _state['step'] = 0
+        _state['step_label'] = ''
         _persist_state(_state)
 
 
@@ -539,6 +569,15 @@ def apply_rollback() -> dict:
 # ---------------------------------------------------------------------------
 
 def get_status() -> dict:
+    """Return the current update status.
+
+    As a last-resort safety net, stale 'success' state (from an update
+    that completed before the current server instance started) is
+    auto-reset to 'idle'.  This catches the edge case where
+    trigger_restart() persisted 'idle' but the write was lost due to
+    filesystem buffering, leaving a 'success' state file that makes the
+    banner reappear after restart.
+    """
     with _lock:
         status = {
             'status': _state['status'],
@@ -552,6 +591,25 @@ def get_status() -> dict:
             'crashed': _state.get('crashed', False),
             'last_update_attempt': _state.get('last_update_attempt', 0),
         }
+
+        # --- stale-success auto-reset -----------------------------------
+        if _state['status'] == 'success':
+            last_attempt = _state.get('last_update_attempt', 0)
+            # The update completed before this server instance started
+            # (last_update_attempt is older than the process start time
+            # captured at module load).  The persisted 'idle' from
+            # trigger_restart() was lost — reset now.
+            if last_attempt and last_attempt < _MODULE_LOAD_TIME:
+                _state['status'] = 'idle'
+                _state['progress'] = 0
+                _state['step'] = 0
+                _state['step_label'] = ''
+                _persist_state(_state)
+                status['status'] = 'idle'
+                status['progress'] = 0
+                status['step'] = 0
+                status['step_label'] = ''
+
         # Clear crashed flag after first status read
         if _state.get('crashed'):
             _state['crashed'] = False

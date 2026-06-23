@@ -166,16 +166,26 @@ clone_repo() {
 create_venv() {
     step "Step 3/6: Creating Python virtual environment"
 
+    # Check whether a usable venv already exists (must have both python and pip)
     if [ -f "$VENV_DIR/bin/python" ] || [ -f "$VENV_DIR/bin/python3" ]; then
-        ok "Virtual environment already exists — skipping"
-        return
+        py="$VENV_DIR/bin/python"
+        [ -x "$py" ] || py="$VENV_DIR/bin/python3"
+        if "$py" -m pip --version >/dev/null 2>&1; then
+            ok "Virtual environment already exists — skipping"
+            return
+        fi
+        warn "Virtual environment exists but pip is missing — recreating..."
+        rm -rf "$VENV_DIR"
     fi
 
     python3 -m venv "$VENV_DIR" || die "Virtual environment creation failed. Install the venv module (e.g. sudo apt install python3-venv) and re-run."
 
-    # Some distros create the venv without bootstrapping pip; ensure it exists.
-    if [ ! -x "$VENV_DIR/bin/pip" ] && [ ! -x "$VENV_DIR/bin/pip3" ]; then
-        "$VENV_DIR/bin/python" -m ensurepip --upgrade >/dev/null 2>&1 || \
+    # Some distros / Python 3.12+ create the venv without bootstrapping pip.
+    py="$VENV_DIR/bin/python"
+    [ -x "$py" ] || py="$VENV_DIR/bin/python3"
+
+    if ! "$py" -m pip --version >/dev/null 2>&1; then
+        "$py" -m ensurepip --upgrade >/dev/null 2>&1 || \
             die "Virtual environment has no pip. Install the venv module (e.g. sudo apt install python3-venv) and re-run."
     fi
     ok "Virtual environment created at $VENV_DIR"
