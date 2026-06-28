@@ -3421,6 +3421,47 @@ def doctor_command(quick=False, fix=False, with_llm_provider=False):
         results.append(_fail(f"Database schema check failed: {e}"))
 
 
+    # ── 14. Channel Integrations Check ────────────────────────
+    _section("14. Channel Integrations Check")
+    try:
+        from models.db import db as _chan_db
+
+        # Map channel type -> (import module, pip package) for dependency checks.
+        _channel_deps = {
+            'telegram': ('telegram', 'python-telegram-bot'),
+            'discord': ('discord', 'discord.py'),
+        }
+        configured_types = set()
+        for agent in _chan_db.get_agents():
+            for ch in _chan_db.get_channels(agent['id']):
+                if ch.get('enabled'):
+                    configured_types.add(ch.get('type'))
+
+        if not configured_types:
+            _info("  No channels configured — skipping")
+        else:
+            for ctype in sorted(configured_types):
+                dep = _channel_deps.get(ctype)
+                if not dep:
+                    _info(f"  {ctype}: no dependency check available")
+                    continue
+                module_name, pkg_name = dep
+                try:
+                    mod = importlib.import_module(module_name)
+                    ver = getattr(mod, "__version__", "?")
+                    results.append(_ok(f"{ctype} library available ({pkg_name}=={ver})"))
+                except ImportError:
+                    results.append(_fail(
+                        f"{ctype} channel enabled but {pkg_name} not installed "
+                        f"— run: pip install {pkg_name}"
+                    ))
+            if 'discord' in configured_types:
+                _info("  Discord requires the Message Content Intent "
+                      "(Bot → Privileged Gateway Intents in the Developer Portal).")
+    except Exception as e:
+        results.append(_warn(f"Channel integrations check failed: {e}"))
+
+
     _section("Summary")
 
     # Filter out "skip" entries
